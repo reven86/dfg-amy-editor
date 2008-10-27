@@ -1,0 +1,39 @@
+* Overview:
+
+Three command-line tools are provided:
+aesfile: can pack/unpack a .bin from/to an .xml file.
+scanbinfile: convert all .bin file found in a directory into .xml in a target directory
+scanxmlfile: help understanding the structure and meaning of .xml by scanning through many at once.
+
+In addition to that, a GUI editor is being build (based on pyqt):
+wogeditor.
+Currently does nothing. Short-term is to provide the following:
+- Edition of Scene tree, level and related resources (images, sound, text)
+- Display of the Scene layout in a Graphics View.
+
+* Running from the source:
+- you need to install python 2.5 (http://python.org)
+- you need to install the pycrypto extension (http://www.amk.ca/python/code/crypto.html, or https://launchpad.net/python-crypto)
+  => just run python setup.py install in the decompressed directory
+  => this requires source compilation, you will likely need a C compiler to install it.
+- you need to install pyqt4 (only for the editor, http://www.riverbankcomputing.co.uk/software/pyqt/download)
+
+* Generating the executable from the source:
+cd src
+python setup.py py2exe
+Resulting executable are in src/dist
+
+* Running the script:
+python aesfile.py input-file.bin output-file.xml
+
+or
+
+python scanbinfile.py resource-directory xml-output-directory
+
+
+* Running the executable:
+
+aesfile.exe input-file.bin output-file.xml
+or
+scanbinfile.exe resource-directory xml-output-directory
+
