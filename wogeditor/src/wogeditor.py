@@ -27,18 +27,24 @@ from PyQt4 import QtCore, QtGui
 import editleveldialog_ui
 import wogeditor_rc
 
-def tr( message ):
+def tr( context, message ):
     return QtCore.QCoreApplication.translate( message )
+
+MODEL_TYPE_LEVEL = 'Level'
 
 class GameModelException(Exception):
     pass
 
-class GameModel:
+class GameModel(QtCore.QObject):
     def __init__( self, wog_path ):
         """Loads FX, material, text and global resources.
            Loads Balls
            Loads Levels
+
+           The following signals are provided:
+           QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)')
         """
+        QtCore.QObject.__init__( self )
         self._wog_dir = os.path.split( wog_path )[0]
         properties_dir = os.path.join( self._wog_dir, u'properties' )
         self._res_dir = os.path.join( self._wog_dir, u'res' )
@@ -48,11 +54,13 @@ class GameModel:
         self._texts = self._loadPackedData( properties_dir, 'text.xml.bin' )
         self._levels = self._loadDirList( os.path.join( self._res_dir, 'levels' ) )
         self._balls = self._loadDirList( os.path.join( self._res_dir, 'balls' ) )
+        self.level_models_by_name = {}
+        self.current_model = None
 
     def _loadPackedData( self, dir, file_name ):
         path = os.path.join( dir, file_name )
         if not os.path.isfile( path ):
-            raise GameModelException( tr(
+            raise GameModelException( tr( 'LoadData',
                 'File "%1" does not exist. You likely provided an incorrect WOG directory.' ).arg( path ) )
         xml_data = aesfile.decrypt_file_data( path )
         xml_tree = xml.etree.ElementTree.fromstring( xml_data )
@@ -60,7 +68,7 @@ class GameModel:
 
     def _loadDirList( self, dir ):
         if not os.path.isdir( dir ):
-            raise GameModelException( tr(
+            raise GameModelException( tr('LoadLevelList',
                 'Directory "%1" does not exist. You likely provided an incorrect WOG directory.' ).arg( dir ) )
         dirs = [ entry for entry in os.listdir( dir )
                  if os.path.isdir( os.path.join( dir, entry ) ) ]
@@ -70,6 +78,38 @@ class GameModel:
     @property
     def level_names( self ):
         return self._levels
+
+    def selectLevel( self, level_name ):
+        if level_name not in self.level_models_by_name:
+            self.level_models_by_name[level_name] = LevelModel( self, level_name )
+        level_model = self.level_models_by_name[level_name]
+        
+        old_model = level_model
+        self.current_model = level_model
+        self.emit( QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)'),
+                   old_model,
+                   level_model )
+
+class LevelModel(object):
+    def __init__( self, game_model, level_name ):
+        self.game_model = game_model
+        self.level_name = level_name
+        level_dir = os.path.join( game_model._res_dir, 'levels', level_name )
+        self.level_tree = game_model._loadPackedData( level_dir, level_name + '.level.bin' )
+        self.resource_tree = game_model._loadPackedData( level_dir, level_name + '.resrc.bin' )
+        self.scene_tree = game_model._loadPackedData( level_dir, level_name + '.scene.bin' )
+
+class LevelGraphicView(QtGui.QGraphicsView):
+    def __init__( self, level_name, game_model ):
+        QtGui.QGraphicsView.__init__( self )
+        self.level_name = level_name
+        self.game_model = game_model
+        self.setWindowTitle( self.tr( u'Level - %1' ).arg( level_name ) )
+        self.setAttribute( QtCore.Qt.WA_DeleteOnClose )
+
+    def matchModel( self, model_type, level_name ):
+        return model_type == MODEL_TYPE_LEVEL and level_name == self.level_name
+    
 
 class MainWindow(QtGui.QMainWindow):
     def __init__(self, parent=None):
@@ -91,7 +131,6 @@ class MainWindow(QtGui.QMainWindow):
 
         self._game_model = None
         if self._wog_path:
-            print 'Loaded'
             self._reloadGameModel()
         else:
             print self._wog_path
@@ -109,9 +148,15 @@ class MainWindow(QtGui.QMainWindow):
     def _reloadGameModel( self ):
         try:
             self._game_model = GameModel( self._wog_path )
+            self.connect( self._game_model, QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)'),
+                          self._refreshSceneTree )
         except GameModelException, e:
             QtGui.QMessageBox.warning(self, self.tr("Loading WOG levels"),
                                       unicode(e))
+
+    def _refreshSceneTree( self, old_model, new_model ):
+        print 'Refreshed'
+        pass
 
     def editLevel( self ):
         if self._game_model:
@@ -122,6 +167,16 @@ class MainWindow(QtGui.QMainWindow):
                 ui.levelList.addItem( level_name )
             if dialog.exec_() and ui.levelList.currentItem:
                 level_name = unicode( ui.levelList.currentItem().text() )
+                self._game_model.selectLevel( level_name )
+                mdi_child = None
+                for window in self.mdiArea.subWindowList():
+                    sub_window = window.widget()
+                    if sub_window.matchModel( MODEL_TYPE_LEVEL, level_name ):
+                        self.mdiArea.setActiveSubWindow( window )
+                        return
+                sub_window = LevelGraphicView( level_name, self._game_model )
+                self.mdiArea.addSubWindow( sub_window )
+                sub_window.show()
                 
         
     def save(self):
@@ -199,6 +254,8 @@ class MainWindow(QtGui.QMainWindow):
 ##        self.editMenu.addAction(self.editLevelAction)
         
         self.menuBar().addSeparator()
+
+        # @todo add Windows menu. Take MDI example as model.        
         
         self.helpMenu = self.menuBar().addMenu(self.tr("&Help"))
         self.helpMenu.addAction(self.aboutAct)
@@ -235,31 +292,7 @@ class MainWindow(QtGui.QMainWindow):
         self.propertiesList = QtGui.QListView(dock)
         dock.setWidget(self.propertiesList)
 
-
-##        self.paragraphsList = QtGui.QListWidget(dock)
-##        self.paragraphsList.addItems(QtCore.QStringList()
-##            << "Thank you for your payment which we have received today."
-##            << "Your order has been dispatched and should be with you "
-##               "within 28 days."
-##            << "We have dispatched those items that were in stock. The "
-##               "rest of your order will be dispatched once all the "
-##               "remaining items have arrived at our warehouse. No "
-##               "additional shipping charges will be made."
-##            << "You made a small overpayment (less than $5) which we "
-##               "will keep on account for you, or return at your request."
-##            << "You made a small underpayment (less than $1), but we have "
-##               "sent your order anyway. We'll add this underpayment to "
-##               "your next bill."
-##            << "Unfortunately you did not send enough money. Please remit "
-##               "an additional $. Your order will be dispatched as soon as "
-##               "the complete amount has been received."
-##            << "You made an overpayment (more than $5). Do you wish to "
-##               "buy more items, or should we return the excess to you?")
-##        dock.setWidget(self.paragraphsList)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
-        
-##        self.connect(self.customerList, QtCore.SIGNAL("currentTextChanged(const QString&)"), self.insertCustomer)
-##        self.connect(self.paragraphsList, QtCore.SIGNAL("currentTextChanged(const QString&)"), self.addParagraph)
 
     def _readSettings( self ):
         """Reads setting from previous session & restore window state."""
