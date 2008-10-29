@@ -37,25 +37,30 @@ def encrypt_file( input_path, output_path ):
             print 'Encrypted "%s" into "%s"' % (input_path, output_path)
     return True
 
-def decrypt_file( input_path, output_path ):
-    """Decrypt a .bin file input_path into .xml file output_path using AES algorithm."""
+def decrypt_file_data( input_path ):
+    """Decrypt a .bin file input_path and return the corresponding XML. May raise IOError exception."""
     cipher = make_aes_cipher()
     with file( input_path, 'rb' ) as f:
         crypted_data = f.read()
         xml_data = cipher.decrypt( crypted_data )
-        with file( output_path, 'wb' ) as fout:
-            # clean-up the data. Usually has '\xfd\xfd\xfd\xfd\0' at the
-            # end, but this may be truncated to first '\xfd' if
-            # size is nearly a multiple of 16, though there will
-            # always be at least one '\xfd'.
-            zero_index = xml_data.find( '\0' )
-            if zero_index != -1:
-                xml_data = xml_data[:zero_index]
-            fd_index = xml_data.find( '\xfd' )
-            if fd_index != -1:
-                xml_data = xml_data[:fd_index]
-            fout.write( xml_data )
-            print 'Decrypted "%s" into "%s"' % (input_path, output_path)
+        # clean-up the data. Usually has '\xfd\xfd\xfd\xfd\0' at the
+        # end, but this may be truncated to first '\xfd' if
+        # size is nearly a multiple of 16, though there will
+        # always be at least one '\xfd'.
+        zero_index = xml_data.find( '\0' )
+        if zero_index != -1:
+            xml_data = xml_data[:zero_index]
+        fd_index = xml_data.find( '\xfd' )
+        if fd_index != -1:
+            xml_data = xml_data[:fd_index]
+    return xml_data
+
+def decrypt_file( input_path, output_path ):
+    """Decrypt a .bin file input_path into .xml file output_path using AES algorithm."""
+    xml_data = decrypt_file_data( input_path )
+    with file( output_path, 'wb' ) as fout:
+        fout.write( xml_data )
+        print 'Decrypted "%s" into "%s"' % (input_path, output_path)
     return True
 
 def main():

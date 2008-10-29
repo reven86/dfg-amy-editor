@@ -1,192 +1,183 @@
-#!/usr/bin/env python
+# The level editor GUI.
 
-############################################################################
-# 
-#  Copyright (C) 2004-2005 Trolltech AS. All rights reserved.
-# 
-#  This file is part of the example classes of the Qt Toolkit.
-# 
-#  This file may be used under the terms of the GNU General Public
-#  License version 2.0 as published by the Free Software Foundation
-#  and appearing in the file LICENSE.GPL included in the packaging of
-#  this file.  Please review the following information to ensure GNU
-#  General Public Licensing requirements will be met:
-#  http://www.trolltech.com/products/qt/opensource.html
-# 
-#  If you are unsure which license is appropriate for your use, please
-#  review the following information:
-#  http://www.trolltech.com/products/qt/licensing.html or contact the
-#  sales department at sales@trolltech.com.
-# 
-#  This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
-#  WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
-# 
-############################################################################
+# The following workflow is expected:
+# 1) User load a level
+# 2) main windows display the scene layout
+#    right-side-top-dock display:
+#   - level scene tree
+#   - level tree (a list in fact)
+#   - level resources tree (a list in fact)
+# 3) user select an object in one of the tree, related properties are displayed in
+#    right-side-down-dock property list
+# 4) user edit properties in property list
+#
+# Later on, provides property edition via scene layout display
+# Add toolbar to create new object
+#
+# In memory, we keep track of two things:
+# - updated level
+# - specific text/fx resources 
+
 
 import sys
+import os
+import aesfile
+import xml.etree.ElementTree 
 from PyQt4 import QtCore, QtGui
-
+import editleveldialog_ui
 import wogeditor_rc
 
+def tr( message ):
+    return QtCore.QCoreApplication.translate( message )
+
+class GameModelException(Exception):
+    pass
+
+class GameModel:
+    def __init__( self, wog_path ):
+        """Loads FX, material, text and global resources.
+           Loads Balls
+           Loads Levels
+        """
+        self._wog_dir = os.path.split( wog_path )[0]
+        properties_dir = os.path.join( self._wog_dir, u'properties' )
+        self._res_dir = os.path.join( self._wog_dir, u'res' )
+        self._effects = self._loadPackedData( properties_dir, 'fx.xml.bin' )
+        self._materials = self._loadPackedData( properties_dir, 'materials.xml.bin' )
+        self._resources = self._loadPackedData( properties_dir, 'resources.xml.bin' )
+        self._texts = self._loadPackedData( properties_dir, 'text.xml.bin' )
+        self._levels = self._loadDirList( os.path.join( self._res_dir, 'levels' ) )
+        self._balls = self._loadDirList( os.path.join( self._res_dir, 'balls' ) )
+
+    def _loadPackedData( self, dir, file_name ):
+        path = os.path.join( dir, file_name )
+        if not os.path.isfile( path ):
+            raise GameModelException( tr(
+                'File "%1" does not exist. You likely provided an incorrect WOG directory.' ).arg( path ) )
+        xml_data = aesfile.decrypt_file_data( path )
+        xml_tree = xml.etree.ElementTree.fromstring( xml_data )
+        return xml_tree
+
+    def _loadDirList( self, dir ):
+        if not os.path.isdir( dir ):
+            raise GameModelException( tr(
+                'Directory "%1" does not exist. You likely provided an incorrect WOG directory.' ).arg( dir ) )
+        dirs = [ entry for entry in os.listdir( dir )
+                 if os.path.isdir( os.path.join( dir, entry ) ) ]
+        dirs.sort()
+        return dirs
+
+    @property
+    def level_names( self ):
+        return self._levels
 
 class MainWindow(QtGui.QMainWindow):
     def __init__(self, parent=None):
         QtGui.QMainWindow.__init__(self, parent)
+
+        self._wog_path = None # Path to worl of goo executable
         
-        self.textEdit = QtGui.QTextEdit()
-        self.setCentralWidget(self.textEdit)
+        self.mdiArea = QtGui.QMdiArea()
+        self.setCentralWidget(self.mdiArea)
         
         self.createActions()
         self.createMenus()
         self.createToolBars()
         self.createStatusBar()
         self.createDockWindows()
-        self.setWindowTitle(self.tr("Dock Widgets"))
+        self.setWindowTitle(self.tr("WOG Editor"))
         
-        self.newLetter()
+        self._readSettings()
 
-    def newLetter(self):
-        self.textEdit.clear()
-        
-        cursor = self.textEdit.textCursor()
-        cursor.movePosition(QtGui.QTextCursor.Start)
-        topFrame = cursor.currentFrame()
-        topFrameFormat = topFrame.frameFormat()
-        topFrameFormat.setPadding(16)
-        topFrame.setFrameFormat(topFrameFormat)
-        
-        textFormat = QtGui.QTextCharFormat()
-        boldFormat = QtGui.QTextCharFormat()
-        boldFormat.setFontWeight(QtGui.QFont.Bold)
-        italicFormat = QtGui.QTextCharFormat()
-        italicFormat.setFontItalic(True)
-        
-        tableFormat = QtGui.QTextTableFormat()
-        tableFormat.setBorder(1)
-        tableFormat.setCellPadding(16)
-        tableFormat.setAlignment(QtCore.Qt.AlignRight)
-        cursor.insertTable(1, 1, tableFormat)
-        cursor.insertText("The Firm", boldFormat)
-        cursor.insertBlock()
-        cursor.insertText("321 City Street", textFormat)
-        cursor.insertBlock()
-        cursor.insertText("Industry Park")
-        cursor.insertBlock()
-        cursor.insertText("Some Country")
-        cursor.setPosition(topFrame.lastPosition())
-        cursor.insertText(QtCore.QDate.currentDate().toString("d MMMM yyyy"), textFormat)
-        cursor.insertBlock()
-        cursor.insertBlock()
-        cursor.insertText("Dear ", textFormat)
-        cursor.insertText("NAME", italicFormat)   
-        cursor.insertText(",", textFormat)
-        for i in range(3):
-            cursor.insertBlock()
-        cursor.insertText(self.tr("Yours sincerely,"), textFormat)
-        for i in range(3):
-            cursor.insertBlock()
-        cursor.insertText("The Boss", textFormat)
-        cursor.insertBlock()
-        cursor.insertText("ADDRESS", italicFormat)  
+        self._game_model = None
+        if self._wog_path:
+            print 'Loaded'
+            self._reloadGameModel()
+        else:
+            print self._wog_path
 
-    def print_(self):
-        document = self.textEdit.document()
-        printer = QtGui.QPrinter()
-
-        dlg = QtGui.QPrintDialog(printer, self)
-        if dlg.exec_() != QtGui.QDialog.Accepted:
+    def changeWOGDir(self):
+        wog_path =  QtGui.QFileDialog.getOpenFileName( self,
+             self.tr( 'Select the file WorldOfGoo.exe to locate WOG top directory' ),
+             r'e:\jeux\WorldOfGoo-mod',
+             self.tr( 'WorldOfGoo.exe (WorldOfGoo.exe)' ) )
+        if wog_path.isEmpty(): # user canceled action
             return
+        self._wog_path = unicode(wog_path)
+        self._reloadGameModel()
 
-        document.print_(printer)
+    def _reloadGameModel( self ):
+        try:
+            self._game_model = GameModel( self._wog_path )
+        except GameModelException, e:
+            QtGui.QMessageBox.warning(self, self.tr("Loading WOG levels"),
+                                      unicode(e))
+
+    def editLevel( self ):
+        if self._game_model:
+            dialog = QtGui.QDialog()
+            ui = editleveldialog_ui.Ui_Dialog()
+            ui.setupUi( dialog )
+            for level_name in self._game_model.level_names:
+                ui.levelList.addItem( level_name )
+            if dialog.exec_() and ui.levelList.currentItem:
+                level_name = unicode( ui.levelList.currentItem().text() )
+                
         
-        self.statusBar().showMessage(self.tr("Ready"), 2000)
-
     def save(self):
-        filename = QtGui.QFileDialog.getSaveFileName(self,
-                    self.tr("Choose a file name"), ".",
-                    self.tr("HTML (*.html *.htm)"))
-        if filename.isEmpty():
-            return
+        pass   
+##        filename = QtGui.QFileDialog.getSaveFileName(self,
+##                    self.tr("Choose a file name"), ".",
+##                    self.tr("HTML (*.html *.htm)"))
+##        if filename.isEmpty():
+##            return
+##
+##        file = QtCore.QFile(filename)
+##        if not file.open(QtCore.QFile.WriteOnly | QtCore.QFile.Text):
+##            QtGui.QMessageBox.warning(self, self.tr("Dock Widgets"),
+##                                      self.tr("Cannot write file %1:\n%2.")
+##                                      .arg(filename)
+##                                      .arg(file.errorString()))
+##            return
+##
+##        out = QtCore.QTextStream(file)
+##        QtGui.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+##        out << self.textEdit.toHtml()
+##        QtGui.QApplication.restoreOverrideCursor()
+##        
+##        self.statusBar().showMessage(self.tr("Saved '%1'").arg(filename), 2000)
 
-        file = QtCore.QFile(filename)
-        if not file.open(QtCore.QFile.WriteOnly | QtCore.QFile.Text):
-            QtGui.QMessageBox.warning(self, self.tr("Dock Widgets"),
-                                      self.tr("Cannot write file %1:\n%2.")
-                                      .arg(filename)
-                                      .arg(file.errorString()))
-            return
-
-        out = QtCore.QTextStream(file)
-        QtGui.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
-        out << self.textEdit.toHtml()
-        QtGui.QApplication.restoreOverrideCursor()
+    def undo( self ):
+        pass
         
-        self.statusBar().showMessage(self.tr("Saved '%1'").arg(filename), 2000)
+##    def undo(self):
+##        document = self.textEdit.document()
+##        document.undo()
         
-    def undo(self):
-        document = self.textEdit.document()
-        document.undo()
-        
-    def insertCustomer(self, customer):
-        if customer.isEmpty():
-            return
-        customerList = customer.split(", ")
-        document = self.textEdit.document()
-        cursor = document.find("NAME")
-        if not cursor.isNull():
-            cursor.beginEditBlock()
-            cursor.insertText(customerList[0])
-            oldcursor = cursor
-            cursor = document.find("ADDRESS")
-            if not cursor.isNull():
-                for i in range(1, customerList.count()):
-                    cursor.insertBlock()
-                    cursor.insertText(customerList[i])
-                cursor.endEditBlock()
-            else:
-                oldcursor.endEditBlock()
-    
-    def addParagraph(self, paragraph):
-        if paragraph.isEmpty():
-            return
-        document = self.textEdit.document()
-        cursor = document.find(self.tr("Yours sincerely,"))
-        if cursor.isNull():
-            return
-        cursor.beginEditBlock()
-        cursor.movePosition(QtGui.QTextCursor.PreviousBlock, QtGui.QTextCursor.MoveAnchor, 2)
-        cursor.insertBlock()
-        cursor.insertText(paragraph)
-        cursor.insertBlock()
-        cursor.endEditBlock()
-
     def about(self):
-        QtGui.QMessageBox.about(self, self.tr("About Dock Widgets"),
-            self.tr("The <b>Dock Widgets</b> example demonstrates how to "
-                    "use Qt's dock widgets. You can enter your own text, "
-                    "click a customer to add a customer name and "
-                    "address, and click standard paragraphs to add them."))
+        QtGui.QMessageBox.about(self, self.tr("About WOG Editor"),
+            self.tr("The <b>WOG editor</b> helps you create new level in WOG"))
     
     def createActions(self):
-        self.newLetterAct = QtGui.QAction(QtGui.QIcon(":/images/new.png"), self.tr("&New Letter"), self)
-        self.newLetterAct.setShortcut(self.tr("Ctrl+N"))
-        self.newLetterAct.setStatusTip(self.tr("Create a new form letter"))
-        self.connect(self.newLetterAct, QtCore.SIGNAL("triggered()"), self.newLetter)
+        self.changeWOGDirAction = QtGui.QAction(QtGui.QIcon(":/images/open.png"), self.tr("&Change WOG directory..."), self)
+        self.changeWOGDirAction.setShortcut(self.tr("Ctrl+O"))
+        self.changeWOGDirAction.setStatusTip(self.tr("Change World Of Goo top-directory"))
+        self.connect(self.changeWOGDirAction, QtCore.SIGNAL("triggered()"), self.changeWOGDir)
 
+        self.editLevelAction = QtGui.QAction(QtGui.QIcon(":/images/open-level.png"), self.tr("&Edit level..."), self)
+        self.editLevelAction.setShortcut(self.tr("Ctrl+L"))
+        self.editLevelAction.setStatusTip(self.tr("Select a level to edit"))
+        self.connect(self.editLevelAction, QtCore.SIGNAL("triggered()"), self.editLevel)
+        
         self.saveAct = QtGui.QAction(QtGui.QIcon(":/images/save.png"), self.tr("&Save..."), self)
         self.saveAct.setShortcut(self.tr("Ctrl+S"))
-        self.saveAct.setStatusTip(self.tr("Save the current form letter"))
+        self.saveAct.setStatusTip(self.tr("Save all changes made to the game"))
         self.connect(self.saveAct, QtCore.SIGNAL("triggered()"), self.save)
 
-        self.printAct = QtGui.QAction(QtGui.QIcon(":/images/print.png"), self.tr("&Print..."), self)
-        self.printAct.setShortcut(self.tr("Ctrl+P"))
-        self.printAct.setStatusTip(self.tr("Print the current form letter"))
-        self.connect(self.printAct, QtCore.SIGNAL("triggered()"), self.print_)
-
-        self.undoAct = QtGui.QAction(QtGui.QIcon(":/images/undo.png"), self.tr("&Undo"), self)
-        self.undoAct.setShortcut(self.tr("Ctrl+Z"))
-        self.undoAct.setStatusTip(self.tr("Undo the last editing action"))
-        self.connect(self.undoAct, QtCore.SIGNAL("triggered()"), self.undo)
+##        self.undoAct = QtGui.QAction(QtGui.QIcon(":/images/undo.png"), self.tr("&Undo"), self)
+##        self.undoAct.setShortcut(self.tr("Ctrl+Z"))
+##        self.undoAct.setStatusTip(self.tr("Undo the last action"))
+##        self.connect(self.undoAct, QtCore.SIGNAL("triggered()"), self.undo)
 
         self.quitAct = QtGui.QAction(self.tr("&Quit"), self)
         self.quitAct.setShortcut(self.tr("Ctrl+Q"))
@@ -197,36 +188,28 @@ class MainWindow(QtGui.QMainWindow):
         self.aboutAct.setStatusTip(self.tr("Show the application's About box"))
         self.connect(self.aboutAct, QtCore.SIGNAL("triggered()"), self.about)
 
-        self.aboutQtAct = QtGui.QAction(self.tr("About &Qt"), self)
-        self.aboutQtAct.setStatusTip(self.tr("Show the Qt library's About box"))
-        self.connect(self.aboutQtAct, QtCore.SIGNAL("triggered()"),
-                     QtGui.qApp, QtCore.SLOT("aboutQt()"))
-
     def createMenus(self):
         self.fileMenu = self.menuBar().addMenu(self.tr("&File"))
-        self.fileMenu.addAction(self.newLetterAct)
-        self.fileMenu.addAction(self.saveAct)
-        self.fileMenu.addAction(self.printAct)
+        self.fileMenu.addAction(self.changeWOGDirAction)
+        self.fileMenu.addAction(self.editLevelAction)
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.quitAct)
         
         self.editMenu = self.menuBar().addMenu(self.tr("&Edit"))
-        self.editMenu.addAction(self.undoAct)
+##        self.editMenu.addAction(self.editLevelAction)
         
         self.menuBar().addSeparator()
         
         self.helpMenu = self.menuBar().addMenu(self.tr("&Help"))
         self.helpMenu.addAction(self.aboutAct)
-        self.helpMenu.addAction(self.aboutQtAct)
 
     def createToolBars(self):
         self.fileToolBar = self.addToolBar(self.tr("File"))
-        self.fileToolBar.addAction(self.newLetterAct)
-        self.fileToolBar.addAction(self.saveAct)
-        self.fileToolBar.addAction(self.printAct)
+        self.fileToolBar.addAction(self.changeWOGDirAction)
+        self.fileToolBar.addAction(self.editLevelAction)
         
-        self.editToolBar = self.addToolBar(self.tr("Edit"))
-        self.editToolBar.addAction(self.undoAct)
+##        self.editToolBar = self.addToolBar(self.tr("Edit"))
+##        self.editToolBar.addAction(self.undoAct)
         
     def createStatusBar(self):
         self.statusBar().showMessage(self.tr("Ready"))
@@ -278,9 +261,41 @@ class MainWindow(QtGui.QMainWindow):
 ##        self.connect(self.customerList, QtCore.SIGNAL("currentTextChanged(const QString&)"), self.insertCustomer)
 ##        self.connect(self.paragraphsList, QtCore.SIGNAL("currentTextChanged(const QString&)"), self.addParagraph)
 
+    def _readSettings( self ):
+        """Reads setting from previous session & restore window state."""
+        settings = QtCore.QSettings()
+        settings.beginGroup( "MainWindow" )
+        self._wog_path = unicode( settings.value( "wog_path", QtCore.QVariant(u'') ).toString() )
+        self.resize( settings.value( "size", QtCore.QVariant( QtCore.QSize(640,480) ) ).toSize() )
+        self.move( settings.value( "pos", QtCore.QVariant( QtCore.QPoint(200,200) ) ).toPoint() )
+        settings.endGroup()
+
+    def _writeSettings( self ):
+        """Persists the session window state for future restoration."""
+        # Settings should be stored in HKEY_CURRENT_USER\Software\WOGCorp\WOG Editor
+        settings = QtCore.QSettings() #@todo makes helper to avoid QVariant conversions
+        settings.beginGroup( "MainWindow" )
+        settings.setValue( "wog_path", QtCore.QVariant( QtCore.QString(self._wog_path or u'') ) )
+        settings.setValue( "size", QtCore.QVariant( self.size() ) )
+        settings.setValue( "pos", QtCore.QVariant( self.pos() ) )
+        settings.endGroup()
+
+    def closeEvent( self, event ):
+        """Called when user close the main window."""
+        #@todo check if user really want to quit
+        if True:
+            self._writeSettings()
+            event.accept()
+        else:
+            event.ignore()
+
         
 if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
+    # Set keys for settings
+    app.setOrganizationName( "WOGCorp" )
+    app.setOrganizationDomain( "wogedit.sourceforge.net" )
+    app.setApplicationName( "Wog Editor" )
     mainwindow = MainWindow()
     mainwindow.show()
     sys.exit(app.exec_())
