@@ -43,6 +43,7 @@ class GameModel(QtCore.QObject):
 
            The following signals are provided:
            QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)')
+           QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject)')
         """
         QtCore.QObject.__init__( self )
         self._wog_dir = os.path.split( wog_path )[0]
@@ -98,6 +99,7 @@ class LevelModel(object):
         self.level_tree = game_model._loadPackedData( level_dir, level_name + '.level.bin' )
         self.resource_tree = game_model._loadPackedData( level_dir, level_name + '.resrc.bin' )
         self.scene_tree = game_model._loadPackedData( level_dir, level_name + '.scene.bin' )
+        self.selected_object = ('SCENE', 'TAG', 'scene')
 
 class LevelGraphicView(QtGui.QGraphicsView):
     def __init__( self, level_name, game_model ):
@@ -150,13 +152,67 @@ class MainWindow(QtGui.QMainWindow):
             self._game_model = GameModel( self._wog_path )
             self.connect( self._game_model, QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)'),
                           self._refreshSceneTree )
+            self.connect( self._game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject)'),
+                          self._refreshPropertyList )
         except GameModelException, e:
             QtGui.QMessageBox.warning(self, self.tr("Loading WOG levels"),
                                       unicode(e))
 
     def _refreshSceneTree( self, old_model, new_model ):
-        print 'Refreshed'
-        pass
+        print 'Refreshed scene tree'
+        self.sceneTree.clear()
+        
+        root_element = new_model.scene_tree
+        root_item = None
+        item_parent = self.sceneTree
+        items_to_process = [ (item_parent, root_element) ]
+        while items_to_process:
+            item_parent, element = items_to_process.pop(0)
+            
+            item = QtGui.QTreeWidgetItem( item_parent )
+            item.setText( 0, element.tag )
+            item.setData( 0, QtCore.Qt.UserRole, QtCore.QVariant( element ) )
+            if element == root_element:
+                root_item = item
+            
+            for child_element in element:
+                items_to_process.append( (item, child_element) )
+        self.sceneTree.expandItem( root_item )  
+
+    def _onSceneTreeSelectionChange( self ):
+        """Called whenever the scene tree selection change."""
+        selected_items = self.sceneTree.selectedItems()
+        if len( selected_items ) == 1:
+            item = selected_items[0]
+            element = item.data( 0, QtCore.Qt.UserRole ).toPyObject()
+            self._refreshPropertyListFromElement( element )
+        else:
+            for item in self.sceneTree.selectedItems():
+                pass # need to get an handle on the element
+
+    def _refreshPropertyList( self, old_object, new_object ):
+        print 'Refreshed property list'
+        self._refreshPropertyListFromElement( new_object )
+
+    def _refreshPropertyListFromElement( self, element ):
+        self.propertiesList.clear()
+        attribute_names = element.keys()
+        attribute_order = ( 'id', 'name', 'x', 'y', 'depth', 'radius',
+                            'rotation', 'scalex', 'scaley', 'image', 'alpha' )
+        ordered_attributes = []
+        for name in attribute_order:
+            try:
+                index = attribute_names.index( name )
+            except ValueError: # name not found
+                pass
+            else: # name found
+                del attribute_names[index]
+                ordered_attributes.append( (name, element.get(name)) )
+        ordered_attributes.extend( [ (name, element.get(name)) for name in attribute_names ] )
+        for name, value in ordered_attributes:
+            item = QtGui.QTreeWidgetItem( self.propertiesList )
+            item.setText( 0, name )
+            item.setText( 1, value )
 
     def editLevel( self ):
         if self._game_model:
@@ -275,24 +331,23 @@ class MainWindow(QtGui.QMainWindow):
         dock = QtGui.QDockWidget(self.tr("Scene"), self)
         dock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea)
     
-        self.sceneTree = QtGui.QTreeView(dock)
-##        
-##        self.customerList = QtGui.QListWidget(dock)
-##        self.customerList.addItems(QtCore.QStringList()
-##            << "John Doe, Harmony Enterprises, 12 Lakeside, Ambleton"
-##            << "Jane Doe, Memorabilia, 23 Watersedge, Beaton"
-##            << "Tammy Shea, Tiblanka, 38 Sea Views, Carlton"
-##            << "Tim Sheen, Caraba Gifts, 48 Ocean Way, Deal"
-##            << "Sol Harvey, Chicos Coffee, 53 New Springs, Eccleston"
-##            << "Sally Hobart, Tiroli Tea, 67 Long River, Fedula")
+        self.sceneTree = QtGui.QTreeWidget(dock)
+        self.sceneTree.headerItem().setText( 0, self.tr( 'Element' ) )
         dock.setWidget(self.sceneTree)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
         
         dock = QtGui.QDockWidget(self.tr("Properties"), self)
-        self.propertiesList = QtGui.QListView(dock)
+        self.propertiesList = QtGui.QTreeWidget(dock)
+        self.propertiesList.setRootIsDecorated( False )
+        self.propertiesList.setAlternatingRowColors( True )
+        self.propertiesList.headerItem().setText( 0, self.tr( 'Name' ) )
+        self.propertiesList.headerItem().setText( 1, self.tr( 'Value' ) )
         dock.setWidget(self.propertiesList)
-
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
+
+        self.connect(self.sceneTree, QtCore.SIGNAL("itemSelectionChanged()"),
+                     self._onSceneTreeSelectionChange)
+
 
     def _readSettings( self ):
         """Reads setting from previous session & restore window state."""
