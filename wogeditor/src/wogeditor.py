@@ -58,6 +58,9 @@ class GameModel(QtCore.QObject):
         self.level_models_by_name = {}
         self.current_model = None
 
+    def getResourcePath( self, game_dir_relative_path ):
+        return os.path.join( self._wog_dir, game_dir_relative_path )
+
     def _loadPackedData( self, dir, file_name ):
         path = os.path.join( dir, file_name )
         if not os.path.isfile( path ):
@@ -80,6 +83,9 @@ class GameModel(QtCore.QObject):
     def level_names( self ):
         return self._levels
 
+    def getLevelModel( self, level_name ):
+        return self.level_models_by_name.get( level_name )
+
     def selectLevel( self, level_name ):
         if level_name not in self.level_models_by_name:
             self.level_models_by_name[level_name] = LevelModel( self, level_name )
@@ -101,17 +107,142 @@ class LevelModel(object):
         self.scene_tree = game_model._loadPackedData( level_dir, level_name + '.scene.bin' )
         self.selected_object = ('SCENE', 'TAG', 'scene')
 
+        self.images_by_id = {}
+        for image_element in self.resource_tree.findall( './/Image' ):
+            id, path = image_element.get('id'), image_element.get('path')
+            path = game_model.getResourcePath( path + '.png' )
+            if os.path.isfile( path ):
+                pixmap = QtGui.QPixmap()
+                if pixmap.load( path ):
+                    self.images_by_id[id] = pixmap
+##                    print 'Loaded', id, path
+                else:
+                    print 'Failed to load image:', path
+
+    def getImagePixmap( self, image_id ):
+        return self.images_by_id.get(image_id)
+
 class LevelGraphicView(QtGui.QGraphicsView):
     def __init__( self, level_name, game_model ):
         QtGui.QGraphicsView.__init__( self )
-        self.level_name = level_name
-        self.game_model = game_model
+        self.__level_name = level_name
+        self.__game_model = game_model
         self.setWindowTitle( self.tr( u'Level - %1' ).arg( level_name ) )
         self.setAttribute( QtCore.Qt.WA_DeleteOnClose )
+        self.__scene = QtGui.QGraphicsScene()
+        self.__balls_by_id = {}
+        self.__strands = []
+        self.setScene( self.__scene )
+        self.refreshFromModel( self.getLevelModel() )
+##        self.scale( 1.0, -1.0 )     # Y=0 is bottom of the screen, not top
 
     def matchModel( self, model_type, level_name ):
-        return model_type == MODEL_TYPE_LEVEL and level_name == self.level_name
-    
+        return model_type == MODEL_TYPE_LEVEL and level_name == self.__level_name
+
+    def getLevelModel( self ):
+        return self.__game_model.getLevelModel( self.__level_name )
+
+    def refreshFromModel( self, game_level_model ):
+        scene = self.__scene
+        scene.clear()
+        self.__balls_by_id = {}
+        self.__strands = []
+        level_element = game_level_model.level_tree
+        self._addElements( scene, level_element )
+        self._addStrands( scene )
+##        print 'SceneRect:', self.sceneRect()
+##        print 'ItemsBoundingRect:', scene.itemsBoundingRect()
+##        for item in self.items():
+##            print 'Item:', item.boundingRect()
+
+    def _addElements( self, scene, level_element ):
+        builders = {
+            'signpost': self._levelSignPostBuilder,
+            'pipe': self._levelPipeBuilder,
+            'BallInstance': self._levelBallInstanceBuilder,
+            'Strand': self._addlevelStrand,
+            'fire': self._levelFireBuilder
+            }
+        builder = builders.get( level_element.tag )
+        if builder:
+            item = builder( scene, level_element )
+            if item:
+                item.setData( 0, QtCore.QVariant( level_element ) )
+            
+        for child_element in level_element:
+            self._addElements( scene, child_element )
+
+    @staticmethod
+    def _elementXY( element ):
+        """Returns 'x' & 'y' attribute. y is negated (0 is bottom of the screen)."""
+        return (float(element.get('x')), -float(element.get('y')))
+
+    @staticmethod
+    def _elementXYR( element ):
+        """Returns 'x' & 'y' & 'radius' attribute. y is negated (0 is bottom of the screen)."""
+        return (float(element.get('x')), -float(element.get('y')), float(element.get('radius')))
+
+    def _levelSignPostBuilder( self, scene, element ):
+        image = element.get('image')
+        pixmap = self.getLevelModel().getImagePixmap( image )
+##        if pixmap:
+        x, y = self._elementXY( element )
+        item = scene.addText( element.get('name') )
+##            item = scene.addPixmap( pixmap )
+        item.setPos( x, y )
+        return item
+
+    def _levelPipeBuilder( self, scene, element ):
+        vertexes = []
+        for vertex_element in element:
+            vertexes.append( self._elementXY(vertex_element) )
+        path = QtGui.QPainterPath()
+        path.moveTo( *vertexes[0] )
+        for vertex in vertexes[1:]:
+            path.lineTo( *vertex )
+                
+        pen = QtGui.QPen()
+        pen.setWidth( 10 )
+##        brush = QtGui.QBrush( QtCore.Qt.SolidPattern )
+##        item = scene.addPath( path, pen, brush )
+        item = scene.addPath( path, pen )
+        return item
+
+    def _levelBallInstanceBuilder( self, scene, element ):
+        x, y = self._elementXY( element )
+        r = 10
+        item = scene.addEllipse( -r/2, -r/2, r, r )
+        item.setPos( x, y )
+        ball_id = element.get('id')
+        self.__balls_by_id[ ball_id ] = item
+        return item
+
+    def _addlevelStrand( self, scene, element ):
+        """Strands are rendered once everything has been rendered because they refer other items (balls)."""
+        id1, id2 = element.get('gb1'), element.get('gb2')
+        self.__strands.append( (id1, id2, element) )
+
+    def _addStrands( self, scene ):
+        """Render all the strands."""
+        pen = QtGui.QPen()
+        pen.setWidth( 3 )
+        for id1, id2, element in self.__strands:
+            item1, item2 = self.__balls_by_id.get(id1), self.__balls_by_id.get(id2)
+            if item1 and item2:
+                p1, p2 = item1.pos(), item2.pos()
+                strand_item = scene.addLine( p1.x(), p1.y(), p2.x(), p2.y(), pen )
+                strand_item.setData( 0, QtCore.QVariant( element ) )
+
+    def _levelStrandBuilder( self, scene, element ):
+        pen = QtGui.QPen()
+        pen.setWidth( 10 )
+
+    def _levelFireBuilder( self, scene, element ):
+        x, y, r = self._elementXYR( element )
+        pen = QtGui.QPen( QtGui.QColor( 255, 64, 0 ) )
+        pen.setWidth( 3 )
+        item = scene.addEllipse( x, yr, r, r, pen )
+        return item
 
 class MainWindow(QtGui.QMainWindow):
     def __init__(self, parent=None):
@@ -151,18 +282,21 @@ class MainWindow(QtGui.QMainWindow):
         try:
             self._game_model = GameModel( self._wog_path )
             self.connect( self._game_model, QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)'),
-                          self._refreshSceneTree )
+                          self._refreshLevel )
             self.connect( self._game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject)'),
                           self._refreshPropertyList )
         except GameModelException, e:
             QtGui.QMessageBox.warning(self, self.tr("Loading WOG levels"),
                                       unicode(e))
 
-    def _refreshSceneTree( self, old_model, new_model ):
-        print 'Refreshed scene tree'
+    def _refreshLevel( self, old_model, new_game_level_model ):
+        self._refreshSceneTree( new_game_level_model )
+        self._refreshGraphicsView( new_game_level_model )
+
+    def _refreshSceneTree( self, game_level_model ):
         self.sceneTree.clear()
         
-        root_element = new_model.scene_tree
+        root_element = game_level_model.scene_tree
         root_item = None
         item_parent = self.sceneTree
         items_to_process = [ (item_parent, root_element) ]
@@ -178,6 +312,14 @@ class MainWindow(QtGui.QMainWindow):
             for child_element in element:
                 items_to_process.append( (item, child_element) )
         self.sceneTree.expandItem( root_item )  
+
+    def _refreshGraphicsView( self, game_level_model ):
+        level_view = self._findLevelGraphicView( game_level_model.level_name )
+        if level_view:
+            level_view.refreshFromModel( game_level_model )
+        
+        
+
 
     def _onSceneTreeSelectionChange( self ):
         """Called whenever the scene tree selection change."""
@@ -224,16 +366,22 @@ class MainWindow(QtGui.QMainWindow):
             if dialog.exec_() and ui.levelList.currentItem:
                 level_name = unicode( ui.levelList.currentItem().text() )
                 self._game_model.selectLevel( level_name )
-                mdi_child = None
-                for window in self.mdiArea.subWindowList():
-                    sub_window = window.widget()
-                    if sub_window.matchModel( MODEL_TYPE_LEVEL, level_name ):
-                        self.mdiArea.setActiveSubWindow( window )
-                        return
-                sub_window = LevelGraphicView( level_name, self._game_model )
-                self.mdiArea.addSubWindow( sub_window )
-                sub_window.show()
-                
+                sub_window = self._findLevelGraphicView( level_name )
+                if sub_window:
+                    self.mdiArea.setActiveSubWindow( sub_window )
+                else:
+                    sub_window = LevelGraphicView( level_name, self._game_model )
+                    self.mdiArea.addSubWindow( sub_window )
+                    sub_window.show()
+
+    def _findLevelGraphicView( self, level_name ):
+        """Search for an existing MDI window for level level_name.
+           Return the LevelGraphicView widget, or None if not found."""
+        for window in self.mdiArea.subWindowList():
+            sub_window = window.widget()
+            if sub_window.matchModel( MODEL_TYPE_LEVEL, level_name ):
+                return window
+        return None
         
     def save(self):
         pass   
