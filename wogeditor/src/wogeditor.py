@@ -21,6 +21,7 @@
 
 import sys
 import os
+import math
 import aesfile
 import xml.etree.ElementTree 
 from PyQt4 import QtCore, QtGui
@@ -245,6 +246,10 @@ class LevelGraphicView(QtGui.QGraphicsView):
 ##            print 'Item:', item.boundingRect()
 
     def _addElements( self, scene, element, element_set ):
+        """Adds graphic item for 'element' to the scene, and add the element to element_set.
+           Recurses for child element.
+           Return the graphic item created for the element if any (None otherwise).
+        """
         builders = {
             # .level.xml builders
             'signpost': self._levelSignPostBuilder,
@@ -308,12 +313,16 @@ class LevelGraphicView(QtGui.QGraphicsView):
     @staticmethod
     def _elementRotationScaleXY( element ):
         """Returns 'rotation', 'scalex' and 'scaley' element's attribute converted to float.
-           rotation is defaulted to 0 if not defined.
+           rotation is defaulted to 0 if not defined, and is in degrees.
            scalex and scaley are defaulted to 1 if not defined.
         """
         return ( float(element.get('rotation',0.0)),
                  float(element.get('scalex',1.0)),
                  float(element.get('scaley',1.0)) )
+
+    @staticmethod
+    def _elementRotationInRadians( element, attribute = 'rotation', default_value = 0.0 ):
+        return math.degrees( LevelGraphicView._elementReal( element, attribute, default_value ) )
 
     @staticmethod
     def _elementV2( element, attribute, default_value = (0.0,0.0) ):
@@ -333,7 +342,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
         image = element.get('image')
         imagepos = LevelGraphicView._elementV2Pos( element, 'imagepos' )
         imagescale = LevelGraphicView._elementV2( element, 'imagescale', (1.0,1.0) )
-        imagerot = float(element.get('imagerot', 0.0))
+        imagerot = LevelGraphicView._elementRotationInRadians( element, 'imagerot' )
         return image, imagepos, imagescale, imagerot
 
     @staticmethod
@@ -500,7 +509,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
     def _sceneRectangleBuilder( self, scene, element ):
         x, y = self._elementXY( element )
-        rotation = self._elementReal( element, 'rotation', 0.0 )
+        rotation = self._elementRotationInRadians( element )
         width = self._elementReal( element, 'width', 1.0 )
         height = self._elementReal( element, 'height', 1.0 )
         image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
@@ -551,12 +560,18 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
     def _sceneCompositeGeometryBuilder( self, scene, element ):
         x, y = self._elementXY( element )
-        rotation = self._elementReal( element, 'rotation', 0.0 )
+        rotation = self._elementRotationInRadians( element )
         image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
-        # @todo handle pixmap display if any
-        # Notes: we create an item group, but child element are NOT added to the group
-        # (this would prevent selecting a specific element)
-        item = scene.createItemGroup([])
+        sub_items = []
+        if image:
+            pixmap = self.getImagePixmap( image )
+            if pixmap:
+                item = scene.addPixmap( pixmap )
+                self._applyPixmapTransform( item, pixmap, imagepos[0]-x, imagepos[1]-y,
+                                            imagerot-rotation,
+                                            imagescale[0], imagescale[1], 0 )
+                sub_items.append( item )
+        item = scene.createItemGroup( sub_items )
         self._applyTransform( item, 0, 0, x, y, rotation, 1.0, 1.0, Z_PHYSIC_ITEMS )
         return item
 
