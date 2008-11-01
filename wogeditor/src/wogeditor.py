@@ -141,6 +141,9 @@ Z_PHYSIC_ITEMS = 9000.0
 
 class LevelGraphicView(QtGui.QGraphicsView):
     """A graphics view that display scene and level elements.
+       Signals:
+       QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)')
+         => when the mouse mouse in the map. parameters: x,y in scene coordinate.
     """
     def __init__( self, level_name, game_model ):
         QtGui.QGraphicsView.__init__( self )
@@ -162,6 +165,11 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.connect( self.__game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                       self._updateObjectSelection )
         self.setRenderHints( QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform )
+
+    def mouseMoveEvent( self, event):
+        pos = self.mapToScene( event.pos() ) 
+        self.emit( QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)'), pos.x(), pos.y() )
+        return QtGui.QGraphicsView.mouseMoveEvent( self, event )
 
     def wheelEvent(self, event):
         """Handle zoom when wheel is rotated."""
@@ -260,15 +268,22 @@ class LevelGraphicView(QtGui.QGraphicsView):
             'radialforcefield': self._sceneRadialForceFieldBuilder
             }
         builder = builders.get( element.tag )
+        composite_item = None
+        item = None
         if builder:
             item = builder( scene, element )
             if item:
                 item.setData( 0, QtCore.QVariant( element ) )
                 item.setFlag( QtGui.QGraphicsItem.ItemIsSelectable, True )
+                if element.tag == 'compositegeom':
+                    composite_item = item
             
         for child_element in element:
-            self._addElements( scene, child_element, element_set )
+            item = self._addElements( scene, child_element, element_set )
+            if composite_item and item:
+                item.setParentItem( composite_item )
         element_set.add( element )
+        return item
 
     @staticmethod
     def _elementReal( element, attribute, default_value = 0.0 ):
@@ -459,24 +474,24 @@ class LevelGraphicView(QtGui.QGraphicsView):
         pass
 
     def _sceneCircleBuilder( self, scene, element ):
-        pass
-##        x, y, r = self._elementXYR( element )
-##        image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
-##        if image: # draw only the pixmap for now, but we should probably draw both the physic & pixmap
-##            pixmap = self.getImagePixmap( image )
-##            if pixmap:
-##                item = scene.addPixmap( pixmap )
-##                self._applyPixmapTransform( item, pixmap, imagepos[0], imagepos[1], imagerot,
-##                                            imagescale[0], imagescale[1], 0.0 )
-##                return item
-##            else:
-##                print 'Circle image not found:', image
-##        else: # "physic" circle
-##            pen = QtGui.QPen( QtGui.QColor( 0, 64, 255 ) )
-##            pen.setWidth( 5 )
-##            item = scene.addEllipse( -r/2, -r/2, r, r, pen )
-##            self._setSceneItemXYZ( item, x, y )
-##        return item
+        # Still buggy: when in composite, likely position is likely relative to composite geometry
+        x, y, r = self._elementXYR( element )
+        image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
+        if image: # draw only the pixmap for now, but we should probably draw both the physic & pixmap
+            pixmap = self.getImagePixmap( image )
+            if pixmap:
+                item = scene.addPixmap( pixmap )
+                self._applyPixmapTransform( item, pixmap, imagepos[0], imagepos[1], imagerot,
+                                            imagescale[0], imagescale[1], 0.0 )
+                return item
+            else:
+                print 'Circle image not found:', image
+        else: # "physic" circle
+            pen = QtGui.QPen( QtGui.QColor( 0, 64, 255 ) )
+            pen.setWidth( 5 )
+            item = scene.addEllipse( -r, -r, r*2, r*2, pen )
+            self._setSceneItemXYZ( item, x, y )
+        return item
             
 
     def _sceneRectangleBuilder( self, scene, element ):
@@ -532,7 +547,14 @@ class LevelGraphicView(QtGui.QGraphicsView):
         return item
 
     def _sceneCompositeGeometryBuilder( self, scene, element ):
-        pass
+        x, y = self._elementXY( element )
+        rotation = self._elementReal( element, 'rotation', 0.0 )
+        image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
+        # Notes: we create an item group, but child element are NOT added to the group
+        # (this would prevent selecting a specific element)
+        item = scene.createItemGroup([])
+        self._applyTransform( item, 0, 0, x, y, rotation, 1.0, 1.0, Z_PHYSIC_ITEMS )
+        return item
 
     def _sceneLabelBuilder( self, scene, element ):
         pass
@@ -694,7 +716,14 @@ class MainWindow(QtGui.QMainWindow):
                 else:
                     sub_window = LevelGraphicView( level_name, self._game_model )
                     self.mdiArea.addSubWindow( sub_window )
+                    self.connect( sub_window, QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)'),
+                                  self._updateMouseScenePosInStatusBar )
                     sub_window.show()
+
+    def _updateMouseScenePosInStatusBar( self, x, y ):
+        """Called whenever the mouse move in the scene view."""
+        y = -y # Reverse transformation done when mapping to scene (in Qt 0 = top, in WOG 0 = bottom)
+        self._mousePositionLabel.setText( self.tr('x: %1 y: %2').arg(x).arg(y) )
 
     def _findLevelGraphicView( self, level_name ):
         """Search for an existing MDI window for level level_name.
@@ -803,6 +832,8 @@ class MainWindow(QtGui.QMainWindow):
         
     def createStatusBar(self):
         self.statusBar().showMessage(self.tr("Ready"))
+        self._mousePositionLabel = QtGui.QLabel()
+        self.statusBar().addPermanentWidget( self._mousePositionLabel )
         
     def createDockWindows(self):
         dock = QtGui.QDockWidget(self.tr("Scene"), self)
