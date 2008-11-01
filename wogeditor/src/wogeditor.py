@@ -136,6 +136,9 @@ class LevelModel(object):
         """
         self.game_model.objectSelected( self.level_name, object_type, element )
 
+Z_LEVEL_ITEMS = 10000.0
+Z_PHYSIC_ITEMS = 9000.0
+
 class LevelGraphicView(QtGui.QGraphicsView):
     """A graphics view that display scene and level elements.
     """
@@ -148,6 +151,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.__scene = QtGui.QGraphicsScene()
         self.__balls_by_id = {}
         self.__strands = []
+        self.__lines = []
         self.__scene_elements = set()
         self.__level_elements = set()
         self.setScene( self.__scene )
@@ -157,6 +161,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
                       self._sceneSelectionChanged )
         self.connect( self.__game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                       self._updateObjectSelection )
+        self.setRenderHints( QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform )
 
     def wheelEvent(self, event):
         """Handle zoom when wheel is rotated."""
@@ -215,12 +220,16 @@ class LevelGraphicView(QtGui.QGraphicsView):
         scene.clear()
         self.__balls_by_id = {}
         self.__strands = []
+        self.__lines = []
         level_element = game_level_model.level_tree
         self._addElements( scene, level_element, self.__level_elements )
         self._addStrands( scene )
-        
+
         scene_element = game_level_model.scene_tree
         self._addElements( scene, scene_element, self.__scene_elements )
+
+        for element in self.__lines:
+            self._sceneLineBuilder( scene, element )
         
 ##        print 'SceneRect:', self.sceneRect()
 ##        print 'ItemsBoundingRect:', scene.itemsBoundingRect()
@@ -244,7 +253,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
             'rectangle': self._sceneRectangleBuilder,
             'hinge': self._sceneHingeBuilder,
             'label': self._sceneLabelBuilder,
-            'line': self._sceneLineBuilder,
+            'line': self._addSceneLine,
             'linearforcefield': self._sceneLinearForceFieldBuidler,
             'motor': self._sceneMotorBuilder,
             'particles': self._sceneParticlesBuilder,
@@ -292,12 +301,38 @@ class LevelGraphicView(QtGui.QGraphicsView):
                  float(element.get('scaley',1.0)) )
 
     @staticmethod
+    def _elementV2( element, attribute, default_value = (0.0,0.0) ):
+        value = element.get(attribute)
+        if value is None:
+            return default_value
+        v1, v2 = [ float(v) for v in value.split(',') ]
+        return (v1, v2)
+
+    @staticmethod
+    def _elementV2Pos( element, attribute, default_value = (0.0,0.0) ): # y=0 is bottom => Negate y
+        x, y = LevelGraphicView._elementV2( element, attribute, default_value )
+        return x, -y
+
+    @staticmethod
+    def _elementImageWithPosScaleRot( element ):
+        image = element.get('image')
+        imagepos = LevelGraphicView._elementV2Pos( element, 'imagepos' )
+        imagescale = LevelGraphicView._elementV2( element, 'imagescale', (1.0,1.0) )
+        imagerot = float(element.get('imagerot', 0.0))
+        return image, imagepos, imagescale, imagerot
+
+    @staticmethod
     def _setLevelItemZ( item ):
-        item.setZValue( 10000 )
+        item.setZValue( Z_LEVEL_ITEMS )
 
     @staticmethod
     def _setLevelItemXYZ( item, x, y ):
-        item.setZValue( 10000 )
+        item.setZValue( Z_LEVEL_ITEMS )
+        item.setPos( x, y )
+
+    @staticmethod
+    def _setSceneItemXYZ( item, x, y ):
+        item.setZValue( Z_PHYSIC_ITEMS )
         item.setPos( x, y )
 
     def getImagePixmap( self, image_id ):
@@ -382,15 +417,22 @@ class LevelGraphicView(QtGui.QGraphicsView):
             self._applyPixmapTransform( item, pixmap, x, y, rotation, scalex, scaley, depth )
             return item
         else:
-            print 'Scene layer image not found'
+            print 'Scene layer image not found', image
 
     @staticmethod
     def _applyPixmapTransform( item, pixmap, x, y, rotation, scalex, scaley, depth ):
+        LevelGraphicView._applyTransform( item, pixmap.width()/2.0, pixmap.height()/2.0,
+                                          x, y, rotation, scalex, scaley, depth )
+
+    @staticmethod
+    def _applyTransform( item, xcenter, ycenter, x, y, rotation, scalex, scaley, depth ):
+        """Rotate, scale and translate the item. xcenter, ycenter indicates the center of rotation.
+        """
         # Notes: x, y coordinate are based on the center of the image, but Qt are based on top-left.
         # Hence, we adjust the x, y coordinate by half width/height.
         # But rotation is done around the center of the image, that is half width/height
-        xcenter, ycenter = pixmap.width()/2.0, pixmap.height()/2.0
         transform = QtGui.QTransform()
+        xcenter, ycenter = xcenter * scalex, ycenter * scaley
         transform.translate( xcenter, ycenter )
         transform.rotate( -rotation )
         transform.translate( -xcenter, -ycenter )
@@ -410,7 +452,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
             self._applyPixmapTransform( item, pixmap, x, y, rotation, scalex, scaley, depth )
             return item
         else:
-            print 'Button image not found'
+            print 'Button image not found:', element.get('up')
         
 
     def _sceneButtonGroupBuilder( self, scene, element ):
@@ -418,12 +460,76 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
     def _sceneCircleBuilder( self, scene, element ):
         pass
+##        x, y, r = self._elementXYR( element )
+##        image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
+##        if image: # draw only the pixmap for now, but we should probably draw both the physic & pixmap
+##            pixmap = self.getImagePixmap( image )
+##            if pixmap:
+##                item = scene.addPixmap( pixmap )
+##                self._applyPixmapTransform( item, pixmap, imagepos[0], imagepos[1], imagerot,
+##                                            imagescale[0], imagescale[1], 0.0 )
+##                return item
+##            else:
+##                print 'Circle image not found:', image
+##        else: # "physic" circle
+##            pen = QtGui.QPen( QtGui.QColor( 0, 64, 255 ) )
+##            pen.setWidth( 5 )
+##            item = scene.addEllipse( -r/2, -r/2, r, r, pen )
+##            self._setSceneItemXYZ( item, x, y )
+##        return item
+            
 
     def _sceneRectangleBuilder( self, scene, element ):
         pass
+##        x, y = self._elementXY( element )
+##        rotation = self._elementReal( element, 'rotation', 0.0 )
+##        width = self._elementReal( element, 'width', 1.0 )
+##        height = self._elementReal( element, 'height', 1.0 )
+##        image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
+##        if image: # draw only the pixmap for now, but we should probably draw both the physic & pixmap
+##            pixmap = self.getImagePixmap( image )
+##            if pixmap:
+##                item = scene.addPixmap( pixmap )
+##                self._applyPixmapTransform( item, pixmap, imagepos[0], imagepos[1], imagerot,
+##                                            imagescale[0], imagescale[1], 0.0 )
+##                return item
+##            else:
+##                print 'Rectangle image not found:', image
+##        else: # "physic" rectangle
+##            pen = QtGui.QPen( QtGui.QColor( 0, 64, 255 ) )
+##            pen.setWidth( 5 )
+##            item = scene.addRect( -width/2.0, -height/2.0, width, height, pen )
+##            self._applyTransform( item, width/2.0, height/2.0, x, y, rotation,
+##                                  1.0, 1.0, Z_PHYSIC_ITEMS )
+##        return item
+        
+    def _addSceneLine( self, scene, element ):
+        """Delay line rendering after everything (line are unbounded, we limit them to the scene extend)."""
+        self.__lines.append( element )
 
     def _sceneLineBuilder( self, scene, element ):
-        pass
+        """An unbounded physic line. We bound it to the scene bounding rectangle."""
+        anchor = self._elementV2Pos( element, 'anchor' )
+        normal = self._elementV2Pos( element, 'normal' )
+        pen = QtGui.QPen( QtGui.QColor( 0, 64, 255 ) )
+        pen.setWidth( 5 )
+        direction = normal[1], -normal[0]
+        scene_rect = scene.sceneRect()
+        # The line is defined by: anchor + direction * t
+        if abs(direction[0]) > abs(direction[1]):   # mostly horizontal, bound it min/max x scene
+            # xl = anchor.x + direction.x * t => (xl - anchor.x)/direction.x
+            # yl = anchor.y + direction.y * t => yl = anchor.y + direction.y * (xl - anchor.x)/direction.x
+            minx, maxx = scene_rect.left(), scene_rect.right()
+            ys = [ anchor[1] + direction[1] * ( xl - anchor[0] ) / direction[0]
+                   for xl in (minx, maxx) ]
+            item = scene.addLine( minx, ys[0], maxx, ys[1], pen )
+        else:
+            miny, maxy = scene_rect.top(), scene_rect.bottom()
+            xs = [ anchor[0] + direction[0] * ( yl - anchor[1] ) / direction[1]
+                   for yl in (miny, maxy) ]
+            item = scene.addLine( xs[0], miny, xs[1], maxy, pen )
+        item.setZValue( Z_PHYSIC_ITEMS )
+        return item
 
     def _sceneCompositeGeometryBuilder( self, scene, element ):
         pass
