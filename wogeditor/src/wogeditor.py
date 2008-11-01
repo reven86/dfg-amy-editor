@@ -24,6 +24,7 @@ import os
 import aesfile
 import xml.etree.ElementTree 
 from PyQt4 import QtCore, QtGui
+import qthelper
 import editleveldialog_ui
 import wogeditor_rc
 
@@ -31,6 +32,8 @@ def tr( context, message ):
     return QtCore.QCoreApplication.translate( message )
 
 MODEL_TYPE_LEVEL = 'Level'
+LEVEL_OBJECT_TYPE = 'LevelObject'
+SCENE_OBJECT_TYPE = 'SceneObject'
 
 class GameModelException(Exception):
     pass
@@ -43,7 +46,7 @@ class GameModel(QtCore.QObject):
 
            The following signals are provided:
            QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)')
-           QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject)')
+           QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
         """
         QtCore.QObject.__init__( self )
         self._wog_dir = os.path.split( wog_path )[0]
@@ -97,6 +100,11 @@ class GameModel(QtCore.QObject):
                    old_model,
                    level_model )
 
+    def objectSelected( self, level_name, object_type, element ):
+        """Signal that the specified object has been selected."""
+        self.emit( QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                   level_name, object_type, element )
+
 class LevelModel(object):
     def __init__( self, game_model, level_name ):
         self.game_model = game_model
@@ -122,7 +130,15 @@ class LevelModel(object):
     def getImagePixmap( self, image_id ):
         return self.images_by_id.get(image_id)
 
+    def objectSelected( self, object_type, element ):
+        """Indicates that the specified object has been selected.
+           object_type: one of LEVEL_OBJECT_TYPE, SCENE_OBJECT_TYPE
+        """
+        self.game_model.objectSelected( self.level_name, object_type, element )
+
 class LevelGraphicView(QtGui.QGraphicsView):
+    """A graphics view that display scene and level elements.
+    """
     def __init__( self, level_name, game_model ):
         QtGui.QGraphicsView.__init__( self )
         self.__level_name = level_name
@@ -132,9 +148,48 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.__scene = QtGui.QGraphicsScene()
         self.__balls_by_id = {}
         self.__strands = []
+        self.__scene_elements = set()
+        self.__level_elements = set()
         self.setScene( self.__scene )
         self.refreshFromModel( self.getLevelModel() )
-##        self.scale( 1.0, -1.0 )     # Y=0 is bottom of the screen, not top
+        self.scale( 1.0, 1.0 )
+        self.connect( self.__scene, QtCore.SIGNAL('selectionChanged()'),
+                      self._sceneSelectionChanged )
+
+    def wheelEvent(self, event):
+        """Handle zoom when wheel is rotated."""
+        delta = event.delta()
+        if delta != 0:
+            small_delta = delta / 500.0
+            factor = abs(small_delta)
+            if small_delta < 0:
+                factor = 1/(1+factor)
+            else:
+                factor = 1 + small_delta
+            self.scaleView( factor ) 
+
+    def scaleView(self, scaleFactor):
+        """Scales the view by a given factor."""
+        factor = self.matrix().scale(scaleFactor, scaleFactor).mapRect(QtCore.QRectF(0, 0, 1, 1)).width()
+
+        if factor < 0.07 or factor > 100:
+            return
+
+        self.scale(scaleFactor, scaleFactor)
+
+    def _sceneSelectionChanged( self ):
+        """Called whenever the selection change in the scene (e.g. user click on an item)."""
+        items = self.__scene.selectedItems()
+        if len(items) == 1: # do not handle multiple selection for now
+            for item in items:
+                element = item.data(0).toPyObject()
+                assert element is not None, "Hmmm, forgot to associate a data to that item..."
+                if element in self.__scene_elements:
+                    self.getLevelModel().objectSelected( SCENE_OBJECT_TYPE, element )
+                elif element in self.__level_elements:
+                    self.getLevelModel().objectSelected( LEVEL_OBJECT_TYPE, element )
+                else: # Should never get there
+                    assert False
 
     def matchModel( self, model_type, level_name ):
         return model_type == MODEL_TYPE_LEVEL and level_name == self.__level_name
@@ -148,29 +203,55 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.__balls_by_id = {}
         self.__strands = []
         level_element = game_level_model.level_tree
-        self._addElements( scene, level_element )
+        self._addElements( scene, level_element, self.__level_elements )
         self._addStrands( scene )
+        
+        scene_element = game_level_model.scene_tree
+        self._addElements( scene, scene_element, self.__scene_elements )
+        
 ##        print 'SceneRect:', self.sceneRect()
 ##        print 'ItemsBoundingRect:', scene.itemsBoundingRect()
 ##        for item in self.items():
 ##            print 'Item:', item.boundingRect()
 
-    def _addElements( self, scene, level_element ):
+    def _addElements( self, scene, element, element_set ):
         builders = {
+            # .level.xml builders
             'signpost': self._levelSignPostBuilder,
             'pipe': self._levelPipeBuilder,
             'BallInstance': self._levelBallInstanceBuilder,
             'Strand': self._addlevelStrand,
-            'fire': self._levelFireBuilder
+            'fire': self._levelFireBuilder,
+            # .scene.xml builders
+            'SceneLayer': self._sceneSceneLayerBuilder,
+            'button': self._sceneButtonBuilder,
+            'buttongroup': self._sceneButtonGroupBuilder,
+            'circle': self._sceneCircleBuilder,
+            'compositegeom': self._sceneCompositeGeometryBuilder,
+            'rectangle': self._sceneRectangleBuilder,
+            'hinge': self._sceneHingeBuilder,
+            'label': self._sceneLabelBuilder,
+            'line': self._sceneLineBuilder,
+            'linearforcefield': self._sceneLinearForceFieldBuidler,
+            'motor': self._sceneMotorBuilder,
+            'particles': self._sceneParticlesBuilder,
+            'radialforcefield': self._sceneRadialForceFieldBuilder
             }
-        builder = builders.get( level_element.tag )
+        builder = builders.get( element.tag )
         if builder:
-            item = builder( scene, level_element )
+            item = builder( scene, element )
             if item:
-                item.setData( 0, QtCore.QVariant( level_element ) )
+                item.setData( 0, QtCore.QVariant( element ) )
+                item.setFlag( QtGui.QGraphicsItem.ItemIsSelectable, True )
             
-        for child_element in level_element:
-            self._addElements( scene, child_element )
+        for child_element in element:
+            self._addElements( scene, child_element, element_set )
+        element_set.add( element )
+
+    @staticmethod
+    def _elementReal( element, attribute, default_value = 0.0 ):
+        """Returns the specified element attribute as a float, defaulting to default_value if it does not exist."""
+        return float( element.get(attribute, default_value) )
 
     @staticmethod
     def _elementXY( element ):
@@ -180,16 +261,46 @@ class LevelGraphicView(QtGui.QGraphicsView):
     @staticmethod
     def _elementXYR( element ):
         """Returns 'x' & 'y' & 'radius' attribute. y is negated (0 is bottom of the screen)."""
-        return (float(element.get('x')), -float(element.get('y')), float(element.get('radius')))
+        return LevelGraphicView._elementXY(element) + (float(element.get('radius')),)
+
+    @staticmethod
+    def _elementXYDepth( element ):
+        """Returns 'x' & 'y' & 'depth' attribute. y is negated (0 is bottom of the screen)."""
+        return LevelGraphicView._elementXY(element) + (float(element.get('depth')),)
+
+    @staticmethod
+    def _elementRotationScaleXY( element ):
+        """Returns 'rotation', 'scalex' and 'scaley' element's attribute converted to float.
+           rotation is defaulted to 0 if not defined.
+           scalex and scaley are defaulted to 1 if not defined.
+        """
+        return ( float(element.get('rotation',0.0)),
+                 float(element.get('scalex',1.0)),
+                 float(element.get('scaley',1.0)) )
+
+    @staticmethod
+    def _setLevelItemZ( item ):
+        item.setZValue( 10000 )
+
+    @staticmethod
+    def _setLevelItemXYZ( item, x, y ):
+        item.setZValue( 10000 )
+        item.setPos( x, y )
+
+    def getImagePixmap( self, image_id ):
+        """Returns the image pixmap for the specified image id."""
+        if image_id:
+            return self.getLevelModel().getImagePixmap( image_id )
+        return None
 
     def _levelSignPostBuilder( self, scene, element ):
         image = element.get('image')
-        pixmap = self.getLevelModel().getImagePixmap( image )
+##        pixmap = self.getImagePixmap( image )
 ##        if pixmap:
         x, y = self._elementXY( element )
         item = scene.addText( element.get('name') )
 ##            item = scene.addPixmap( pixmap )
-        item.setPos( x, y )
+        self._setLevelItemXYZ( item, x, y )
         return item
 
     def _levelPipeBuilder( self, scene, element ):
@@ -212,7 +323,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
         x, y = self._elementXY( element )
         r = 10
         item = scene.addEllipse( -r/2, -r/2, r, r )
-        item.setPos( x, y )
+        self._setLevelItemXYZ( item, x, y )
         ball_id = element.get('id')
         self.__balls_by_id[ ball_id ] = item
         return item
@@ -241,8 +352,68 @@ class LevelGraphicView(QtGui.QGraphicsView):
         x, y, r = self._elementXYR( element )
         pen = QtGui.QPen( QtGui.QColor( 255, 64, 0 ) )
         pen.setWidth( 3 )
-        item = scene.addEllipse( x, yr, r, r, pen )
+        item = scene.addEllipse( -r/2, -r/2, r, r, pen )
+        self._setLevelItemXYZ( item, x, y )
         return item
+
+    def _sceneSceneLayerBuilder( self, scene, element ):
+        x, y, depth = self._elementXYDepth( element )
+        image = element.get('image')
+        alpha = self._elementReal( element, 'alpha', 1.0 )
+        pixmap = self.getImagePixmap( image )
+        width, height = pixmap.width(), pixmap.height()
+        rotation, scalex, scaley = self._elementRotationScaleXY( element )
+##        tilex = self._elementBool( element, 'tilex', False )
+##        tiley = self._elementBool( element, 'tiley', False )
+        if pixmap:
+            item = scene.addPixmap( pixmap )
+            x -= width/2.0  # x coordinate is the center of the pixmap
+            y -= height/2.0
+            item.setPos( x, y )
+            item.scale( scalex, scaley )
+            item.setZValue( depth )
+            return item
+        else:
+            print 'Scene layer image not found'
+            
+            
+
+    def _sceneButtonBuilder( self, scene, element ):
+        pass
+
+    def _sceneButtonGroupBuilder( self, scene, element ):
+        pass
+
+    def _sceneCircleBuilder( self, scene, element ):
+        pass
+
+    def _sceneRectangleBuilder( self, scene, element ):
+        pass
+
+    def _sceneLineBuilder( self, scene, element ):
+        pass
+
+    def _sceneCompositeGeometryBuilder( self, scene, element ):
+        pass
+
+    def _sceneLabelBuilder( self, scene, element ):
+        pass
+
+    def _sceneHingeBuilder( self, scene, element ):
+        pass
+
+    def _sceneLinearForceFieldBuidler( self, scene, element ):
+        pass
+
+    def _sceneRadialForceFieldBuilder( self, scene, element ):
+        pass
+
+    def _sceneMotorBuilder( self, scene, element ):
+        pass
+
+    def _sceneParticlesBuilder( self, scene, element ):
+        pass
+
 
 class MainWindow(QtGui.QMainWindow):
     def __init__(self, parent=None):
@@ -261,6 +432,8 @@ class MainWindow(QtGui.QMainWindow):
         self.setWindowTitle(self.tr("WOG Editor"))
         
         self._readSettings()
+
+        self.__sceneTreeIndexByItem = {}
 
         self._game_model = None
         if self._wog_path:
@@ -283,7 +456,7 @@ class MainWindow(QtGui.QMainWindow):
             self._game_model = GameModel( self._wog_path )
             self.connect( self._game_model, QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)'),
                           self._refreshLevel )
-            self.connect( self._game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject)'),
+            self.connect( self._game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                           self._refreshPropertyList )
         except GameModelException, e:
             QtGui.QMessageBox.warning(self, self.tr("Loading WOG levels"),
@@ -295,6 +468,7 @@ class MainWindow(QtGui.QMainWindow):
 
     def _refreshSceneTree( self, game_level_model ):
         self.sceneTree.clear()
+        self.__sceneTreeIndexByItem = {}
         
         root_element = game_level_model.scene_tree
         root_item = None
@@ -318,23 +492,33 @@ class MainWindow(QtGui.QMainWindow):
         if level_view:
             level_view.refreshFromModel( game_level_model )
         
-        
-
-
     def _onSceneTreeSelectionChange( self ):
         """Called whenever the scene tree selection change."""
         selected_items = self.sceneTree.selectedItems()
         if len( selected_items ) == 1:
             item = selected_items[0]
             element = item.data( 0, QtCore.Qt.UserRole ).toPyObject()
-            self._refreshPropertyListFromElement( element )
+            game_level_model = self.getCurrentLevelModel()
+            if game_level_model:
+                game_level_model.objectSelected( SCENE_OBJECT_TYPE, element )
+##            self._refreshPropertyListFromElement( element )
         else:
             for item in self.sceneTree.selectedItems():
                 pass # need to get an handle on the element
 
-    def _refreshPropertyList( self, old_object, new_object ):
-        print 'Refreshed property list'
-        self._refreshPropertyListFromElement( new_object )
+    def _refreshPropertyList( self, level_name, object_type, element ):
+        self._refreshPropertyListFromElement( element )
+        self._refreshSceneTreeSelection( object_type, element )
+
+    def _refreshSceneTreeSelection( self, object_type, element ):
+        for item in qthelper.iterQTreeWidget( self.sceneTree ):
+            if item.data( 0, QtCore.Qt.UserRole ).toPyObject() == element:
+                item.setSelected( True )
+                item.setExpanded( True )
+                index = self.sceneTree.indexFromItem( item ) # Why is this method protected ???
+                self.sceneTree.scrollTo( index )
+            elif item.isSelected():
+                item.setSelected( False )
 
     def _refreshPropertyListFromElement( self, element ):
         self.propertiesList.clear()
@@ -383,6 +567,13 @@ class MainWindow(QtGui.QMainWindow):
                 return window
         return None
         
+    def getCurrentLevelModel( self ):
+        """Returns the level model of the active MDI window."""
+        window = self.mdiArea.activeSubWindow()
+        if window:
+            return window.widget().getLevelModel()
+        return None
+
     def save(self):
         pass   
 ##        filename = QtGui.QFileDialog.getSaveFileName(self,
