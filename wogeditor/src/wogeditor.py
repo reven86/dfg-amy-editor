@@ -367,8 +367,14 @@ class LevelGraphicView(QtGui.QGraphicsView):
 ##        tiley = self._elementBool( element, 'tiley', False )
         if pixmap:
             item = scene.addPixmap( pixmap )
-            x -= width/2.0  # x coordinate is the center of the pixmap
-            y -= height/2.0
+            # Notes: x, y coordinate are based on the center of the image, but Qt are based on top-left.
+            # Hence, we adjust the x, y coordinate by half width/height.
+            # But rotation is done around the center of the image, that is half width/height
+            xcenter, ycenter = width/2.0, height/2.0
+            item.setTransform( QtGui.QTransform().translate(xcenter, ycenter).rotate(-rotation).translate(
+                    -xcenter, -ycenter) )
+            x -= xcenter
+            y -= ycenter
             item.setPos( x, y )
             item.scale( scalex, scaley )
             item.setZValue( depth )
