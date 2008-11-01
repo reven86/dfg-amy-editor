@@ -495,28 +495,27 @@ class LevelGraphicView(QtGui.QGraphicsView):
             
 
     def _sceneRectangleBuilder( self, scene, element ):
-        pass
-##        x, y = self._elementXY( element )
-##        rotation = self._elementReal( element, 'rotation', 0.0 )
-##        width = self._elementReal( element, 'width', 1.0 )
-##        height = self._elementReal( element, 'height', 1.0 )
-##        image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
-##        if image: # draw only the pixmap for now, but we should probably draw both the physic & pixmap
-##            pixmap = self.getImagePixmap( image )
-##            if pixmap:
-##                item = scene.addPixmap( pixmap )
-##                self._applyPixmapTransform( item, pixmap, imagepos[0], imagepos[1], imagerot,
-##                                            imagescale[0], imagescale[1], 0.0 )
-##                return item
-##            else:
-##                print 'Rectangle image not found:', image
-##        else: # "physic" rectangle
-##            pen = QtGui.QPen( QtGui.QColor( 0, 64, 255 ) )
-##            pen.setWidth( 5 )
-##            item = scene.addRect( -width/2.0, -height/2.0, width, height, pen )
-##            self._applyTransform( item, width/2.0, height/2.0, x, y, rotation,
-##                                  1.0, 1.0, Z_PHYSIC_ITEMS )
-##        return item
+        x, y = self._elementXY( element )
+        rotation = self._elementReal( element, 'rotation', 0.0 )
+        width = self._elementReal( element, 'width', 1.0 )
+        height = self._elementReal( element, 'height', 1.0 )
+        image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
+        if image: # draw only the pixmap for now, but we should probably draw both the physic & pixmap
+            pixmap = self.getImagePixmap( image )
+            if pixmap:
+                item = scene.addPixmap( pixmap )
+                self._applyPixmapTransform( item, pixmap, imagepos[0], imagepos[1], imagerot,
+                                            imagescale[0], imagescale[1], 0.0 )
+                return item
+            else:
+                print 'Rectangle image not found:', image
+        else: # "physic" rectangle
+            pen = QtGui.QPen( QtGui.QColor( 0, 64, 255 ) )
+            pen.setWidth( 5 )
+            item = scene.addRect( 0, 0, width, height, pen )
+            self._applyTransform( item, width/2.0, height/2.0, x, y, rotation,
+                                  1.0, 1.0, Z_PHYSIC_ITEMS )
+        return item
         
     def _addSceneLine( self, scene, element ):
         """Delay line rendering after everything (line are unbounded, we limit them to the scene extend)."""
@@ -550,6 +549,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
         x, y = self._elementXY( element )
         rotation = self._elementReal( element, 'rotation', 0.0 )
         image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
+        # @todo handle pixmap display if any
         # Notes: we create an item group, but child element are NOT added to the group
         # (this would prevent selecting a specific element)
         item = scene.createItemGroup([])
