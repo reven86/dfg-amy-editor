@@ -361,7 +361,11 @@ class LevelGraphicView(QtGui.QGraphicsView):
 ##        pixmap = self.getImagePixmap( image )
 ##        if pixmap:
         x, y = self._elementXY( element )
-        item = scene.addText( element.get('name') )
+        font = QtGui.QFont()
+        font.setPointSize( 24.0 )
+        font.setBold( True )
+        item = scene.addText( element.get('text'), font )
+        item.setDefaultTextColor( QtGui.QColor( 64, 224, 255 ) )
 ##            item = scene.addPixmap( pixmap )
         self._setLevelItemXYZ( item, x, y )
         return item
@@ -557,7 +561,16 @@ class LevelGraphicView(QtGui.QGraphicsView):
         return item
 
     def _sceneLabelBuilder( self, scene, element ):
-        pass
+        x, y = self._elementXY( element )
+        rotation = self._elementReal( element, 'rotation', 0.0 )
+        scale = self._elementReal( element, 'scale', 1.0 )
+        font = QtGui.QFont()
+        font.setPointSize( 24.0 )
+        font.setBold( True )
+        item = scene.addText( element.get('text'), font )
+        item.setDefaultTextColor( QtGui.QColor( 64, 255, 0 ) )
+        self._applyTransform( item, 0, 0, x, y, rotation, scale, scale, Z_PHYSIC_ITEMS )
+        return item
 
     def _sceneHingeBuilder( self, scene, element ):
         pass
