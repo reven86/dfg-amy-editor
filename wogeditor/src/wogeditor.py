@@ -155,6 +155,8 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.scale( 1.0, 1.0 )
         self.connect( self.__scene, QtCore.SIGNAL('selectionChanged()'),
                       self._sceneSelectionChanged )
+        self.connect( self.__game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                      self._updateObjectSelection )
 
     def wheelEvent(self, event):
         """Handle zoom when wheel is rotated."""
@@ -190,6 +192,17 @@ class LevelGraphicView(QtGui.QGraphicsView):
                     self.getLevelModel().objectSelected( LEVEL_OBJECT_TYPE, element )
                 else: # Should never get there
                     assert False
+
+    def _updateObjectSelection( self, level_name, object_type, selected_element ):
+        """Ensures that the selected object is seleted in the graphic view.
+           Called whenever an object is selected in the tree view or the graphic view.
+        """
+        for item in self.__scene.items():
+            element = item.data(0).toPyObject()
+            if element == selected_element:
+                item.setSelected( True )
+            elif item.isSelected():
+                item.setSelected( False )
 
     def matchModel( self, model_type, level_name ):
         return model_type == MODEL_TYPE_LEVEL and level_name == self.__level_name
@@ -361,31 +374,44 @@ class LevelGraphicView(QtGui.QGraphicsView):
         image = element.get('image')
         alpha = self._elementReal( element, 'alpha', 1.0 )
         pixmap = self.getImagePixmap( image )
-        width, height = pixmap.width(), pixmap.height()
         rotation, scalex, scaley = self._elementRotationScaleXY( element )
 ##        tilex = self._elementBool( element, 'tilex', False )
 ##        tiley = self._elementBool( element, 'tiley', False )
         if pixmap:
             item = scene.addPixmap( pixmap )
-            # Notes: x, y coordinate are based on the center of the image, but Qt are based on top-left.
-            # Hence, we adjust the x, y coordinate by half width/height.
-            # But rotation is done around the center of the image, that is half width/height
-            xcenter, ycenter = width/2.0, height/2.0
-            item.setTransform( QtGui.QTransform().translate(xcenter, ycenter).rotate(-rotation).translate(
-                    -xcenter, -ycenter) )
-            x -= xcenter
-            y -= ycenter
-            item.setPos( x, y )
-            item.scale( scalex, scaley )
-            item.setZValue( depth )
+            self._applyPixmapTransform( item, pixmap, x, y, rotation, scalex, scaley, depth )
             return item
         else:
             print 'Scene layer image not found'
-            
-            
 
+    @staticmethod
+    def _applyPixmapTransform( item, pixmap, x, y, rotation, scalex, scaley, depth ):
+        # Notes: x, y coordinate are based on the center of the image, but Qt are based on top-left.
+        # Hence, we adjust the x, y coordinate by half width/height.
+        # But rotation is done around the center of the image, that is half width/height
+        xcenter, ycenter = pixmap.width()/2.0, pixmap.height()/2.0
+        transform = QtGui.QTransform()
+        transform.translate( xcenter, ycenter )
+        transform.rotate( -rotation )
+        transform.translate( -xcenter, -ycenter )
+        item.setTransform( transform )
+        x -= xcenter
+        y -= ycenter
+        item.setPos( x, y )
+        item.scale( scalex, scaley )
+        item.setZValue( depth )
+            
     def _sceneButtonBuilder( self, scene, element ):
-        pass
+        x, y, depth = self._elementXYDepth( element )
+        rotation, scalex, scaley = self._elementRotationScaleXY( element )
+        pixmap = self.getImagePixmap( element.get('up') )
+        if pixmap:
+            item = scene.addPixmap( pixmap )
+            self._applyPixmapTransform( item, pixmap, x, y, rotation, scalex, scaley, depth )
+            return item
+        else:
+            print 'Button image not found'
+        
 
     def _sceneButtonGroupBuilder( self, scene, element ):
         pass
