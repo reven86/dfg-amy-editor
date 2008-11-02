@@ -22,7 +22,7 @@
 import sys
 import os
 import math
-import aesfile
+import wogfile
 import xml.etree.ElementTree 
 from PyQt4 import QtCore, QtGui
 import qthelper
@@ -70,7 +70,7 @@ class GameModel(QtCore.QObject):
         if not os.path.isfile( path ):
             raise GameModelException( tr( 'LoadData',
                 'File "%1" does not exist. You likely provided an incorrect WOG directory.' ).arg( path ) )
-        xml_data = aesfile.decrypt_file_data( path )
+        xml_data = wogfile.decrypt_file_data( path )
         xml_tree = xml.etree.ElementTree.fromstring( xml_data )
         return xml_tree
 
@@ -859,7 +859,10 @@ class MainWindow(QtGui.QMainWindow):
         
     def about(self):
         QtGui.QMessageBox.about(self, self.tr("About WOG Editor"),
-            self.tr("The <b>WOG editor</b> helps you create new level in WOG"))
+            self.tr("""<p>The <b>WOG editor</b> helps you create new level in WOG.<p>
+            <p>Link to Sourceforge project:
+            <a href="http://www.sourceforge.net/projects/wogedit">http://www.sourceforge.net/projects/wogedit</a></p>
+            <p>Copyright 2008, NitroZark &lt;nitrozark at users.sourceforget.net&gt;</p>"""))
     
     def createActions(self):
         self.changeWOGDirAction = QtGui.QAction(QtGui.QIcon(":/images/open.png"), self.tr("&Change WOG directory..."), self)

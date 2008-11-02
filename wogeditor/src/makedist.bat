@@ -22,6 +22,9 @@ svn export https://wogedit.svn.sourceforge.net/svnroot/wogedit/tags/releases/%VE
 python setup.py --quiet py2exe
 
 ren dist wogeditor-%VERSION%
+copy ..\COPYING wogeditor-%VERSION%
+copy ..\KNOWNBUGS.txt wogeditor-%VERSION%
+copy ..\README.txt wogeditor-%VERSION%
 call %SEVENZIPPATH% a -tzip wogeditor-%VERSION%-bin.zip wogeditor-%VERSION%
 call %SEVENZIPPATH% a -tzip wogeditor-%VERSION%-src.zip wogeditor-src-%VERSION%
 

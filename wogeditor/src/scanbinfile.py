@@ -1,4 +1,4 @@
-import aesfile
+import wogfile
 import os
 import os.path
 import glob
@@ -29,7 +29,7 @@ def decrypt_dir_files( input_dir, output_dir ):
             output_path = os.path.join( output_dir, entry_xml )
             if not make_path_dirs( output_path ):
                 return False
-            if not aesfile.decrypt_file( entry_path, output_path ):
+            if not wogfile.decrypt_file( entry_path, output_path ):
                 return False
     return True
 
