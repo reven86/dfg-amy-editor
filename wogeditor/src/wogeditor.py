@@ -601,7 +601,30 @@ class LevelGraphicView(QtGui.QGraphicsView):
         pass
 
     def _sceneLinearForceFieldBuidler( self, scene, element ):
-        pass
+        # @todo ? Should we bother: gravity field usually does not have center, width & height
+        x, y = self._elementV2Pos( element, 'center', (0, 0) )
+        width = self._elementReal( element, 'width', 1.0 )
+        height = self._elementReal( element, 'height', 1.0 )
+        forcex, forcey = self._elementV2Pos( element, 'force', (0, 0.1) )
+        depth = self._elementReal( element, 'height', Z_PHYSIC_ITEMS )
+        
+        pen = QtGui.QPen( QtGui.QColor( 255, 224, 0 ) )
+        pen.setWidth( 5 )
+        sub_item1 = scene.addRect( 0, 0, width, height, pen )
+        force_factor = 20.0 
+        forcex, forcey = forcex * force_factor, forcey * force_factor # to make direction more visible
+        half_width, half_height = width/2.0, height/2.0
+        force_gradient = QtGui.QLinearGradient( half_width,half_height,
+                                                half_width+forcex, half_height+forcey )
+        force_gradient.setColorAt( 0.0, QtGui.QColor( 128, 112, 0 ) )
+        force_gradient.setColorAt( 1.0, QtGui.QColor( 255, 224, 0 ) )
+        force_pen = QtGui.QPen( QtGui.QBrush( force_gradient ), 4 )
+        sub_item2 = scene.addLine( half_width, half_height,
+                                   half_width+forcex, half_height+forcey, force_pen )
+        item = scene.createItemGroup( [sub_item1, sub_item2] )
+        self._applyTransform( item, half_width, half_height, x, y, 0.0,
+                              1.0, 1.0, depth )
+        return item
 
     def _sceneRadialForceFieldBuilder( self, scene, element ):
         pass
