@@ -607,27 +607,43 @@ class LevelGraphicView(QtGui.QGraphicsView):
         height = self._elementReal( element, 'height', 1.0 )
         forcex, forcey = self._elementV2Pos( element, 'force', (0, 0.1) )
         depth = self._elementReal( element, 'height', Z_PHYSIC_ITEMS )
-        
+        # force zone item
         pen = QtGui.QPen( QtGui.QColor( 255, 224, 0 ) )
         pen.setWidth( 5 )
         sub_item1 = scene.addRect( 0, 0, width, height, pen )
-        force_factor = 20.0 
-        forcex, forcey = forcex * force_factor, forcey * force_factor # to make direction more visible
-        half_width, half_height = width/2.0, height/2.0
-        force_gradient = QtGui.QLinearGradient( half_width,half_height,
-                                                half_width+forcex, half_height+forcey )
-        force_gradient.setColorAt( 0.0, QtGui.QColor( 128, 112, 0 ) )
-        force_gradient.setColorAt( 1.0, QtGui.QColor( 255, 224, 0 ) )
-        force_pen = QtGui.QPen( QtGui.QBrush( force_gradient ), 4 )
-        sub_item2 = scene.addLine( half_width, half_height,
-                                   half_width+forcex, half_height+forcey, force_pen )
+        # force direction item
+        sub_item2 = self._makeForceDirectionItem( scene, width/2.0, height/2.0, forcex, forcey )
+        # item group with both force direction & force zone
         item = scene.createItemGroup( [sub_item1, sub_item2] )
-        self._applyTransform( item, half_width, half_height, x, y, 0.0,
+        self._applyTransform( item, width/2.0, height/2.0, x, y, 0.0,
                               1.0, 1.0, depth )
         return item
 
     def _sceneRadialForceFieldBuilder( self, scene, element ):
-        pass
+        x, y = self._elementV2Pos( element, 'center', (0, 0) )
+        r = self._elementReal( element, 'radius', 1.0 )
+        force_at_edge = self._elementReal( element, 'forceatedge', 0.0 )
+        force_at_center = self._elementReal( element, 'forceatcenter', 0.0 )
+        # circular zone item
+        pen = QtGui.QPen( QtGui.QColor( 255, 224, 0 ) )
+        pen.setWidth( 5 )
+        sub_item1 = scene.addEllipse( -r, -r, r*2, r*2, pen )
+        # force at center item (from the center to down)
+        sub_item2 = self._makeForceDirectionItem( scene, 0, 0, 0, force_at_center )
+        # force at edge item (from ledge side of the circle to down)
+        sub_item3 = self._makeForceDirectionItem( scene, -r, 0, 0, force_at_edge )
+        # item group with both force direction & force zone
+        item = scene.createItemGroup( [sub_item1, sub_item2, sub_item3] )
+        self._setSceneItemXYZ( item, x, y )
+        return item        
+
+    def _makeForceDirectionItem( self, scene, x, y, forcex, forcey, force_factor = 20.0 ):
+        forcex, forcey = forcex * force_factor, forcey * force_factor # to make direction more visible
+        force_gradient = QtGui.QLinearGradient( x,y, x+forcex, y+forcey )
+        force_gradient.setColorAt( 0.0, QtGui.QColor( 192, 64, 0 ) )
+        force_gradient.setColorAt( 1.0, QtGui.QColor( 255, 160, 0 ) )
+        force_pen = QtGui.QPen( QtGui.QBrush( force_gradient ), 4 )
+        return scene.addLine( x, y, x+forcex, y+forcey, force_pen )
 
     def _sceneMotorBuilder( self, scene, element ):
         pass
