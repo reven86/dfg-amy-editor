@@ -496,6 +496,18 @@ class LevelGraphicView(QtGui.QGraphicsView):
     def _sceneButtonGroupBuilder( self, scene, element ):
         pass
 
+    def _sceneLabelBuilder( self, scene, element ):
+        x, y = self._elementXY( element )
+        rotation = self._elementReal( element, 'rotation', 0.0 )
+        scale = self._elementReal( element, 'scale', 1.0 )
+        font = QtGui.QFont()
+        font.setPointSize( 24.0 )
+        font.setBold( True )
+        item = scene.addText( element.get('text'), font )
+        item.setDefaultTextColor( QtGui.QColor( 64, 255, 0 ) )
+        self._applyTransform( item, 0, 0, x, y, rotation, scale, scale, Z_PHYSIC_ITEMS )
+        return item
+
     def _sceneCircleBuilder( self, scene, element ):
         # Still buggy: when in composite, likely position is likely relative to composite geometry
         x, y, r = self._elementXYR( element )
@@ -585,21 +597,6 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self._applyTransform( item, 0, 0, x, y, rotation, 1.0, 1.0, Z_PHYSIC_ITEMS )
         return item
 
-    def _sceneLabelBuilder( self, scene, element ):
-        x, y = self._elementXY( element )
-        rotation = self._elementReal( element, 'rotation', 0.0 )
-        scale = self._elementReal( element, 'scale', 1.0 )
-        font = QtGui.QFont()
-        font.setPointSize( 24.0 )
-        font.setBold( True )
-        item = scene.addText( element.get('text'), font )
-        item.setDefaultTextColor( QtGui.QColor( 64, 255, 0 ) )
-        self._applyTransform( item, 0, 0, x, y, rotation, scale, scale, Z_PHYSIC_ITEMS )
-        return item
-
-    def _sceneHingeBuilder( self, scene, element ):
-        pass
-
     def _sceneLinearForceFieldBuidler( self, scene, element ):
         # @todo ? Should we bother: gravity field usually does not have center, width & height
         x, y = self._elementV2Pos( element, 'center', (0, 0) )
@@ -646,10 +643,22 @@ class LevelGraphicView(QtGui.QGraphicsView):
         return scene.addLine( x, y, x+forcex, y+forcey, force_pen )
 
     def _sceneMotorBuilder( self, scene, element ):
+        # Nothing to render...
+        pass
+
+    def _sceneHingeBuilder( self, scene, element ):
+        # Similar to strand. Worth bothering rendering ?
         pass
 
     def _sceneParticlesBuilder( self, scene, element ):
-        pass
+        x, y = self._elementV2Pos( element, 'pos', (150,30) )
+        font = QtGui.QFont()
+        font.setPointSize( 24.0 )
+        font.setBold( True )
+        item = scene.addText( element.get('effect'), font )
+        item.setDefaultTextColor( QtGui.QColor( 168, 28, 255 ) )
+        self._setSceneItemXYZ( item, x,y )
+        return item
 
 
 class MainWindow(QtGui.QMainWindow):
