@@ -18,7 +18,6 @@
 # - updated level
 # - specific text/fx resources 
 
-
 import sys
 import os
 import math
@@ -48,6 +47,7 @@ class GameModel(QtCore.QObject):
            The following signals are provided:
            QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)')
            QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
+           QtCore.SIGNAL('objectPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
         """
         QtCore.QObject.__init__( self )
         self._wog_dir = os.path.split( wog_path )[0]
@@ -106,6 +106,11 @@ class GameModel(QtCore.QObject):
         self.emit( QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                    level_name, object_type, element )
 
+    def objectPropertyValueChanged( self, level_name, object_type, element, property_name, value ):
+        """Signal that an element attribute value has changed."""
+        self.emit( QtCore.SIGNAL('objectPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                   level_name, object_type, element, property_name, value )
+
 class LevelModel(object):
     def __init__( self, game_model, level_name ):
         self.game_model = game_model
@@ -127,6 +132,14 @@ class LevelModel(object):
 ##                    print 'Loaded', id, path
                 else:
                     print 'Failed to load image:', path
+        #@todo listen for resource property value change
+
+    def updateObjectPropertyValue( self, object_type, element, property_name, new_value ):
+        """Changes the property value of an object (scene, level or resource)."""
+        element.set( property_name, str(new_value) )
+        self.game_model.objectPropertyValueChanged( self.level_name,
+                                                    object_type, element,
+                                                    property_name, new_value )
 
     def getImagePixmap( self, image_id ):
         return self.images_by_id.get(image_id)
@@ -166,6 +179,9 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.connect( self.__game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                       self._updateObjectSelection )
         self.setRenderHints( QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform )
+        self.connect( self.__game_model,
+                      QtCore.SIGNAL('objectPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                      self._refreshOnObjectPropertyValueChange )
 
     def mouseMoveEvent( self, event):
         pos = self.mapToScene( event.pos() ) 
@@ -233,6 +249,13 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
     def getLevelModel( self ):
         return self.__game_model.getLevelModel( self.__level_name )
+
+    def _refreshOnObjectPropertyValueChange( self, level_name, object_type, element, property_name, value ):
+        """Refresh the view when an object property change (usually via the property list edition)."""
+        if level_name == self.__level_name:
+            # @todo be a bit smarter than this (e.g. refresh just the item)
+            # @todo avoid losing selection (should store selected object in level model)
+            self.refreshFromModel( self.getLevelModel() )
 
     def refreshFromModel( self, game_level_model ):
         scene = self.__scene
@@ -753,7 +776,7 @@ class MainWindow(QtGui.QMainWindow):
                 pass # need to get an handle on the element
 
     def _refreshPropertyList( self, level_name, object_type, element ):
-        self._refreshPropertyListFromElement( element )
+        self._refreshPropertyListFromElement( object_type, element )
         self._refreshSceneTreeSelection( object_type, element )
 
     def _refreshSceneTreeSelection( self, object_type, element ):
@@ -766,8 +789,8 @@ class MainWindow(QtGui.QMainWindow):
             elif item.isSelected():
                 item.setSelected( False )
 
-    def _refreshPropertyListFromElement( self, element ):
-        self.propertiesList.clear()
+    def _refreshPropertyListFromElement( self, object_type, element ):
+        # Order the properties so that main attributes are at the beginning
         attribute_names = element.keys()
         attribute_order = ( 'id', 'name', 'x', 'y', 'depth', 'radius',
                             'rotation', 'scalex', 'scaley', 'image', 'alpha' )
@@ -781,10 +804,14 @@ class MainWindow(QtGui.QMainWindow):
                 del attribute_names[index]
                 ordered_attributes.append( (name, element.get(name)) )
         ordered_attributes.extend( [ (name, element.get(name)) for name in attribute_names ] )
+        # Update the property list model
+        self._resetPropertyListModel()
         for name, value in ordered_attributes:
-            item = QtGui.QTreeWidgetItem( self.propertiesList )
-            item.setText( 0, name )
-            item.setText( 1, value )
+            item_name = QtGui.QStandardItem( name )
+            item_name.setEditable( False )
+            item_value = QtGui.QStandardItem( value )
+            item_value.setData( QtCore.QVariant( (object_type, element, name) ), QtCore.Qt.UserRole )
+            self.propertiesListModel.appendRow( [ item_name, item_value ] )
 
     def editLevel( self ):
         if self._game_model:
@@ -826,6 +853,18 @@ class MainWindow(QtGui.QMainWindow):
         if window:
             return window.widget().getLevelModel()
         return None
+
+    def _onPropertyListValueChanged( self, top_left_index, bottom_right_index ):
+        """Called the data of a property list item changed.
+           Update the corresponding value in the level model and broadcast the event to refresh the scene view.
+           """
+        if top_left_index.row() != bottom_right_index.row():
+            return # not the result of an edit
+        new_value = top_left_index.data( QtCore.Qt.DisplayRole ).toString()
+        data = top_left_index.data( QtCore.Qt.UserRole ).toPyObject()
+        if data:
+            object_type, element, property_name = data
+            self.getCurrentLevelModel().updateObjectPropertyValue( object_type, element, property_name, str(new_value) )
 
     def save(self):
         pass   
@@ -934,17 +973,24 @@ class MainWindow(QtGui.QMainWindow):
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
         
         dock = QtGui.QDockWidget(self.tr("Properties"), self)
-        self.propertiesList = QtGui.QTreeWidget(dock)
+        self.propertiesList = QtGui.QTreeView(dock)
         self.propertiesList.setRootIsDecorated( False )
         self.propertiesList.setAlternatingRowColors( True )
-        self.propertiesList.headerItem().setText( 0, self.tr( 'Name' ) )
-        self.propertiesList.headerItem().setText( 1, self.tr( 'Value' ) )
+
+        self.propertiesListModel = QtGui.QStandardItemModel(0, 2, self.propertiesList)  # nb rows, nb cols
+        self._resetPropertyListModel()
+        self.propertiesList.setModel( self.propertiesListModel )
         dock.setWidget(self.propertiesList)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
 
         self.connect(self.sceneTree, QtCore.SIGNAL("itemSelectionChanged()"),
                      self._onSceneTreeSelectionChange)
+        self.connect(self.propertiesListModel, QtCore.SIGNAL("dataChanged(const QModelIndex&,const QModelIndex&)"),
+                     self._onPropertyListValueChanged)
 
+    def _resetPropertyListModel( self ):
+        self.propertiesListModel.clear()
+        self.propertiesListModel.setHorizontalHeaderLabels( [self.tr('Name'), self.tr('Value')] )
 
     def _readSettings( self ):
         """Reads setting from previous session & restore window state."""
