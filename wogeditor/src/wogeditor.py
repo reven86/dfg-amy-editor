@@ -34,6 +34,7 @@ def tr( context, message ):
 MODEL_TYPE_LEVEL = 'Level'
 LEVEL_OBJECT_TYPE = 'LevelObject'
 SCENE_OBJECT_TYPE = 'SceneObject'
+LEVEL_RESOURCE_OBJECT_TYPE = 'LevelResourceObject'
 
 class GameModelException(Exception):
     pass
@@ -702,7 +703,6 @@ class MainWindow(QtGui.QMainWindow):
         
         self._readSettings()
 
-        self.__sceneTreeIndexByItem = {}
 
         self._game_model = None
         if self._wog_path:
@@ -732,16 +732,17 @@ class MainWindow(QtGui.QMainWindow):
                                       unicode(e))
 
     def _refreshLevel( self, old_model, new_game_level_model ):
-        self._refreshSceneTree( new_game_level_model )
+        """Refresh the tree views and property list on level switch."""
+        self._refreshElementTree( self.sceneTree, new_game_level_model.scene_tree )
+        self._refreshElementTree( self.levelTree, new_game_level_model.level_tree )
+        self._refreshElementTree( self.levelResourceTree, new_game_level_model.resource_tree )
         self._refreshGraphicsView( new_game_level_model )
 
-    def _refreshSceneTree( self, game_level_model ):
-        self.sceneTree.clear()
-        self.__sceneTreeIndexByItem = {}
-        
-        root_element = game_level_model.scene_tree
+    def _refreshElementTree( self, element_tree_view, root_element ):
+        """Refresh a tree view using its root element."""
+        element_tree_view.clear()
         root_item = None
-        item_parent = self.sceneTree
+        item_parent = element_tree_view
         items_to_process = [ (item_parent, root_element) ]
         while items_to_process:
             item_parent, element = items_to_process.pop(0)
@@ -754,25 +755,25 @@ class MainWindow(QtGui.QMainWindow):
             
             for child_element in element:
                 items_to_process.append( (item, child_element) )
-        self.sceneTree.expandItem( root_item )  
+        element_tree_view.expandItem( root_item )
 
     def _refreshGraphicsView( self, game_level_model ):
         level_view = self._findLevelGraphicView( game_level_model.level_name )
         if level_view:
             level_view.refreshFromModel( game_level_model )
         
-    def _onSceneTreeSelectionChange( self ):
+    def _onElementTreeSelectionChange( self, tree_view, object_type ):
         """Called whenever the scene tree selection change."""
-        selected_items = self.sceneTree.selectedItems()
+        selected_items = tree_view.selectedItems()
         if len( selected_items ) == 1:
             item = selected_items[0]
             element = item.data( 0, QtCore.Qt.UserRole ).toPyObject()
             game_level_model = self.getCurrentLevelModel()
             if game_level_model:
-                game_level_model.objectSelected( SCENE_OBJECT_TYPE, element )
+                game_level_model.objectSelected( object_type, element )
 ##            self._refreshPropertyListFromElement( element )
         else:
-            for item in self.sceneTree.selectedItems():
+            for item in tree_view.selectedItems():
                 pass # need to get an handle on the element
 
     def _refreshPropertyList( self, level_name, object_type, element ):
@@ -962,15 +963,36 @@ class MainWindow(QtGui.QMainWindow):
         self.statusBar().showMessage(self.tr("Ready"))
         self._mousePositionLabel = QtGui.QLabel()
         self.statusBar().addPermanentWidget( self._mousePositionLabel )
+
+    def createElementTreeView(self, name, object_type, sibling_tabbed_dock = None ):
+        dock = QtGui.QDockWidget( self.tr( name ), self )
+        dock.setAllowedAreas( QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea )
+        element_tree_view = QtGui.QTreeWidget( dock )
+        element_tree_view.headerItem().setText( 0, self.tr( 'Element' ) )
+        dock.setWidget( element_tree_view )
+        self.addDockWidget( QtCore.Qt.RightDockWidgetArea, dock )
+        if sibling_tabbed_dock: # Stacks the dock widget together
+            self.tabifyDockWidget( sibling_tabbed_dock, dock )
+        class OnTreeSelectionChangeBinder(object):
+            def __init__( self, tree_view, object_type, handler ):
+                self.__tree_view = tree_view
+                self.__object_type = object_type
+                self.__handler = handler
+
+            def __call__( self ):
+                self.__handler( self.__tree_view, self.__object_type )
+        callback = OnTreeSelectionChangeBinder( element_tree_view, object_type,
+                                                self._onElementTreeSelectionChange )
+        self.connect(element_tree_view, QtCore.SIGNAL("itemSelectionChanged()"),callback)
+        return dock, element_tree_view
         
     def createDockWindows(self):
-        dock = QtGui.QDockWidget(self.tr("Scene"), self)
-        dock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea)
-    
-        self.sceneTree = QtGui.QTreeWidget(dock)
-        self.sceneTree.headerItem().setText( 0, self.tr( 'Element' ) )
-        dock.setWidget(self.sceneTree)
-        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
+        scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', SCENE_OBJECT_TYPE )
+        level_dock, self.levelTree = self.createElementTreeView( 'Level', LEVEL_OBJECT_TYPE, scene_dock )
+        resource_dock, self.levelResourceTree = self.createElementTreeView( 'Resource',
+                                                                            LEVEL_RESOURCE_OBJECT_TYPE,
+                                                                            level_dock )
+        scene_dock.raise_() # Makes the scene the default active tab
         
         dock = QtGui.QDockWidget(self.tr("Properties"), self)
         self.propertiesList = QtGui.QTreeView(dock)
@@ -983,8 +1005,6 @@ class MainWindow(QtGui.QMainWindow):
         dock.setWidget(self.propertiesList)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
 
-        self.connect(self.sceneTree, QtCore.SIGNAL("itemSelectionChanged()"),
-                     self._onSceneTreeSelectionChange)
         self.connect(self.propertiesListModel, QtCore.SIGNAL("dataChanged(const QModelIndex&,const QModelIndex&)"),
                      self._onPropertyListValueChanged)
 
