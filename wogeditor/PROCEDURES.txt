@@ -1,0 +1,20 @@
+This documents contains procedure used to manage the project.
+
+
+* Releases
+  - run:
+    cd src
+    makedist
+    Then checks that no error occurred and tarball are available.
+    Increases version number in makedist.bat
+    Commit
+  - upload files using https://frs.sourceforge.net/webupload
+    (releaseforge seems to be broken)
+
+* Pre-compiling pycrypto third-party
+  - Get the source from http://www.amk.ca/python/code/crypto.html
+  - run:
+    python setup.py bdist_wininst
+  - package executable install is available in the dist/ directory.
+
+NitroZark <nitrozark at users.sourceforge.net>
