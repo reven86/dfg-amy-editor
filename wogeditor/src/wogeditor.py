@@ -198,6 +198,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
         items = self.__scene.selectedItems()
         if len(items) == 1: # do not handle multiple selection for now
             for item in items:
+##                print 'selection changed', item
                 element = item.data(0).toPyObject()
                 assert element is not None, "Hmmm, forgot to associate a data to that item..."
                 if element in self.__scene_elements:
@@ -211,11 +212,20 @@ class LevelGraphicView(QtGui.QGraphicsView):
         """Ensures that the selected object is seleted in the graphic view.
            Called whenever an object is selected in the tree view or the graphic view.
         """
+        # Notes: we do not change selection if the item belong to an item group.
+        # All selection events send to an item belonging to a group are forwarded
+        # to the item group, which caused infinite recursion (unselect child,
+        # then unselect parent, selection parent...)
         for item in self.__scene.items():
             element = item.data(0).toPyObject()
             if element == selected_element:
-                item.setSelected( True )
-            elif item.isSelected():
+##                print 'Selecting', item, 'isSelected =', item.isSelected()
+##                print '    Group is', item.group()
+                if not item.isSelected() and item.group() is None:
+                    item.setSelected( True )
+            elif item.isSelected() and item.group() is None:
+##                print 'Unselecting', item, 'isSelected =', item.isSelected()
+##                print '    Group is', item.group()
                 item.setSelected( False )
 
     def matchModel( self, model_type, level_name ):
