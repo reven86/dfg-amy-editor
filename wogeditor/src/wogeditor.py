@@ -75,6 +75,11 @@ class GameModel(QtCore.QObject):
         xml_tree = xml.etree.ElementTree.fromstring( xml_data )
         return xml_tree
 
+    def _savePackedData( self, dir, file_name, element_tree ):
+        path = os.path.join( dir, file_name )
+        xml_data = xml.etree.ElementTree.tostring( element_tree )
+        wogfile.encrypt_file_data( path, xml_data )
+
     def _loadDirList( self, dir ):
         if not os.path.isdir( dir ):
             raise GameModelException( tr('LoadLevelList',
@@ -112,6 +117,13 @@ class GameModel(QtCore.QObject):
         self.emit( QtCore.SIGNAL('objectPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                    level_name, object_type, element, property_name, value )
 
+    def save( self ):
+        """Save all changes.
+           Raise exception IOError on failure.
+        """
+        for level_model in self.level_models_by_name.itervalues():
+            level_model.saveModifiedElements()
+
 class LevelModel(object):
     def __init__( self, game_model, level_name ):
         self.game_model = game_model
@@ -120,7 +132,7 @@ class LevelModel(object):
         self.level_tree = game_model._loadPackedData( level_dir, level_name + '.level.bin' )
         self.resource_tree = game_model._loadPackedData( level_dir, level_name + '.resrc.bin' )
         self.scene_tree = game_model._loadPackedData( level_dir, level_name + '.scene.bin' )
-        self.selected_object = ('SCENE', 'TAG', 'scene')
+        self.dirty_object_types = set()
 
         self.images_by_id = {}
         for image_element in self.resource_tree.findall( './/Image' ):
@@ -135,9 +147,24 @@ class LevelModel(object):
                     print 'Failed to load image:', path
         #@todo listen for resource property value change
 
+    def saveModifiedElements( self ):
+        """Save the modified scene, level, resource tree."""
+        level_name = self.level_name
+        level_dir = os.path.join( self.game_model._res_dir, 'levels', level_name )
+        if LEVEL_OBJECT_TYPE in self.dirty_object_types:
+            self.game_model._savePackedData( level_dir, level_name + '.level.bin', self.level_tree )
+            self.dirty_object_types.remove( LEVEL_OBJECT_TYPE )
+        if LEVEL_RESOURCE_OBJECT_TYPE in self.dirty_object_types:
+            self.game_model._savePackedData( level_dir, level_name + '.resrc.bin', self.resource_tree )
+            self.dirty_object_types.remove( LEVEL_RESOURCE_OBJECT_TYPE )
+        if SCENE_OBJECT_TYPE in self.dirty_object_types:
+            self.game_model._savePackedData( level_dir, level_name + '.scene.bin', self.scene_tree )
+            self.dirty_object_types.remove( SCENE_OBJECT_TYPE )
+
     def updateObjectPropertyValue( self, object_type, element, property_name, new_value ):
         """Changes the property value of an object (scene, level or resource)."""
         element.set( property_name, str(new_value) )
+        self.dirty_object_types.add( object_type )
         self.game_model.objectPropertyValueChanged( self.level_name,
                                                     object_type, element,
                                                     property_name, new_value )
@@ -868,27 +895,20 @@ class MainWindow(QtGui.QMainWindow):
             self.getCurrentLevelModel().updateObjectPropertyValue( object_type, element, property_name, str(new_value) )
 
     def save(self):
-        pass   
-##        filename = QtGui.QFileDialog.getSaveFileName(self,
-##                    self.tr("Choose a file name"), ".",
-##                    self.tr("HTML (*.html *.htm)"))
-##        if filename.isEmpty():
-##            return
-##
-##        file = QtCore.QFile(filename)
-##        if not file.open(QtCore.QFile.WriteOnly | QtCore.QFile.Text):
-##            QtGui.QMessageBox.warning(self, self.tr("Dock Widgets"),
-##                                      self.tr("Cannot write file %1:\n%2.")
-##                                      .arg(filename)
-##                                      .arg(file.errorString()))
-##            return
-##
-##        out = QtCore.QTextStream(file)
-##        QtGui.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
-##        out << self.textEdit.toHtml()
-##        QtGui.QApplication.restoreOverrideCursor()
-##        
-##        self.statusBar().showMessage(self.tr("Saved '%1'").arg(filename), 2000)
+        """Saving all modified elements.
+        """
+        if self._game_model:
+            try:
+                try:
+                    QtGui.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+                    self._game_model.save()
+                finally:
+                    QtGui.QApplication.restoreOverrideCursor()
+            except IOError, e:
+                QtGui.QMessageBox.warning(self, self.tr("Failed saving levels"),
+                          unicode(e))
+            else:
+                self.statusBar().showMessage(self.tr("Saved all modified levels"), 2000)
 
     def undo( self ):
         pass
@@ -915,10 +935,10 @@ class MainWindow(QtGui.QMainWindow):
         self.editLevelAction.setStatusTip(self.tr("Select a level to edit"))
         self.connect(self.editLevelAction, QtCore.SIGNAL("triggered()"), self.editLevel)
         
-        self.saveAct = QtGui.QAction(QtGui.QIcon(":/images/save.png"), self.tr("&Save..."), self)
-        self.saveAct.setShortcut(self.tr("Ctrl+S"))
-        self.saveAct.setStatusTip(self.tr("Save all changes made to the game"))
-        self.connect(self.saveAct, QtCore.SIGNAL("triggered()"), self.save)
+        self.saveAction = QtGui.QAction(QtGui.QIcon(":/images/save.png"), self.tr("&Save..."), self)
+        self.saveAction.setShortcut(self.tr("Ctrl+S"))
+        self.saveAction.setStatusTip(self.tr("Save all changes made to the game"))
+        self.connect(self.saveAction, QtCore.SIGNAL("triggered()"), self.save)
 
 ##        self.undoAct = QtGui.QAction(QtGui.QIcon(":/images/undo.png"), self.tr("&Undo"), self)
 ##        self.undoAct.setShortcut(self.tr("Ctrl+Z"))
@@ -938,6 +958,7 @@ class MainWindow(QtGui.QMainWindow):
         self.fileMenu = self.menuBar().addMenu(self.tr("&File"))
         self.fileMenu.addAction(self.changeWOGDirAction)
         self.fileMenu.addAction(self.editLevelAction)
+        self.fileMenu.addAction(self.saveAction)
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.quitAct)
         
@@ -955,6 +976,7 @@ class MainWindow(QtGui.QMainWindow):
         self.fileToolBar = self.addToolBar(self.tr("File"))
         self.fileToolBar.addAction(self.changeWOGDirAction)
         self.fileToolBar.addAction(self.editLevelAction)
+        self.fileToolBar.addAction(self.saveAction)
         
 ##        self.editToolBar = self.addToolBar(self.tr("Edit"))
 ##        self.editToolBar.addAction(self.undoAct)

@@ -21,19 +21,25 @@ def make_aes_cipher():
     cipher = AES.new(binary_key, AES.MODE_CBC)
     return cipher
 
+def encrypt_file_data( output_path, xml_data ):
+    """Encrypt the string xml_data into a .bin file output_path."""
+    cipher = make_aes_cipher()
+    # adds filler so that input data length is a multiple of 16
+    filler = '\xfd\xfd\xfd\xfd' + '\0' * 12
+    filler_size = 16 - len(xml_data) % 16
+    xml_data += filler[0:filler_size]
+    # encrypt the data
+    encrypted_data = cipher.encrypt( xml_data )
+    with file( output_path, 'wb' ) as fout:
+        fout.write( encrypted_data )
+    return True
+
 def encrypt_file( input_path, output_path ):
     """Encrypt XML file input_path into .bin file output_path using AES algorithm."""
     cipher = make_aes_cipher()
     with file( input_path, 'rb' ) as f:
         xml_data = f.read()
-        # adds filler so that input data length is a multiple of 16
-        filler = '\xfd\xfd\xfd\xfd' + '\0' * 12
-        filler_size = 16 - len(xml_data) % 16
-        xml_data += filler[0:filler_size]
-        # encrypt the data
-        encrypted_data = cipher.encrypt( xml_data )
-        with file( output_path, 'wb' ) as fout:
-            fout.write( encrypted_data )
+        if encrypt_file_data( output_path, xml_data ):
             print 'Encrypted "%s" into "%s"' % (input_path, output_path)
     return True
 
