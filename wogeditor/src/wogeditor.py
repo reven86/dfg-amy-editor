@@ -20,8 +20,10 @@
 
 import sys
 import os
+import os.path
 import math
 import itertools
+import subprocess
 import wogfile
 import metawog
 import xml.etree.ElementTree 
@@ -50,6 +52,7 @@ class GameModel(QtCore.QObject):
            QtCore.SIGNAL('objectPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
         """
         QtCore.QObject.__init__( self )
+        self._wog_path = wog_path
         self._wog_dir = os.path.split( wog_path )[0]
         properties_dir = os.path.join( self._wog_dir, u'properties' )
         self._res_dir = os.path.join( self._wog_dir, u'res' )
@@ -122,6 +125,13 @@ class GameModel(QtCore.QObject):
         """
         for level_model in self.level_models_by_name.itervalues():
             level_model.saveModifiedElements()
+
+    def playLevel( self, level_name ):
+        """Starts WOG to test the specified level."""
+        pid = subprocess.Popen( [self._wog_path, level_name], cwd = self._wog_dir ).pid
+        # Don't wait for process end...
+        # @Todo ? Monitor process so that only one can be launched ???
+
 
 class LevelModel(object):
     def __init__( self, game_model, level_name ):
@@ -1102,6 +1112,7 @@ class MainWindow(QtGui.QMainWindow):
                 try:
                     QtGui.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
                     self._game_model.save()
+                    return True
                 finally:
                     QtGui.QApplication.restoreOverrideCursor()
             except IOError, e:
@@ -1109,13 +1120,18 @@ class MainWindow(QtGui.QMainWindow):
                           unicode(e))
             else:
                 self.statusBar().showMessage(self.tr("Saved all modified levels"), 2000)
+        return False
+
+    def saveAndPlayLevel(self):
+        if self.save():
+            level_model = self.getCurrentLevelModel()
+            if level_model:
+                self._game_model.playLevel( level_model.level_name )
+            else:
+                self.statusBar().showMessage(self.tr("You must select a level to play"), 2000)
 
     def undo( self ):
         pass
-        
-##    def undo(self):
-##        document = self.textEdit.document()
-##        document.undo()
         
     def about(self):
         QtGui.QMessageBox.about(self, self.tr("About WOG Editor"),
@@ -1143,6 +1159,11 @@ class MainWindow(QtGui.QMainWindow):
         self.saveAction.setShortcut(self.tr("Ctrl+S"))
         self.saveAction.setStatusTip(self.tr("Save all changes made to the game"))
         self.connect(self.saveAction, QtCore.SIGNAL("triggered()"), self.save)
+        
+        self.playAction = QtGui.QAction(QtGui.QIcon(":/images/play.png"), self.tr("&Save and play Level..."), self)
+        self.playAction.setShortcut(self.tr("Ctrl+P"))
+        self.playAction.setStatusTip(self.tr("Save all changes and play the selected level"))
+        self.connect(self.playAction, QtCore.SIGNAL("triggered()"), self.saveAndPlayLevel)
 
 ##        self.undoAct = QtGui.QAction(QtGui.QIcon(":/images/undo.png"), self.tr("&Undo"), self)
 ##        self.undoAct.setShortcut(self.tr("Ctrl+Z"))
@@ -1163,6 +1184,7 @@ class MainWindow(QtGui.QMainWindow):
         self.fileMenu.addAction(self.changeWOGDirAction)
         self.fileMenu.addAction(self.editLevelAction)
         self.fileMenu.addAction(self.saveAction)
+        self.fileMenu.addAction(self.playAction)
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.quitAct)
         
@@ -1181,6 +1203,7 @@ class MainWindow(QtGui.QMainWindow):
         self.fileToolBar.addAction(self.changeWOGDirAction)
         self.fileToolBar.addAction(self.editLevelAction)
         self.fileToolBar.addAction(self.saveAction)
+        self.fileToolBar.addAction(self.playAction)
         
 ##        self.editToolBar = self.addToolBar(self.tr("Edit"))
 ##        self.editToolBar.addAction(self.undoAct)
