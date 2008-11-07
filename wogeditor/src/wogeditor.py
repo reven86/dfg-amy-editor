@@ -210,6 +210,10 @@ class LevelGraphicView(QtGui.QGraphicsView):
                       QtCore.SIGNAL('objectPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                       self._refreshOnObjectPropertyValueChange )
 
+    def selectLevelOnSubWindowActivation( self ):
+        """Called when the user switched MDI window."""
+        self.__game_model.selectLevel( self.__level_name )
+
     def mouseMoveEvent( self, event):
         pos = self.mapToScene( event.pos() ) 
         self.emit( QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)'), pos.x(), pos.y() )
@@ -912,10 +916,8 @@ class MainWindow(QtGui.QMainWindow):
         QtGui.QMainWindow.__init__(self, parent)
 
         self._wog_path = None # Path to worl of goo executable
-        
-        self.mdiArea = QtGui.QMdiArea()
-        self.setCentralWidget(self.mdiArea)
-        
+
+        self.createMDIArea()
         self.createActions()
         self.createMenus()
         self.createToolBars()
@@ -980,8 +982,9 @@ class MainWindow(QtGui.QMainWindow):
         element_tree_view.expandItem( root_item )
 
     def _refreshGraphicsView( self, game_level_model ):
-        level_view = self._findLevelGraphicView( game_level_model.level_name )
-        if level_view:
+        level_mdi = self._findLevelGraphicView( game_level_model.level_name )
+        if level_mdi:
+            level_view = level_mdi.widget()
             level_view.refreshFromModel( game_level_model )
         
     def _onElementTreeSelectionChange( self, tree_view, object_scope ):
@@ -1050,11 +1053,13 @@ class MainWindow(QtGui.QMainWindow):
                 if sub_window:
                     self.mdiArea.setActiveSubWindow( sub_window )
                 else:
-                    sub_window = LevelGraphicView( level_name, self._game_model )
-                    self.mdiArea.addSubWindow( sub_window )
-                    self.connect( sub_window, QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)'),
+                    view = LevelGraphicView( level_name, self._game_model )
+                    sub_window = self.mdiArea.addSubWindow( view )
+                    self.connect( view, QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)'),
                                   self._updateMouseScenePosInStatusBar )
-                    sub_window.show()
+                    self.connect( sub_window, QtCore.SIGNAL('aboutToActivate()'),
+                                  view.selectLevelOnSubWindowActivation )
+                    view.show()
 
     def _updateMouseScenePosInStatusBar( self, x, y ):
         """Called whenever the mouse move in the scene view."""
@@ -1118,6 +1123,10 @@ class MainWindow(QtGui.QMainWindow):
             <p>Link to Sourceforge project:
             <a href="http://www.sourceforge.net/projects/wogedit">http://www.sourceforge.net/projects/wogedit</a></p>
             <p>Copyright 2008, NitroZark &lt;nitrozark at users.sourceforget.net&gt;</p>"""))
+
+    def createMDIArea( self ):
+        self.mdiArea = QtGui.QMdiArea()
+        self.setCentralWidget(self.mdiArea)
     
     def createActions(self):
         self.changeWOGDirAction = QtGui.QAction(QtGui.QIcon(":/images/open.png"), self.tr("&Change WOG directory..."), self)
