@@ -21,7 +21,9 @@
 import sys
 import os
 import math
+import itertools
 import wogfile
+import metawog
 import xml.etree.ElementTree 
 from PyQt4 import QtCore, QtGui
 import qthelper
@@ -32,9 +34,6 @@ def tr( context, message ):
     return QtCore.QCoreApplication.translate( message )
 
 MODEL_TYPE_LEVEL = 'Level'
-LEVEL_OBJECT_TYPE = 'LevelObject'
-SCENE_OBJECT_TYPE = 'SceneObject'
-LEVEL_RESOURCE_OBJECT_TYPE = 'LevelResourceObject'
 
 class GameModelException(Exception):
     pass
@@ -107,15 +106,15 @@ class GameModel(QtCore.QObject):
                    old_model,
                    level_model )
 
-    def objectSelected( self, level_name, object_type, element ):
+    def objectSelected( self, level_name, object_scope, element ):
         """Signal that the specified object has been selected."""
         self.emit( QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                   level_name, object_type, element )
+                   level_name, object_scope, element )
 
-    def objectPropertyValueChanged( self, level_name, object_type, element, property_name, value ):
+    def objectPropertyValueChanged( self, level_name, object_scope, element, property_name, value ):
         """Signal that an element attribute value has changed."""
         self.emit( QtCore.SIGNAL('objectPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                   level_name, object_type, element, property_name, value )
+                   level_name, object_scope, element, property_name, value )
 
     def save( self ):
         """Save all changes.
@@ -151,32 +150,32 @@ class LevelModel(object):
         """Save the modified scene, level, resource tree."""
         level_name = self.level_name
         level_dir = os.path.join( self.game_model._res_dir, 'levels', level_name )
-        if LEVEL_OBJECT_TYPE in self.dirty_object_types:
+        if metawog.LEVEL_GAME_SCOPE in self.dirty_object_types:
             self.game_model._savePackedData( level_dir, level_name + '.level.bin', self.level_tree )
-            self.dirty_object_types.remove( LEVEL_OBJECT_TYPE )
-        if LEVEL_RESOURCE_OBJECT_TYPE in self.dirty_object_types:
+            self.dirty_object_types.remove( metawog.LEVEL_GAME_SCOPE )
+        if metawog.LEVEL_RESOURCE_SCOPE in self.dirty_object_types:
             self.game_model._savePackedData( level_dir, level_name + '.resrc.bin', self.resource_tree )
-            self.dirty_object_types.remove( LEVEL_RESOURCE_OBJECT_TYPE )
-        if SCENE_OBJECT_TYPE in self.dirty_object_types:
+            self.dirty_object_types.remove( metawog.LEVEL_RESOURCE_SCOPE )
+        if metawog.LEVEL_SCENE_SCOPE in self.dirty_object_types:
             self.game_model._savePackedData( level_dir, level_name + '.scene.bin', self.scene_tree )
-            self.dirty_object_types.remove( SCENE_OBJECT_TYPE )
+            self.dirty_object_types.remove( metawog.LEVEL_SCENE_SCOPE )
 
-    def updateObjectPropertyValue( self, object_type, element, property_name, new_value ):
+    def updateObjectPropertyValue( self, object_scope, element, property_name, new_value ):
         """Changes the property value of an object (scene, level or resource)."""
         element.set( property_name, str(new_value) )
-        self.dirty_object_types.add( object_type )
+        self.dirty_object_types.add( object_scope )
         self.game_model.objectPropertyValueChanged( self.level_name,
-                                                    object_type, element,
+                                                    object_scope, element,
                                                     property_name, new_value )
 
     def getImagePixmap( self, image_id ):
         return self.images_by_id.get(image_id)
 
-    def objectSelected( self, object_type, element ):
+    def objectSelected( self, object_scope, element ):
         """Indicates that the specified object has been selected.
-           object_type: one of LEVEL_OBJECT_TYPE, SCENE_OBJECT_TYPE
+           object_scope: one of metawog.LEVEL_GAME_SCOPE, metawog.LEVEL_SCENE_SCOPE
         """
-        self.game_model.objectSelected( self.level_name, object_type, element )
+        self.game_model.objectSelected( self.level_name, object_scope, element )
 
 Z_LEVEL_ITEMS = 10000.0
 Z_PHYSIC_ITEMS = 9000.0
@@ -246,13 +245,13 @@ class LevelGraphicView(QtGui.QGraphicsView):
                 element = item.data(0).toPyObject()
                 assert element is not None, "Hmmm, forgot to associate a data to that item..."
                 if element in self.__scene_elements:
-                    self.getLevelModel().objectSelected( SCENE_OBJECT_TYPE, element )
+                    self.getLevelModel().objectSelected( metawog.LEVEL_SCENE_SCOPE, element )
                 elif element in self.__level_elements:
-                    self.getLevelModel().objectSelected( LEVEL_OBJECT_TYPE, element )
+                    self.getLevelModel().objectSelected( metawog.LEVEL_GAME_SCOPE, element )
                 else: # Should never get there
                     assert False
 
-    def _updateObjectSelection( self, level_name, object_type, selected_element ):
+    def _updateObjectSelection( self, level_name, object_scope, selected_element ):
         """Ensures that the selected object is seleted in the graphic view.
            Called whenever an object is selected in the tree view or the graphic view.
         """
@@ -278,7 +277,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
     def getLevelModel( self ):
         return self.__game_model.getLevelModel( self.__level_name )
 
-    def _refreshOnObjectPropertyValueChange( self, level_name, object_type, element, property_name, value ):
+    def _refreshOnObjectPropertyValueChange( self, level_name, object_scope, element, property_name, value ):
         """Refresh the view when an object property change (usually via the property list edition)."""
         if level_name == self.__level_name:
             # @todo be a bit smarter than this (e.g. refresh just the item)
@@ -712,6 +711,202 @@ class LevelGraphicView(QtGui.QGraphicsView):
         return item
 
 
+
+
+# For a given attribute type, we need:
+# an editor creator or an optional validator
+# the editor to text converter (can be defaulted)
+
+TRUE_BOOLEANS_TEXT = set(u'true yes ok'.split())
+FALSE_BOOLEANS_TEXT = set(u'false no'.split())
+BOOLEANS_TEXT = set( list(TRUE_BOOLEANS_TEXT) + list(FALSE_BOOLEANS_TEXT) )
+
+def do_validate_enumerated_property( input, enum_values, type_name, is_list = False ):
+    input = unicode( input.toLower() )
+    input_values = input.split(',')
+    if len(input_values) == 0:
+        if is_list:
+            return QtGui.QValidator.Acceptable
+        return QtGui.QValidator.Intermediate, 'One %s value is required' % type_name
+    elif len(input_values) != 1 and not is_list:
+        return QtGui.QValidator.Intermediate, 'Only one %s value is allowed' % type_name
+    for input_value in input_values:
+        if input_value not in enum_values:
+            return ( QtGui.QValidator.Intermediate, 'Invalid %s value: "%%1". Valid values: %%2' % type_name,
+                     input_value, ','.join(enum_values) )
+    return QtGui.QValidator.Acceptable
+
+def validate_enumerated_property( attribute_desc, input ):
+    return do_validate_enumerated_property( input, attribute_desc.values, attribute_desc.name, attribute_desc.is_list )
+
+def validate_boolean_property( attribute_desc, input ):
+    return do_validate_enumerated_property( input, BOOLEANS_TEXT, 'boolean' )
+
+def convert_boolean_property( editor, model, index, attribute_desc ):
+    input = editor.text()
+    if do_validate_enumerated_property( input, TRUE_BOOLEANS_TEXT, 'boolean' ) == QtGui.QValidator.Acceptable:
+        value = u'true'
+    else:
+        assert do_validate_enumerated_property( input, FALSE_BOOLEANS_TEXT, 'boolean' ) == QtGui.QValidator.Acceptable
+        value = u'false'
+    model.setData(index, QtCore.QVariant( unicode(value) ), QtCore.Qt.EditRole)
+
+def do_validate_numeric_property( attribute_desc, input, value_type, error_message ):
+    try:
+        value = value_type(str(input))
+        if attribute_desc.min_value is not None and value < attribute_desc.min_value:
+            return QtGui.QValidator.Intermediate, 'Value must be >= %1', str(attribute_desc.min_value)
+        if attribute_desc.max_value is not None and value > attribute_desc.max_value:
+            return QtGui.QValidator.Intermediate, 'Value must be < %1', str(attribute_desc.max_value)
+        return QtGui.QValidator.Acceptable
+    except ValueError:
+        return QtGui.QValidator.Intermediate, error_message
+
+def validate_integer_property( attribute_desc, input ):
+    return do_validate_numeric_property( attribute_desc, input, int, 'Value must be an integer' )
+
+def validate_real_property( attribute_desc, input ):
+    return do_validate_numeric_property( attribute_desc, input, float, 'Value must be a real number' )
+
+def validate_rgb_property( attribute_desc, input ):
+    input = unicode(input)
+    values = input.split(',')
+    if len(values) != 3:
+        return QtGui.QValidator.Intermediate, 'RGB color must be of the form "R,G,B" were R,G,B are integer in range [0-255].'
+    for name, value in zip('RGB', values):
+        try:
+            value = int(value)
+            if value <0 or value >255:
+                return QtGui.QValidator.Intermediate, 'RGB color component "%s" must be in range [0-255].' % name
+        except ValueError:
+            return QtGui.QValidator.Intermediate, 'RGB color must be of the form "R,G,B" were R,G,B are integer in range [0-255].'
+    return QtGui.QValidator.Acceptable
+
+def validate_xy_property( attribute_desc, input ):
+    input = unicode(input)
+    values = input.split(',')
+    if len(values) != 2:
+        return QtGui.QValidator.Intermediate, 'Position must be of the form "X,Y" were X and Y are real number'
+    for name, value in zip('XY', values):
+        try:
+            value = float(value)
+        except ValueError:
+            return QtGui.QValidator.Intermediate, 'Position must be of the form "X,Y" were X and Y are real number'
+    return QtGui.QValidator.Acceptable
+
+def validate_reference_property( attribute_desc, input ):
+    # @todo
+    return QtGui.QValidator.Acceptable
+
+# For later
+##def editor_rgb_property( parent, option, index, element, attribute_desc, default_editor_factory ):
+##    widget = QtGui.QWidget( parent )
+##    hbox = QtGui.QHBoxLayout()
+##    hbox.addWidget( default_editor_factory )
+##    push_button = QtGui.QPushButton( 
+##    hbox.addWidget( push_button )
+    
+
+# A dictionnary of specific handler for metawog attribute types.
+# validator: called whenever the user change the input.
+#           a callable(attribute_desc, input) returning either QtGui.QValidator.Acceptable if input is a valid value,
+#           or a tuple (QtGui.QValidator.Intermediate, message, arg1, arg2...) if the input is invalid. Message must be
+#           in QString format (e.g. %1 for arg 1...). The message is displayed in the status bar.
+# converter: called when the user valid the input (enter key usualy) to store the edited value into the model.
+#            a callable(editor, model, index, attribute_desc).
+ATTRIBUTE_TYPE_EDITOR_HANDLERS = {
+    metawog.BOOLEAN_TYPE: { 'validator': validate_boolean_property, 'converter': convert_boolean_property },
+    metawog.INTEGER_TYPE: { 'validator': validate_integer_property },
+    metawog.REAL_TYPE: { 'validator': validate_real_property },
+    metawog.RGB_COLOR_TYPE: { 'validator': validate_rgb_property },
+    metawog.XY_TYPE: { 'validator': validate_xy_property },
+    metawog.ENUMERATED_TYPE: { 'validator': validate_enumerated_property },
+    metawog.ANGLE_DEGREES_TYPE:  { 'validator': validate_real_property },
+    metawog.REFERENCE_TYPE: { 'validator': validate_reference_property }
+    }
+
+class PropertyValidator(QtGui.QValidator):
+    def __init__( self, parent, main_window, attribute_desc, validator ):
+        QtGui.QValidator.__init__( self, parent )
+        self.main_window = main_window
+        self.attribute_desc = attribute_desc
+        self.validator = validator
+
+    def validate( self, input, pos ):
+        """Returns state & pos.
+           Valid values for state are: QtGui.QValidator.Invalid, QtGui.QValidator.Acceptable, QtGui.QValidator.Intermediate.
+           Returning Invalid actually prevent the user from inputing that a value that would make the input invalid. It is
+           better to avoid returning this at it prevent temporary invalid value (when using cut'n'paste for example)."""
+        status = self.validator( self.attribute_desc, input )
+        if type(status) == tuple:
+            message = status[1]
+            args = status[2:]
+            status = status[0]
+            message = self.tr(message)
+            for arg in args:
+                message = message.arg(arg)
+            print 'got error message', message
+            self.main_window.statusBar().showMessage(message, 2000)
+        return ( status, pos )
+
+class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
+    def __init__( self, parent, main_window ):
+        QtGui.QStyledItemDelegate.__init__( self, parent )
+        self.main_window = main_window
+
+    def createEditor( self, parent, option, index ):
+        """Returns the widget used to edit the item specified by index for editing. The parent widget and style option are used to control how the editor widget appears."""
+        print "createEditor() called", index
+        object_scope, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
+        need_specific_editor = handler_data and handler_data.get('editor')
+        if need_specific_editor:
+            class DefaultEditorFactory(object):
+                def __init__( self, *args ):
+                    self.args = args
+                def __call_( self, parent ):
+                    return QtGui.QStyledItemDelegate.createEditor( args[0], parent, *(args[1:]) )
+            editor = handler_data['editor']( parent, option, index, element, attribute_desc, DefaultEditorFactory() )
+        else: # No specific, use default QLineEditor
+            editor = QtGui.QStyledItemDelegate.createEditor( self, parent, option, index )
+        if handler_data and handler_data.get('validator'):
+            validator = PropertyValidator( editor, self.main_window, attribute_desc, handler_data['validator'] )
+            editor.setValidator( validator )
+        return editor
+
+    def _getHandlerData( self, index ):
+        """Returns data related to item at the specified index.
+           Returns: tuple (object_scope, element, property_name, attribute_desc, handler_data). 
+           handler_data may be None if no specific handler is defined for the attribute_desc.
+           attribute_desc may be None if metawog is missing some attribute declaration.
+           """
+        data =  index.data( QtCore.Qt.UserRole ).toPyObject()
+        # if this fails, then we are trying to edit the property name or item was added incorrectly.
+        assert data is not None
+        object_scope, element, property_name = data
+        attribute_desc = object_scope.get_attribute_desc( element.tag, property_name )
+        if attribute_desc is None:
+            print 'Warning: metawog is incomplet, no attribute description for', object_scope, property_name
+            handler_data = None
+        else:
+            handler_data = ATTRIBUTE_TYPE_EDITOR_HANDLERS.get( attribute_desc.type )
+        return (object_scope, element, property_name, attribute_desc, handler_data)
+
+    def setEditorData( self, editor, index ):
+        """Sets the data to be displayed and edited by the editor from the data model item specified by the model index."""
+        QtGui.QStyledItemDelegate.setEditorData( self, editor, index )
+        print "setEditorData() called", index
+
+    def setModelData( self, editor, model, index ):
+        """Gets data drom the editor widget and stores it in the specified model at the item index."""
+        print "setModelData() called", index
+        object_scope, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
+        need_specific_converter = handler_data and handler_data.get('converter')
+        if need_specific_converter:
+            handler_data['converter']( editor, model, index, attribute_desc )
+        else:
+            QtGui.QStyledItemDelegate.setModelData( self, editor, model, index )
+
+
 class MainWindow(QtGui.QMainWindow):
     def __init__(self, parent=None):
         QtGui.QMainWindow.__init__(self, parent)
@@ -789,7 +984,7 @@ class MainWindow(QtGui.QMainWindow):
         if level_view:
             level_view.refreshFromModel( game_level_model )
         
-    def _onElementTreeSelectionChange( self, tree_view, object_type ):
+    def _onElementTreeSelectionChange( self, tree_view, object_scope ):
         """Called whenever the scene tree selection change."""
         selected_items = tree_view.selectedItems()
         if len( selected_items ) == 1:
@@ -797,17 +992,17 @@ class MainWindow(QtGui.QMainWindow):
             element = item.data( 0, QtCore.Qt.UserRole ).toPyObject()
             game_level_model = self.getCurrentLevelModel()
             if game_level_model:
-                game_level_model.objectSelected( object_type, element )
+                game_level_model.objectSelected( object_scope, element )
 ##            self._refreshPropertyListFromElement( element )
         else:
             for item in tree_view.selectedItems():
                 pass # need to get an handle on the element
 
-    def _refreshPropertyList( self, level_name, object_type, element ):
-        self._refreshPropertyListFromElement( object_type, element )
-        self._refreshSceneTreeSelection( object_type, element )
+    def _refreshPropertyList( self, level_name, object_scope, element ):
+        self._refreshPropertyListFromElement( object_scope, element )
+        self._refreshSceneTreeSelection( object_scope, element )
 
-    def _refreshSceneTreeSelection( self, object_type, element ):
+    def _refreshSceneTreeSelection( self, object_scope, element ):
         for item in qthelper.iterQTreeWidget( self.sceneTree ):
             if item.data( 0, QtCore.Qt.UserRole ).toPyObject() == element:
                 item.setSelected( True )
@@ -817,7 +1012,7 @@ class MainWindow(QtGui.QMainWindow):
             elif item.isSelected():
                 item.setSelected( False )
 
-    def _refreshPropertyListFromElement( self, object_type, element ):
+    def _refreshPropertyListFromElement( self, object_scope, element ):
         # Order the properties so that main attributes are at the beginning
         attribute_names = element.keys()
         attribute_order = ( 'id', 'name', 'x', 'y', 'depth', 'radius',
@@ -838,7 +1033,7 @@ class MainWindow(QtGui.QMainWindow):
             item_name = QtGui.QStandardItem( name )
             item_name.setEditable( False )
             item_value = QtGui.QStandardItem( value )
-            item_value.setData( QtCore.QVariant( (object_type, element, name) ), QtCore.Qt.UserRole )
+            item_value.setData( QtCore.QVariant( (object_scope, element, name) ), QtCore.Qt.UserRole )
             self.propertiesListModel.appendRow( [ item_name, item_value ] )
 
     def editLevel( self ):
@@ -891,8 +1086,8 @@ class MainWindow(QtGui.QMainWindow):
         new_value = top_left_index.data( QtCore.Qt.DisplayRole ).toString()
         data = top_left_index.data( QtCore.Qt.UserRole ).toPyObject()
         if data:
-            object_type, element, property_name = data
-            self.getCurrentLevelModel().updateObjectPropertyValue( object_type, element, property_name, str(new_value) )
+            object_scope, element, property_name = data
+            self.getCurrentLevelModel().updateObjectPropertyValue( object_scope, element, property_name, str(new_value) )
 
     def save(self):
         """Saving all modified elements.
@@ -986,7 +1181,7 @@ class MainWindow(QtGui.QMainWindow):
         self._mousePositionLabel = QtGui.QLabel()
         self.statusBar().addPermanentWidget( self._mousePositionLabel )
 
-    def createElementTreeView(self, name, object_type, sibling_tabbed_dock = None ):
+    def createElementTreeView(self, name, object_scope, sibling_tabbed_dock = None ):
         dock = QtGui.QDockWidget( self.tr( name ), self )
         dock.setAllowedAreas( QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea )
         element_tree_view = QtGui.QTreeWidget( dock )
@@ -996,23 +1191,23 @@ class MainWindow(QtGui.QMainWindow):
         if sibling_tabbed_dock: # Stacks the dock widget together
             self.tabifyDockWidget( sibling_tabbed_dock, dock )
         class OnTreeSelectionChangeBinder(object):
-            def __init__( self, tree_view, object_type, handler ):
+            def __init__( self, tree_view, object_scope, handler ):
                 self.__tree_view = tree_view
-                self.__object_type = object_type
+                self.__object_type = object_scope
                 self.__handler = handler
 
             def __call__( self ):
                 self.__handler( self.__tree_view, self.__object_type )
-        callback = OnTreeSelectionChangeBinder( element_tree_view, object_type,
+        callback = OnTreeSelectionChangeBinder( element_tree_view, object_scope,
                                                 self._onElementTreeSelectionChange )
         self.connect(element_tree_view, QtCore.SIGNAL("itemSelectionChanged()"),callback)
         return dock, element_tree_view
         
     def createDockWindows(self):
-        scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', SCENE_OBJECT_TYPE )
-        level_dock, self.levelTree = self.createElementTreeView( 'Level', LEVEL_OBJECT_TYPE, scene_dock )
+        scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', metawog.LEVEL_SCENE_SCOPE )
+        level_dock, self.levelTree = self.createElementTreeView( 'Level', metawog.LEVEL_GAME_SCOPE, scene_dock )
         resource_dock, self.levelResourceTree = self.createElementTreeView( 'Resource',
-                                                                            LEVEL_RESOURCE_OBJECT_TYPE,
+                                                                            metawog.LEVEL_RESOURCE_SCOPE,
                                                                             level_dock )
         scene_dock.raise_() # Makes the scene the default active tab
         
@@ -1024,6 +1219,8 @@ class MainWindow(QtGui.QMainWindow):
         self.propertiesListModel = QtGui.QStandardItemModel(0, 2, self.propertiesList)  # nb rows, nb cols
         self._resetPropertyListModel()
         self.propertiesList.setModel( self.propertiesListModel )
+        delegate = PropertyListItemDelegate( self.propertiesList, self )
+        self.propertiesList.setItemDelegate( delegate )
         dock.setWidget(self.propertiesList)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
 
