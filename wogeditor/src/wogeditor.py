@@ -18,6 +18,12 @@
 # - updated level
 # - specific text/fx resources 
 
+# reference needs to be tracked:
+# by scope
+# initialized on load
+# updated on element property change
+# updated on element addition/removal
+
 import sys
 import os
 import os.path
@@ -36,6 +42,35 @@ def tr( context, message ):
     return QtCore.QCoreApplication.translate( message )
 
 MODEL_TYPE_LEVEL = 'Level'
+
+class ElementReferenceTracker(metawog.ReferenceTracker):
+    """Specialized version of the ReferenceTracker that provides helper for element tree based objects.
+    """
+    count = 0
+    def element_object_added( self, scope_key, object, object_desc ):
+        """Registers the specified element and all its children that are declared in the scope description.
+        """
+        metawog.ReferenceTracker.object_added( self, scope_key, object, object_desc, self._retrieve_element_attribute )
+        scope_desc = object_desc.scope
+        self.count += 1
+        for child_element in object:    # recurse to add all child elements
+            child_object_desc = scope_desc.objects_by_tag.get( child_element.tag )
+            if child_object_desc:
+                self.element_object_added( scope_key, child_element, child_object_desc )
+
+    def update_element_attribute( self, scope_key, scope_desc, element, attribute_name, new_value ):
+        """Updates an element attribute value and automatically updates related identifier/back-references.
+        """
+        old_value = element.get( attribute_name )
+        element.set( attribute_name, new_value )
+        object_desc = scope_desc.objects_by_tag.get( element.tag )
+        if object_desc:
+            attribute_desc = object_desc.attributes_by_name.get( attribute_name )
+            if attribute_desc:
+                self.attribute_updated( scope_key, element, attribute_desc, old_value, new_value )
+
+    def _retrieve_element_attribute( self, scope_key, object_key, attribute_desc ):
+        return object_key.get( attribute_desc.name )
 
 class GameModelException(Exception):
     pass
@@ -59,11 +94,14 @@ class GameModel(QtCore.QObject):
         self._effects = self._loadPackedData( properties_dir, 'fx.xml.bin' )
         self._materials = self._loadPackedData( properties_dir, 'materials.xml.bin' )
         self._resources = self._loadPackedData( properties_dir, 'resources.xml.bin' )
+        self._readonly_resources = set()    # resources in resources.xml that have expanded defaults idprefix & path
         self._texts = self._loadPackedData( properties_dir, 'text.xml.bin' )
         self._levels = self._loadDirList( os.path.join( self._res_dir, 'levels' ) )
         self._balls = self._loadDirList( os.path.join( self._res_dir, 'balls' ) )
         self.level_models_by_name = {}
         self.current_model = None
+        self.tracker = ElementReferenceTracker()
+        self._initializeGlobalReferences()
 
     def getResourcePath( self, game_dir_relative_path ):
         return os.path.join( self._wog_dir, game_dir_relative_path )
@@ -90,6 +128,45 @@ class GameModel(QtCore.QObject):
                  if os.path.isdir( os.path.join( dir, entry ) ) ]
         dirs.sort()
         return dirs
+
+    def _initializeGlobalReferences( self ):
+        """Initialize global effects, materials, resources and texts references."""
+        global_scope = self
+        global_objects_desc = metawog.GLOBAL_SCOPE.objects_by_tag
+        self.tracker.scope_added( self, metawog.GLOBAL_SCOPE, None )
+        self.tracker.element_object_added( global_scope, self._effects, global_objects_desc['effects'] )
+        self.tracker.element_object_added( global_scope, self._materials, global_objects_desc['materials'] )
+        self.tracker.element_object_added( global_scope, self._texts, global_objects_desc['strings'] )
+        self._expandResourceDefaultsIdPrefixAndPath()
+        self.tracker.element_object_added( global_scope, self._resources, global_objects_desc['ResourceManifest'] )
+
+    def _expandResourceDefaultsIdPrefixAndPath( self ):
+        """Expands the default idprefix and path that are used as short-cut in the XML file."""
+        # Notes: there is an invalid global resource:
+        # IMAGE_GLOBAL_ISLAND_6_ICON res/images/islandicon_6
+        resource_manifest = self._resources
+        default_idprefix = ''
+        default_path = ''
+        for resources in resource_manifest:
+            for element in resources:
+                if element.tag == 'SetDefaults':
+                    default_path = element.get('path')
+                    if not default_path.endswith('/'):
+                        default_path += '/'
+                    default_idprefix = element.get('idprefix')
+                elif element.tag in ('Image', 'Sound', 'font'):
+                    new_id = default_idprefix + element.get('id')
+                    new_path = default_path + element.get('path')
+##                    if element.tag == 'Sound':
+##                        full_path = os.path.join( self._wog_dir, new_path + '.ogg' )
+##                    else:
+##                        full_path = os.path.join( self._wog_dir, new_path + '.png' )
+##                    if not os.path.isfile( full_path ):
+##                        print 'Invalid resource:', element.get('id'), element.get('path'), new_id, full_path
+                    element.set( 'id', new_id )
+                    element.set( 'path', new_path )
+                self._readonly_resources.add( element )
+
 
     @property
     def level_names( self ):
@@ -141,6 +218,7 @@ class LevelModel(object):
         self.level_tree = game_model._loadPackedData( level_dir, level_name + '.level.bin' )
         self.resource_tree = game_model._loadPackedData( level_dir, level_name + '.resrc.bin' )
         self.scene_tree = game_model._loadPackedData( level_dir, level_name + '.scene.bin' )
+        self._initializeLevelReferences()
         self.dirty_object_types = set()
 
         self.images_by_id = {}
@@ -155,6 +233,15 @@ class LevelModel(object):
                 else:
                     print 'Failed to load image:', path
         #@todo listen for resource property value change
+
+    def _initializeLevelReferences( self ):
+        level_object_desc = metawog.LEVEL_SCOPE.objects_by_tag
+        level_scope = self
+        parent_scope = self.game_model
+        self.game_model.tracker.scope_added( level_scope, metawog.LEVEL_SCOPE, parent_scope )
+        self.game_model.tracker.element_object_added( level_scope, self.level_tree, level_object_desc['level'] )
+        self.game_model.tracker.element_object_added( level_scope, self.scene_tree, level_object_desc['scene'] )
+        self.game_model.tracker.element_object_added( level_scope, self.resource_tree, level_object_desc['ResourceManifest'] )
 
     def saveModifiedElements( self ):
         """Save the modified scene, level, resource tree."""
@@ -172,7 +259,8 @@ class LevelModel(object):
 
     def updateObjectPropertyValue( self, object_scope, element, property_name, new_value ):
         """Changes the property value of an object (scene, level or resource)."""
-        element.set( property_name, str(new_value) )
+        self.game_model.tracker.update_element_attribute( self, metawog.LEVEL_SCOPE, element,
+                                                          property_name, new_value )
         self.dirty_object_types.add( object_scope )
         self.game_model.objectPropertyValueChanged( self.level_name,
                                                     object_scope, element,
@@ -896,13 +984,18 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
         data =  index.data( QtCore.Qt.UserRole ).toPyObject()
         # if this fails, then we are trying to edit the property name or item was added incorrectly.
         assert data is not None
-        object_scope, element, property_name = data
-        attribute_desc = object_scope.get_attribute_desc( element.tag, property_name )
-        if attribute_desc is None:
-            print 'Warning: metawog is incomplet, no attribute description for', object_scope, property_name
+        object_scope, object_desc, element, property_name = data
+        if object_desc is None:
             handler_data = None
+            attribute_desc = None
+            print 'Warning: metawog is incomplet, no attribute description for', object_scope, element.tag, property_name
         else:
-            handler_data = ATTRIBUTE_TYPE_EDITOR_HANDLERS.get( attribute_desc.type )
+            attribute_desc = object_desc.attributes_by_name.get( property_name )
+            if attribute_desc is None:
+                print 'Warning: metawog is incomplet, no attribute description for', object_scope, element.tag, property_name
+                handler_data = None
+            else:
+                handler_data = ATTRIBUTE_TYPE_EDITOR_HANDLERS.get( attribute_desc.type )
         return (object_scope, element, property_name, attribute_desc, handler_data)
 
     def setEditorData( self, editor, index ):
@@ -1046,7 +1139,8 @@ class MainWindow(QtGui.QMainWindow):
             item_name = QtGui.QStandardItem( name )
             item_name.setEditable( False )
             item_value = QtGui.QStandardItem( value )
-            item_value.setData( QtCore.QVariant( (object_scope, element, name) ), QtCore.Qt.UserRole )
+            object_desc = metawog.LEVEL_SCOPE.objects_by_tag.get( element.tag )
+            item_value.setData( QtCore.QVariant( (object_scope, object_desc, element, name) ), QtCore.Qt.UserRole )
             self.propertiesListModel.appendRow( [ item_name, item_value ] )
 
     def editLevel( self ):
@@ -1101,7 +1195,7 @@ class MainWindow(QtGui.QMainWindow):
         new_value = top_left_index.data( QtCore.Qt.DisplayRole ).toString()
         data = top_left_index.data( QtCore.Qt.UserRole ).toPyObject()
         if data:
-            object_scope, element, property_name = data
+            object_scope, object_desc, element, property_name = data
             self.getCurrentLevelModel().updateObjectPropertyValue( object_scope, element, property_name, str(new_value) )
 
     def save(self):
