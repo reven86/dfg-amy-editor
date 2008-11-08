@@ -234,14 +234,18 @@ class LevelModel(object):
                     print 'Failed to load image:', path
         #@todo listen for resource property value change
 
+    @property
+    def tracker( self ):
+        return self.game_model.tracker
+
     def _initializeLevelReferences( self ):
         level_object_desc = metawog.LEVEL_SCOPE.objects_by_tag
         level_scope = self
         parent_scope = self.game_model
-        self.game_model.tracker.scope_added( level_scope, metawog.LEVEL_SCOPE, parent_scope )
-        self.game_model.tracker.element_object_added( level_scope, self.level_tree, level_object_desc['level'] )
-        self.game_model.tracker.element_object_added( level_scope, self.scene_tree, level_object_desc['scene'] )
-        self.game_model.tracker.element_object_added( level_scope, self.resource_tree, level_object_desc['ResourceManifest'] )
+        self.tracker.scope_added( level_scope, metawog.LEVEL_SCOPE, parent_scope )
+        self.tracker.element_object_added( level_scope, self.level_tree, level_object_desc['level'] )
+        self.tracker.element_object_added( level_scope, self.scene_tree, level_object_desc['scene'] )
+        self.tracker.element_object_added( level_scope, self.resource_tree, level_object_desc['ResourceManifest'] )
 
     def saveModifiedElements( self ):
         """Save the modified scene, level, resource tree."""
@@ -259,6 +263,9 @@ class LevelModel(object):
 
     def updateObjectPropertyValue( self, object_scope, element, property_name, new_value ):
         """Changes the property value of an object (scene, level or resource)."""
+        if element.tag == 'Image' and property_name == 'id': # update pixmap cache
+            self.images_by_id[new_value] = self.images_by_id[element.get('id')]
+            del self.images_by_id[element.get('id')]
         self.game_model.tracker.update_element_attribute( self, metawog.LEVEL_SCOPE, element,
                                                           property_name, new_value )
         self.dirty_object_types.add( object_scope )
@@ -838,10 +845,10 @@ def do_validate_enumerated_property( input, enum_values, type_name, is_list = Fa
                      input_value, ','.join(enum_values) )
     return QtGui.QValidator.Acceptable
 
-def validate_enumerated_property( attribute_desc, input ):
+def validate_enumerated_property( scope_key, attribute_desc, input ):
     return do_validate_enumerated_property( input, attribute_desc.values, attribute_desc.name, attribute_desc.is_list )
 
-def validate_boolean_property( attribute_desc, input ):
+def validate_boolean_property( scope_key, attribute_desc, input ):
     return do_validate_enumerated_property( input, BOOLEANS_TEXT, 'boolean' )
 
 def convert_boolean_property( editor, model, index, attribute_desc ):
@@ -864,13 +871,13 @@ def do_validate_numeric_property( attribute_desc, input, value_type, error_messa
     except ValueError:
         return QtGui.QValidator.Intermediate, error_message
 
-def validate_integer_property( attribute_desc, input ):
+def validate_integer_property( scope_key, attribute_desc, input ):
     return do_validate_numeric_property( attribute_desc, input, int, 'Value must be an integer' )
 
-def validate_real_property( attribute_desc, input ):
+def validate_real_property( scope_key, attribute_desc, input ):
     return do_validate_numeric_property( attribute_desc, input, float, 'Value must be a real number' )
 
-def validate_rgb_property( attribute_desc, input ):
+def validate_rgb_property( scope_key, attribute_desc, input ):
     input = unicode(input)
     values = input.split(',')
     if len(values) != 3:
@@ -884,7 +891,7 @@ def validate_rgb_property( attribute_desc, input ):
             return QtGui.QValidator.Intermediate, 'RGB color must be of the form "R,G,B" were R,G,B are integer in range [0-255].'
     return QtGui.QValidator.Acceptable
 
-def validate_xy_property( attribute_desc, input ):
+def validate_xy_property( scope_key, attribute_desc, input ):
     input = unicode(input)
     values = input.split(',')
     if len(values) != 2:
@@ -896,9 +903,11 @@ def validate_xy_property( attribute_desc, input ):
             return QtGui.QValidator.Intermediate, 'Position must be of the form "X,Y" were X and Y are real number'
     return QtGui.QValidator.Acceptable
 
-def validate_reference_property( attribute_desc, input ):
-    # @todo
-    return QtGui.QValidator.Acceptable
+def validate_reference_property( scope_key, attribute_desc, input ):
+    input = unicode(input)
+    if scope_key.tracker.is_valid_reference( scope_key, attribute_desc, input ):
+        return QtGui.QValidator.Acceptable
+    return QtGui.QValidator.Intermediate, '"%%1" is not a valid reference to an object of type %s' % attribute_desc.reference_familly, input
 
 # For later
 ##def editor_rgb_property( parent, option, index, element, attribute_desc, default_editor_factory ):
@@ -928,18 +937,19 @@ ATTRIBUTE_TYPE_EDITOR_HANDLERS = {
     }
 
 class PropertyValidator(QtGui.QValidator):
-    def __init__( self, parent, main_window, attribute_desc, validator ):
+    def __init__( self, parent, main_window, scope_key, attribute_desc, validator ):
         QtGui.QValidator.__init__( self, parent )
         self.main_window = main_window
         self.attribute_desc = attribute_desc
         self.validator = validator
+        self.scope_key = scope_key
 
     def validate( self, input, pos ):
         """Returns state & pos.
            Valid values for state are: QtGui.QValidator.Invalid, QtGui.QValidator.Acceptable, QtGui.QValidator.Intermediate.
            Returning Invalid actually prevent the user from inputing that a value that would make the input invalid. It is
            better to avoid returning this at it prevent temporary invalid value (when using cut'n'paste for example)."""
-        status = self.validator( self.attribute_desc, input )
+        status = self.validator( self.scope_key, self.attribute_desc, input )
         if type(status) == tuple:
             message = status[1]
             args = status[2:]
@@ -947,8 +957,7 @@ class PropertyValidator(QtGui.QValidator):
             message = self.tr(message)
             for arg in args:
                 message = message.arg(arg)
-            print 'got error message', message
-            self.main_window.statusBar().showMessage(message, 2000)
+            self.main_window.statusBar().showMessage(message, 1000)
         return ( status, pos )
 
 class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
@@ -958,8 +967,7 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
 
     def createEditor( self, parent, option, index ):
         """Returns the widget used to edit the item specified by index for editing. The parent widget and style option are used to control how the editor widget appears."""
-        print "createEditor() called", index
-        object_scope, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
+        scope_key, object_scope, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
         need_specific_editor = handler_data and handler_data.get('editor')
         if need_specific_editor:
             class DefaultEditorFactory(object):
@@ -971,20 +979,20 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
         else: # No specific, use default QLineEditor
             editor = QtGui.QStyledItemDelegate.createEditor( self, parent, option, index )
         if handler_data and handler_data.get('validator'):
-            validator = PropertyValidator( editor, self.main_window, attribute_desc, handler_data['validator'] )
+            validator = PropertyValidator( editor, self.main_window, scope_key, attribute_desc, handler_data['validator'] )
             editor.setValidator( validator )
         return editor
 
     def _getHandlerData( self, index ):
         """Returns data related to item at the specified index.
-           Returns: tuple (object_scope, element, property_name, attribute_desc, handler_data). 
+           Returns: tuple (scope_key, object_scope, element, property_name, attribute_desc, handler_data). 
            handler_data may be None if no specific handler is defined for the attribute_desc.
            attribute_desc may be None if metawog is missing some attribute declaration.
            """
         data =  index.data( QtCore.Qt.UserRole ).toPyObject()
         # if this fails, then we are trying to edit the property name or item was added incorrectly.
         assert data is not None
-        object_scope, object_desc, element, property_name = data
+        scope_key, object_scope, object_desc, element, property_name = data
         if object_desc is None:
             handler_data = None
             attribute_desc = None
@@ -996,17 +1004,15 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
                 handler_data = None
             else:
                 handler_data = ATTRIBUTE_TYPE_EDITOR_HANDLERS.get( attribute_desc.type )
-        return (object_scope, element, property_name, attribute_desc, handler_data)
+        return (scope_key, object_scope, element, property_name, attribute_desc, handler_data)
 
     def setEditorData( self, editor, index ):
         """Sets the data to be displayed and edited by the editor from the data model item specified by the model index."""
         QtGui.QStyledItemDelegate.setEditorData( self, editor, index )
-        print "setEditorData() called", index
 
     def setModelData( self, editor, model, index ):
         """Gets data drom the editor widget and stores it in the specified model at the item index."""
-        print "setModelData() called", index
-        object_scope, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
+        scope_key, object_scope, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
         need_specific_converter = handler_data and handler_data.get('converter')
         if need_specific_converter:
             handler_data['converter']( editor, model, index, attribute_desc )
@@ -1139,8 +1145,10 @@ class MainWindow(QtGui.QMainWindow):
             item_name = QtGui.QStandardItem( name )
             item_name.setEditable( False )
             item_value = QtGui.QStandardItem( value )
+            # @todo object_desc & scope_key should be parameters...
             object_desc = metawog.LEVEL_SCOPE.objects_by_tag.get( element.tag )
-            item_value.setData( QtCore.QVariant( (object_scope, object_desc, element, name) ), QtCore.Qt.UserRole )
+            scope_key = self.getCurrentLevelModel()
+            item_value.setData( QtCore.QVariant( (scope_key, object_scope, object_desc, element, name) ), QtCore.Qt.UserRole )
             self.propertiesListModel.appendRow( [ item_name, item_value ] )
 
     def editLevel( self ):
@@ -1191,12 +1199,15 @@ class MainWindow(QtGui.QMainWindow):
            Update the corresponding value in the level model and broadcast the event to refresh the scene view.
            """
         if top_left_index.row() != bottom_right_index.row():
+            print 'Warning: edited non editable row!!!'
             return # not the result of an edit
         new_value = top_left_index.data( QtCore.Qt.DisplayRole ).toString()
         data = top_left_index.data( QtCore.Qt.UserRole ).toPyObject()
         if data:
-            object_scope, object_desc, element, property_name = data
+            scope_key, object_scope, object_desc, element, property_name = data
             self.getCurrentLevelModel().updateObjectPropertyValue( object_scope, element, property_name, str(new_value) )
+        else:
+            print 'Warning: no data on edited item!'
 
     def save(self):
         """Saving all modified elements.

@@ -1,4 +1,5 @@
 - rectangle/circle on display either pixmap or geometry shape.
-- add name in tree view
+- it is possible to by-pass validity check by clicking on another property
+
 
 
