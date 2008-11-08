@@ -499,8 +499,39 @@ GLOBAL_SCOPE.add_objects( [
         real_attribute( 'stickiness', min_value = 0 )
         ] )
     ] )
-    
 
+LEVEL_GAME_TEMPLATE = """\
+<level ballsrequired="1" letterboxed="false" visualdebug="false" autobounds="true" textcolor="255,255,255" timebugprobability="0" strandgeom="false" allowskip="true" >
+
+	<!-- Camera -->
+	<camera aspect="normal" endpos="0,327" endzoom="0.936">
+	</camera>
+	<camera aspect="widescreen" endpos="0,327" endzoom="1.273">
+	</camera>
+
+	<!-- Level Exit -->
+	<levelexit id="theExit" pos="0,0" radius="75" filter="" >
+	</levelexit>
+
+</level>
+"""
+
+LEVEL_SCENE_TEMPLATE = """\
+<scene minx="-500" miny="0" maxx="500" maxy="1000" backgroundcolor="0,0,0" >
+	<linearforcefield type="gravity" force="0,-10" dampeningfactor="0" antigrav="true" geomonly="false" />
+
+	<line id="" static="true" tag="detaching" material="rock" anchor="436.5,331.5" normal="-1,-0.0071" />
+	<line id="" static="true" tag="detaching" material="rock" anchor="-437,321" normal="1,-0.0056" />
+	<line id="" static="true" material="rock" anchor="-14,18.5" normal="0,1" />
+</scene>"""
+
+LEVEL_RESOURCE_TEMPLATE = """\
+<ResourceManifest>
+	<Resources id="scene_NewTemplate" >
+		<SetDefaults path="./" idprefix="" />
+	</Resources>
+</ResourceManifest>
+"""
 
 if __name__ == "__main__":
     import unittest

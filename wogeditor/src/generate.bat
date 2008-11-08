@@ -3,4 +3,5 @@ rem Embed image in python file
 pyrcc4 -o wogeditor_rc.py wogeditor.qrc
 
 @echo Generating GUI elements from .ui
-pyuic4.bat -o editleveldialog_ui.py  editleveldialog.ui
+call pyuic4.bat -o editleveldialog_ui.py  editleveldialog.ui
+call pyuic4.bat -o newleveldialog_ui.py  newleveldialog.ui

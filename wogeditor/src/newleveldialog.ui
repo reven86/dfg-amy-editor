@@ -1,33 +1,43 @@
 <ui version="4.0" >
- <class>EditLevelDialog</class>
- <widget class="QDialog" name="EditLevelDialog" >
+ <class>NewLevelDialog</class>
+ <widget class="QDialog" name="NewLevelDialog" >
   <property name="geometry" >
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>400</width>
-    <height>282</height>
+    <width>313</width>
+    <height>95</height>
    </rect>
   </property>
   <property name="windowTitle" >
-   <string>Select level to edit...</string>
-  </property>
-  <property name="locale" >
-   <locale country="UnitedStates" language="English" />
+   <string>Create New Level</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout" >
    <item>
     <widget class="QLabel" name="label" >
+     <property name="locale" >
+      <locale country="UnitedKingdom" language="English" />
+     </property>
      <property name="text" >
-      <string>Select level to edit:</string>
+      <string>&amp;New level name (directory name):</string>
+     </property>
+     <property name="buddy" >
+      <cstring>levelName</cstring>
      </property>
     </widget>
    </item>
    <item>
-    <widget class="QListWidget" name="levelList" />
+    <widget class="QLineEdit" name="levelName" >
+     <property name="maxLength" >
+      <number>100</number>
+     </property>
+    </widget>
    </item>
    <item>
     <widget class="QDialogButtonBox" name="buttonBox" >
+     <property name="locale" >
+      <locale country="UnitedKingdom" language="English" />
+     </property>
      <property name="orientation" >
       <enum>Qt::Horizontal</enum>
      </property>
@@ -43,7 +53,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>accepted()</signal>
-   <receiver>EditLevelDialog</receiver>
+   <receiver>NewLevelDialog</receiver>
    <slot>accept()</slot>
    <hints>
     <hint type="sourcelabel" >
@@ -59,7 +69,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>rejected()</signal>
-   <receiver>EditLevelDialog</receiver>
+   <receiver>NewLevelDialog</receiver>
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel" >
@@ -69,22 +79,6 @@
     <hint type="destinationlabel" >
      <x>286</x>
      <y>274</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>levelList</sender>
-   <signal>itemDoubleClicked(QListWidgetItem*)</signal>
-   <receiver>EditLevelDialog</receiver>
-   <slot>accept()</slot>
-   <hints>
-    <hint type="sourcelabel" >
-     <x>106</x>
-     <y>154</y>
-    </hint>
-    <hint type="destinationlabel" >
-     <x>61</x>
-     <y>277</y>
     </hint>
    </hints>
   </connection>

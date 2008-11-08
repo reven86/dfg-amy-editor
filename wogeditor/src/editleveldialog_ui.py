@@ -2,38 +2,38 @@
 
 # Form implementation generated from reading ui file 'editleveldialog.ui'
 #
-# Created: Fri Nov 07 12:26:43 2008
+# Created: Sat Nov 08 21:08:22 2008
 #      by: PyQt4 UI code generator 4.4.2
 #
 # WARNING! All changes made in this file will be lost!
 
 from PyQt4 import QtCore, QtGui
 
-class Ui_Dialog(object):
-    def setupUi(self, Dialog):
-        Dialog.setObjectName("Dialog")
-        Dialog.resize(400,282)
-        self.verticalLayout = QtGui.QVBoxLayout(Dialog)
+class Ui_EditLevelDialog(object):
+    def setupUi(self, EditLevelDialog):
+        EditLevelDialog.setObjectName("EditLevelDialog")
+        EditLevelDialog.resize(400,282)
+        self.verticalLayout = QtGui.QVBoxLayout(EditLevelDialog)
         self.verticalLayout.setObjectName("verticalLayout")
-        self.label = QtGui.QLabel(Dialog)
+        self.label = QtGui.QLabel(EditLevelDialog)
         self.label.setObjectName("label")
         self.verticalLayout.addWidget(self.label)
-        self.levelList = QtGui.QListWidget(Dialog)
+        self.levelList = QtGui.QListWidget(EditLevelDialog)
         self.levelList.setObjectName("levelList")
         self.verticalLayout.addWidget(self.levelList)
-        self.buttonBox = QtGui.QDialogButtonBox(Dialog)
+        self.buttonBox = QtGui.QDialogButtonBox(EditLevelDialog)
         self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
         self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Cancel|QtGui.QDialogButtonBox.Ok)
         self.buttonBox.setObjectName("buttonBox")
         self.verticalLayout.addWidget(self.buttonBox)
 
-        self.retranslateUi(Dialog)
-        QtCore.QObject.connect(self.buttonBox,QtCore.SIGNAL("accepted()"),Dialog.accept)
-        QtCore.QObject.connect(self.buttonBox,QtCore.SIGNAL("rejected()"),Dialog.reject)
-        QtCore.QObject.connect(self.levelList,QtCore.SIGNAL("itemDoubleClicked(QListWidgetItem*)"),Dialog.accept)
-        QtCore.QMetaObject.connectSlotsByName(Dialog)
+        self.retranslateUi(EditLevelDialog)
+        QtCore.QObject.connect(self.buttonBox,QtCore.SIGNAL("accepted()"),EditLevelDialog.accept)
+        QtCore.QObject.connect(self.buttonBox,QtCore.SIGNAL("rejected()"),EditLevelDialog.reject)
+        QtCore.QObject.connect(self.levelList,QtCore.SIGNAL("itemDoubleClicked(QListWidgetItem*)"),EditLevelDialog.accept)
+        QtCore.QMetaObject.connectSlotsByName(EditLevelDialog)
 
-    def retranslateUi(self, Dialog):
-        Dialog.setWindowTitle(QtGui.QApplication.translate("Dialog", "Select level to edit...", None, QtGui.QApplication.UnicodeUTF8))
-        self.label.setText(QtGui.QApplication.translate("Dialog", "Select level to edit:", None, QtGui.QApplication.UnicodeUTF8))
+    def retranslateUi(self, EditLevelDialog):
+        EditLevelDialog.setWindowTitle(QtGui.QApplication.translate("EditLevelDialog", "Select level to edit...", None, QtGui.QApplication.UnicodeUTF8))
+        self.label.setText(QtGui.QApplication.translate("EditLevelDialog", "Select level to edit:", None, QtGui.QApplication.UnicodeUTF8))
 

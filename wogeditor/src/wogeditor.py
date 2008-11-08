@@ -36,10 +36,11 @@ import xml.etree.ElementTree
 from PyQt4 import QtCore, QtGui
 import qthelper
 import editleveldialog_ui
+import newleveldialog_ui
 import wogeditor_rc
 
 def tr( context, message ):
-    return QtCore.QCoreApplication.translate( message )
+    return QtCore.QCoreApplication.translate( context, message )
 
 MODEL_TYPE_LEVEL = 'Level'
 
@@ -100,6 +101,7 @@ class GameModel(QtCore.QObject):
         self._balls = self._loadDirList( os.path.join( self._res_dir, 'balls' ) )
         self.level_models_by_name = {}
         self.current_model = None
+        self.is_dirty = False
         self.tracker = ElementReferenceTracker()
         self._initializeGlobalReferences()
 
@@ -177,7 +179,14 @@ class GameModel(QtCore.QObject):
 
     def selectLevel( self, level_name ):
         if level_name not in self.level_models_by_name:
-            self.level_models_by_name[level_name] = LevelModel( self, level_name )
+            level_dir = os.path.join( self._res_dir, 'levels', level_name )
+            level_tree = self._loadPackedData( level_dir, level_name + '.level.bin' )
+            scene_tree = self._loadPackedData( level_dir, level_name + '.scene.bin' )
+            resource_tree = self._loadPackedData( level_dir, level_name + '.resrc.bin' )
+            self.level_models_by_name[level_name] = LevelModel( self, level_name,
+                                                                level_tree,
+                                                                scene_tree,
+                                                                resource_tree )
         level_model = self.level_models_by_name[level_name]
         
         old_model = level_model
@@ -193,6 +202,7 @@ class GameModel(QtCore.QObject):
 
     def objectPropertyValueChanged( self, level_name, object_scope, element, property_name, value ):
         """Signal that an element attribute value has changed."""
+        self.is_dirty = True
         self.emit( QtCore.SIGNAL('objectPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                    level_name, object_scope, element, property_name, value )
 
@@ -202,6 +212,7 @@ class GameModel(QtCore.QObject):
         """
         for level_model in self.level_models_by_name.itervalues():
             level_model.saveModifiedElements()
+        self.is_dirty = False
 
     def playLevel( self, level_name ):
         """Starts WOG to test the specified level."""
@@ -209,17 +220,53 @@ class GameModel(QtCore.QObject):
         # Don't wait for process end...
         # @Todo ? Monitor process so that only one can be launched ???
 
+    def newLevel( self, level_name ):
+        """Creates a new blank level with the specified name.
+           May fails with an IOError."""
+        return self._addNewLevel( level_name,
+                                  xml.etree.ElementTree.fromstring( metawog.LEVEL_GAME_TEMPLATE ),
+                                  xml.etree.ElementTree.fromstring( metawog.LEVEL_SCENE_TEMPLATE ),
+                                  xml.etree.ElementTree.fromstring( metawog.LEVEL_RESOURCE_TEMPLATE ) )
+
+    def cloneLevel( self, cloned_level_name, new_level_name ):
+        """Clone an existing level and its resources."""
+        level_model = self.getLevelModel( cloned_level_name )
+        def clone_element_tree( element_tree ):
+            xml_data = xml.etree.ElementTree.tostring( element_tree )
+            return xml.etree.ElementTree.fromstring( xml_data )
+        return self._addNewLevel( new_level_name,
+                                  clone_element_tree( level_model.level_tree ),
+                                  clone_element_tree( level_model.scene_tree ),
+                                  clone_element_tree( level_model.resource_tree ) )
+
+    def _addNewLevel( self, level_name, level_tree, scene_tree, resource_tree ):
+        """Adds a new level using the specified level, scene and resource tree.
+           The level directory is created, but the level xml files will not be saved immediately.
+        """
+        os.mkdir( os.path.join( self._res_dir, 'levels', level_name ) )
+        # Fix the hard-coded level name in resource tree: <Resources id="scene_NewTemplate" >
+        for resource_element in resource_tree.findall( './/Resources' ):
+            resource_element.set( 'id', 'scene_%s' % level_name )
+        # Creates and register the new level
+        self.level_models_by_name[level_name] = LevelModel(
+            self, level_name, level_tree, scene_tree, resource_tree, is_dirty = True )
+        self._levels.append( level_name )
+        self._levels.sort()
+        self.is_dirty = True
 
 class LevelModel(object):
-    def __init__( self, game_model, level_name ):
+    def __init__( self, game_model, level_name, level_tree, scene_tree, resource_tree, is_dirty = False ):
         self.game_model = game_model
         self.level_name = level_name
-        level_dir = os.path.join( game_model._res_dir, 'levels', level_name )
-        self.level_tree = game_model._loadPackedData( level_dir, level_name + '.level.bin' )
-        self.resource_tree = game_model._loadPackedData( level_dir, level_name + '.resrc.bin' )
-        self.scene_tree = game_model._loadPackedData( level_dir, level_name + '.scene.bin' )
+        self.level_tree = level_tree
+        self.scene_tree = scene_tree
+        self.resource_tree = resource_tree
         self._initializeLevelReferences()
         self.dirty_object_types = set()
+        if is_dirty:
+            self.dirty_object_types |= set( (metawog.LEVEL_GAME_SCOPE,
+                                             metawog.LEVEL_RESOURCE_SCOPE,
+                                             metawog.LEVEL_SCENE_SCOPE) )
 
         self.images_by_id = {}
         for image_element in self.resource_tree.findall( './/Image' ):
@@ -1154,7 +1201,7 @@ class MainWindow(QtGui.QMainWindow):
     def editLevel( self ):
         if self._game_model:
             dialog = QtGui.QDialog()
-            ui = editleveldialog_ui.Ui_Dialog()
+            ui = editleveldialog_ui.Ui_EditLevelDialog()
             ui.setupUi( dialog )
             for level_name in self._game_model.level_names:
                 ui.levelList.addItem( level_name )
@@ -1165,13 +1212,17 @@ class MainWindow(QtGui.QMainWindow):
                 if sub_window:
                     self.mdiArea.setActiveSubWindow( sub_window )
                 else:
-                    view = LevelGraphicView( level_name, self._game_model )
-                    sub_window = self.mdiArea.addSubWindow( view )
-                    self.connect( view, QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)'),
-                                  self._updateMouseScenePosInStatusBar )
-                    self.connect( sub_window, QtCore.SIGNAL('aboutToActivate()'),
-                                  view.selectLevelOnSubWindowActivation )
-                    view.show()
+                    self._addLevelGraphicView( level_name )
+
+    def _addLevelGraphicView( self, level_name ):
+        """Adds a new MDI LevelGraphicView window for the specified level."""
+        view = LevelGraphicView( level_name, self._game_model )
+        sub_window = self.mdiArea.addSubWindow( view )
+        self.connect( view, QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)'),
+                      self._updateMouseScenePosInStatusBar )
+        self.connect( sub_window, QtCore.SIGNAL('aboutToActivate()'),
+                      view.selectLevelOnSubWindowActivation )
+        view.show()
 
     def _updateMouseScenePosInStatusBar( self, x, y ):
         """Called whenever the mouse move in the scene view."""
@@ -1235,6 +1286,52 @@ class MainWindow(QtGui.QMainWindow):
             else:
                 self.statusBar().showMessage(self.tr("You must select a level to play"), 2000)
 
+    def newLevel( self ):
+        """Creates a new blank level."""
+        new_level_name = self._pickNewLevelName( is_cloning = False )
+        if new_level_name:
+            try:
+                self._game_model.newLevel( new_level_name )
+                self._game_model.selectLevel( new_level_name )
+                self._addLevelGraphicView( new_level_name )
+            except IOError, e:
+                QtGui.QMessageBox.warning(self, self.tr("Failed to create the new level!"),
+                                          unicode(e))
+
+    def _pickNewLevelName( self, is_cloning = False ):
+        if self._game_model:
+            dialog = QtGui.QDialog()
+            ui = newleveldialog_ui.Ui_NewLevelDialog()
+            ui.setupUi( dialog )
+            reg_ex = QtCore.QRegExp( '[0-9A-Za-z]+' )
+            validator = QtGui.QRegExpValidator( reg_ex, dialog )
+            ui.levelName.setValidator( validator )
+            if is_cloning:
+                dialog.setWindowTitle(tr("NewLevelDialog", "Cloning Level"))
+     
+            if dialog.exec_():
+                new_level_name = str(ui.levelName.text())
+                existing_names = [name.lower() for name in self._game_model.level_names]
+                if new_level_name.lower() not in existing_names:
+                    return new_level_name
+                QtGui.QMessageBox.warning(self, self.tr("Can not create level!"),
+                    self.tr("There is already a level named '%1'").arg(new_level_name))
+        return None
+
+    def cloneLevel( self ):
+        """Clone the selected level."""
+        current_level_model = self.getCurrentLevelModel()
+        if current_level_model:
+            new_level_name = self._pickNewLevelName( is_cloning = False )
+            if new_level_name:
+                try:
+                    self._game_model.cloneLevel( current_level_model.level_name, new_level_name )
+                    self._game_model.selectLevel( new_level_name )
+                    self._addLevelGraphicView( new_level_name )
+                except IOError, e:
+                    QtGui.QMessageBox.warning(self, self.tr("Failed to create the new cloned level!"),
+                                              unicode(e))
+
     def undo( self ):
         pass
         
@@ -1244,6 +1341,18 @@ class MainWindow(QtGui.QMainWindow):
             <p>Link to Sourceforge project:
             <a href="http://www.sourceforge.net/projects/wogedit">http://www.sourceforge.net/projects/wogedit</a></p>
             <p>Copyright 2008, NitroZark &lt;nitrozark at users.sourceforget.net&gt;</p>"""))
+
+    def onRefreshAction( self ):
+        """Called multiple time per second. Used to refresh enabled flags of actions."""
+        has_wog_dir = self._game_model is not None
+        is_level_selected = self.getCurrentLevelModel() is not None
+
+        self.editLevelAction.setEnabled( has_wog_dir )
+        self.newLevelAction.setEnabled( has_wog_dir )
+        self.cloneLevelAction.setEnabled( is_level_selected )
+        can_save = has_wog_dir and self._game_model.is_dirty
+        self.saveAction.setEnabled( can_save and True or False )
+        self.playAction.setEnabled( is_level_selected )
 
     def createMDIArea( self ):
         self.mdiArea = QtGui.QMdiArea()
@@ -1255,10 +1364,20 @@ class MainWindow(QtGui.QMainWindow):
         self.changeWOGDirAction.setStatusTip(self.tr("Change World Of Goo top-directory"))
         self.connect(self.changeWOGDirAction, QtCore.SIGNAL("triggered()"), self.changeWOGDir)
 
-        self.editLevelAction = QtGui.QAction(QtGui.QIcon(":/images/open-level.png"), self.tr("&Edit level..."), self)
+        self.editLevelAction = QtGui.QAction(QtGui.QIcon(":/images/open-level.png"), self.tr("&Edit existing level..."), self)
         self.editLevelAction.setShortcut(self.tr("Ctrl+L"))
         self.editLevelAction.setStatusTip(self.tr("Select a level to edit"))
         self.connect(self.editLevelAction, QtCore.SIGNAL("triggered()"), self.editLevel)
+
+        self.newLevelAction = QtGui.QAction(QtGui.QIcon(":/images/new-level.png"), self.tr("&New level..."), self)
+        self.newLevelAction.setShortcut(self.tr("Ctrl+N"))
+        self.newLevelAction.setStatusTip(self.tr("Creates a new level"))
+        self.connect(self.newLevelAction, QtCore.SIGNAL("triggered()"), self.newLevel)
+
+        self.cloneLevelAction = QtGui.QAction(QtGui.QIcon(":/images/clone-level.png"), self.tr("&Clone selected level..."), self)
+        self.cloneLevelAction.setShortcut(self.tr("Ctrl+D"))
+        self.cloneLevelAction.setStatusTip(self.tr("Clone the selected level"))
+        self.connect(self.cloneLevelAction, QtCore.SIGNAL("triggered()"), self.cloneLevel)
         
         self.saveAction = QtGui.QAction(QtGui.QIcon(":/images/save.png"), self.tr("&Save..."), self)
         self.saveAction.setShortcut(self.tr("Ctrl+S"))
@@ -1284,10 +1403,16 @@ class MainWindow(QtGui.QMainWindow):
         self.aboutAct.setStatusTip(self.tr("Show the application's About box"))
         self.connect(self.aboutAct, QtCore.SIGNAL("triggered()"), self.about)
 
+        actionTimer = QtCore.QTimer( self )
+        self.connect( actionTimer, QtCore.SIGNAL("timeout()"), self.onRefreshAction )
+        actionTimer.start( 250 )    # Refresh action enabled flag every 250ms.
+
     def createMenus(self):
         self.fileMenu = self.menuBar().addMenu(self.tr("&File"))
         self.fileMenu.addAction(self.changeWOGDirAction)
         self.fileMenu.addAction(self.editLevelAction)
+        self.fileMenu.addAction(self.newLevelAction)
+        self.fileMenu.addAction(self.cloneLevelAction)
         self.fileMenu.addAction(self.saveAction)
         self.fileMenu.addAction(self.playAction)
         self.fileMenu.addSeparator()
@@ -1307,6 +1432,8 @@ class MainWindow(QtGui.QMainWindow):
         self.fileToolBar = self.addToolBar(self.tr("File"))
         self.fileToolBar.addAction(self.changeWOGDirAction)
         self.fileToolBar.addAction(self.editLevelAction)
+        self.fileToolBar.addAction(self.newLevelAction)
+        self.fileToolBar.addAction(self.cloneLevelAction)
         self.fileToolBar.addAction(self.saveAction)
         self.fileToolBar.addAction(self.playAction)
         
