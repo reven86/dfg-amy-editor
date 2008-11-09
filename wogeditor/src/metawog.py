@@ -145,14 +145,11 @@ class ObjectDesc(object):
 def describe_object( tag, attributes = None ):
     return ObjectDesc( tag, attributes )
 
-class ScopeDesc(object):
-    def __init__( self, scope_name, objects_desc = None, child_scopes = None ):
+class FileDesc(object):
+    def __init__( self, conceptual_file_name, objects_desc = None ):
+        self.name = conceptual_file_name
         objects_desc = objects_desc or []
-        child_scopes = child_scopes or []
         self.parent_scope = None
-        self.child_scopes = []
-        self.add_child_scopes( child_scopes )
-        self.scope_name = scope_name
         self.objects_by_tag = {}
         self.add_objects( objects_desc )
 
@@ -162,23 +159,47 @@ class ScopeDesc(object):
             self.objects_by_tag[object_desc.tag] = object_desc
             object_desc.scope = self
 
+    def __repr__( self ):
+        return '%s(name=%s, objects=[%s])' % (self.__class__.__name__, self.name, ','.join(self.objects_by_tag.keys()))
+
+def describe_file( conceptual_file_name, objects_desc = None ):
+    return FileDesc( conceptual_file_name, objects_desc )
+
+class ScopeDesc(object):
+    def __init__( self, scope_name, files_desc = None, child_scopes = None ):
+        child_scopes = child_scopes or []
+        self.scope_name = scope_name
+        self.parent_scope = None
+        self.child_scopes = []
+        self.files_desc_by_name = {}
+        self.add_child_scopes( child_scopes )
+        self.add_files_desc( files_desc )
+        self.__objects_by_tag = None
+
+    @property
+    def objects_by_tag( self ):
+        if self.__objects_by_tag is None:
+            self.__objects_by_tag = {}
+            for file_desc in self.files_desc_by_name.itervalues():
+                self.__objects_by_tag.update( file_desc.objects_by_tag )
+        return self.__objects_by_tag
+
     def add_child_scopes( self, child_scopes ):
         self.child_scopes.extend( child_scopes )
         for scope in child_scopes:
             scope.parent_scope = self
 
-    def get_attribute_desc( self, tag, attribute_name ):
-        """Returns the attribute desc declared for the specified tag."""
-        object_desc = self.objects_by_tag.get( tag )
-        if object_desc:
-            return object_desc.get_attribute_desc( attribute_name )
-        return None
+    def add_files_desc( self, files_desc ):
+        for file_desc in files_desc:
+            assert file_desc.name not in self.files_desc_by_name
+            self.files_desc_by_name[file_desc.name] = file_desc
+            file_desc.parent_scope = self
 
     def __repr__( self ):
-        return '%s(name=%s, attributes=[%s])' % (self.__class__.__name__, self.scope_name, ','.join(self.objects_by_tag.keys()))
+        return '%s(name=%s, files=[%s])' % (self.__class__.__name__, self.scope_name, ','.join(self.objects_by_tag.keys()))
 
-def describe_scope( scope_name, objects_desc = None, child_scopes = None ):
-    return ScopeDesc( scope_name, objects_desc )
+def describe_scope( scope_name, files_desc = None, child_scopes = None ):
+    return ScopeDesc( scope_name, files_desc = files_desc, child_scopes = child_scopes )
 
 class ReferenceTracker(object):
     """The reference trackers keep that of all object identifiers to check for reference validity and identifier unicity.
@@ -294,19 +315,38 @@ class ReferenceTracker(object):
         return list( self.back_references.get( (familly, identifier), [] ) )
         
 
+# Declares all file types
+
+GLOBAL_RESOURCE_FILE = describe_file( 'global.resources' )
+GLOBAL_FX_FILE = describe_file( 'global.fx' )
+GLOBAL_MATERIALS_FILE = describe_file( 'global.materials' )
+GLOBAL_TEXT_FILE = describe_file( 'global.text' )
+
+ISLAND_FILE = describe_file( 'island' )
+
+LEVEL_GAME_FILE = describe_file( 'level.game' )
+LEVEL_RESOURCE_FILE = describe_file( 'level.resource' )
+LEVEL_SCENE_FILE = describe_file( 'level.scene' )
+
 # Declares the scope hierarchy
-LEVEL_SCOPE = describe_scope( 'global.level' )
-ISLAND_SCOPE = describe_scope( 'global.island' )
+LEVEL_SCOPE = describe_scope( 'global.level', files_desc = [
+    LEVEL_GAME_FILE,
+    LEVEL_SCENE_FILE,
+    LEVEL_RESOURCE_FILE
+    ] )
+ISLAND_SCOPE = describe_scope( 'global.island', files_desc = [
+    ISLAND_FILE
+    ] )
 GLOBAL_SCOPE = describe_scope( 'global',
-                               child_scopes = [ ISLAND_SCOPE, LEVEL_SCOPE ] )
+                               child_scopes = [ ISLAND_SCOPE, LEVEL_SCOPE ],
+                               files_desc = [
+    GLOBAL_RESOURCE_FILE,
+    GLOBAL_FX_FILE,
+    GLOBAL_MATERIALS_FILE,
+    GLOBAL_TEXT_FILE
+    ] )
 
-# @todo temporary, this are really related to tag hierarchy/file container.
-LEVEL_GAME_SCOPE = 'level.game'
-LEVEL_RESOURCE_SCOPE = 'level.resource'
-LEVEL_SCENE_SCOPE = 'level.scene'
-
-LEVEL_SCOPE.add_objects( [
-    # level.xml
+LEVEL_GAME_FILE.add_objects( [
     describe_object( 'level', attributes = [
         int_attribute( 'ballsrequired', default = 0, allow_empty = True, mandatory = True, min_value = 0 ),
         bool_attribute( 'letterboxed', init = False, mandatory = True ),
@@ -375,9 +415,13 @@ LEVEL_SCOPE.add_objects( [
                              init = '', mandatory = True ),
         reference_attribute( 'gb2', reference_familly = 'BallInstance', reference_scope = LEVEL_SCOPE,
                              init = '', mandatory = True )
-        ] ),
+        ] )
     # @todo complete level description
-    # resources.xml
+    ] )
+
+
+
+LEVEL_RESOURCE_FILE.add_objects( [
     # DUPLICATED FROM GLOBAL SCOPE => makes FACTORY function ?
     describe_object( 'ResourceManifest', attributes = [] ), 
     describe_object( 'Resources', attributes = [
@@ -398,8 +442,12 @@ LEVEL_SCOPE.add_objects( [
             identifier_attribute( 'id', mandatory = True, reference_familly = 'sound',
                                   reference_scope = LEVEL_SCOPE ),
             path_attribute( 'path', strip_extension = '.png', mandatory = True ) # @todo also check existence of .txt
-            ] ),
-    # scene.xml
+            ] )
+    ] )
+
+
+
+LEVEL_SCENE_FILE.add_objects( [
     describe_object( 'scene', attributes = [
         rgb_attribute( 'backgroundcolor', mandatory = True, init = '0,0,0' ),
         real_attribute( 'minx', init='-500' ),
@@ -428,8 +476,8 @@ LEVEL_SCOPE.add_objects( [
     ] )
     
 
-GLOBAL_SCOPE.add_objects( [
-    # text.xml
+
+GLOBAL_TEXT_FILE.add_objects( [
     describe_object( 'strings', attributes = [] ),
     describe_object( 'string', attributes = [
             identifier_attribute( 'id', mandatory = True, reference_familly = 'text',
@@ -441,8 +489,12 @@ GLOBAL_SCOPE.add_objects( [
             string_attribute( 'it' ),  
             string_attribute( 'nl' ),  
             string_attribute( 'pt' )
-            ] ),
-    # resources.xml
+            ] )
+    ] )
+
+
+
+GLOBAL_RESOURCE_FILE.add_objects( [
     describe_object( 'ResourceManifest', attributes = [] ),
     describe_object( 'Resources', attributes = [
             identifier_attribute( 'id', mandatory = True, reference_familly = 'resources',
@@ -463,8 +515,12 @@ GLOBAL_SCOPE.add_objects( [
             identifier_attribute( 'id', mandatory = True, reference_familly = 'sound',
                                   reference_scope = GLOBAL_SCOPE ),
             path_attribute( 'path', strip_extension = '.png', mandatory = True ) # @todo also check existence of .txt
-            ] ),
-    # fx.xml
+            ] )
+    ] )
+
+
+    
+GLOBAL_FX_FILE.add_objects( [
     describe_object( 'effects', attributes = [] ),
     describe_object( 'ambientparticleeffect', attributes = [
             identifier_attribute( 'name', mandatory = True, reference_familly = 'effect',
@@ -495,8 +551,12 @@ GLOBAL_SCOPE.add_objects( [
         xy_attribute( 'lifespan' ), # @todo TYPE OPTIONAL INTERVAL (e.g. 1 or 1,2 are ok)?
         xy_attribute( 'rotation' ), # @todo TYPE OPTIONAL INTERVAL (e.g. 1 or 1,2 are ok)?
         xy_attribute( 'rotspeed' ) # @todo TYPE OPTIONAL INTERVAL (e.g. 1 or 1,2 are ok)?
-        ] ),
-    # materials.xml
+        ] )
+    ] )
+
+
+
+GLOBAL_MATERIALS_FILE.add_objects( [
     describe_object( 'materials', attributes = [] ),
     describe_object( 'material', attributes = [
         identifier_attribute( 'id', mandatory = True, reference_familly = 'material',
@@ -546,9 +606,12 @@ LEVEL_RESOURCE_TEMPLATE = """\
 if __name__ == "__main__":
     import unittest
 
-    TEST_GLOBAL_SCOPE = describe_scope( 'global' )
+    TEST_GLOBAL_FILE = describe_file( 'global' )
+    TEST_LEVEL_FILE = describe_file( 'level' )
 
-    TEST_LEVEL_SCOPE = describe_scope( 'global.level' )
+    TEST_GLOBAL_SCOPE = describe_scope( 'global', files_desc = [TEST_GLOBAL_FILE] )
+
+    TEST_LEVEL_SCOPE = describe_scope( 'global.level', files_desc = [TEST_LEVEL_FILE] )
 
     GLOBAL_TEXT = describe_object( 'text', attributes = [
         identifier_attribute( 'id', mandatory = True, reference_familly = 'text',
@@ -557,7 +620,7 @@ if __name__ == "__main__":
         ] )
 
 
-    TEST_GLOBAL_SCOPE.add_objects( [ GLOBAL_TEXT ] )
+    TEST_GLOBAL_FILE.add_objects( [ GLOBAL_TEXT ] )
 
     LEVEL_TEXT = describe_object( 'text', attributes = [
         identifier_attribute( 'id', mandatory = True, reference_familly = 'text',
@@ -572,7 +635,7 @@ if __name__ == "__main__":
                              reference_scope = TEST_LEVEL_SCOPE )
         ] )
 
-    TEST_LEVEL_SCOPE.add_objects( [ LEVEL_TEXT, LEVEL_SIGN ] )
+    TEST_LEVEL_FILE.add_objects( [ LEVEL_TEXT, LEVEL_SIGN ] )
 
     class TestScope(object):
         data = {}
