@@ -110,15 +110,56 @@ def identifier_attribute( name, reference_familly, reference_scope, **kwargs ):
 def path_attribute( name, **kwargs ):
     return PathAttributeDesc( name, **kwargs )
 
-class ObjectDesc(object):
-    def __init__( self, tag, attributes = None ):
+
+
+class ObjectsDescOwner:
+    def __init__( self, objects_desc = None ):
+        objects_desc = objects_desc or []
+        self.__scope = None
+        self.objects_by_tag = {}
+        self.add_objects( objects_desc )
+
+    @property
+    def scope( self ):
+        return self.__scope
+
+    def _set_scope( self, parent_scope ):
+        if self.__scope is not parent_scope: # avoid cycle
+            self.__scope = parent_scope
+            for object_desc in self.objects_by_tag.itervalues():
+                object_desc._set_scope( parent_scope )
+
+    def add_objects( self, objects_desc ):
+        for object_desc in objects_desc:
+            assert object_desc.tag not in self.objects_by_tag, object_desc.tag
+            self.objects_by_tag[object_desc.tag] = object_desc
+            object_desc._set_scope( self.__scope )
+            self._object_added( object_desc )
+
+    def _object_added( self, object_desc ):
+        raise NotImplemented()
+
+
+class ObjectDesc(ObjectsDescOwner):
+    """A object description represents a tag that belong in a given file. Its main features are:
+       - a tag name
+       - a list of attribute description
+       - zero or more parent object description
+       - a minimum number of occurrences when it occurs in a parent object
+       - a conceptual file it may appears in
+    """
+    def __init__( self, tag, objects_desc = None, attributes = None, min_occurrence = None ):
+        ObjectsDescOwner.__init__( self, objects_desc = objects_desc or [] )
         self.tag = tag
         attributes = attributes or []
         self.attributes_order = []
         self.attributes_by_name = {}
+        self.parent_objects = set() # An object may be added as child of multiple objects if they are in the same file
         self.identifier_attribute = None
         self.reference_attributes = set()
-        self.scope = None   # initialized when added to a scope
+        self.file = None # initialized when object or parent object is added to a file
+        self.child_objects_by_tag = {}
+        self.min_occurrence = min_occurrence or 0
         self.add_attributes( attributes )
 
     def add_attributes( self, attributes ):
@@ -128,9 +169,6 @@ class ObjectDesc(object):
             attribute.attach_to_object_desc( self )
         self.attributes_order.extend( attributes )
 
-    def get_attribute_desc( self, attribute_name ):
-        return self.attributes_by_name.get( attribute_name )
-
     def _add_reference_attribute( self, attribute_desc ):
         assert attribute_desc not in self.reference_attributes
         self.reference_attributes.add( attribute_desc )
@@ -139,31 +177,36 @@ class ObjectDesc(object):
         assert self.identifier_attribute is None
         self.identifier_attribute = attribute_desc
 
+    def _set_file( self, file_desc ):
+        if self.file is not file_desc: # avoid cycle
+            self.file = file_desc
+            for object_desc in self.objects_by_tag.itervalues():
+                object_desc._set_file( file_desc )
+
+    def _object_added( self, object_desc ):
+        object_desc.parent_objects.add( self )
+
     def __repr__( self ):
-        return '%s(tag=%s, attributes=[%s])' % (self.__class__.__name__, self.tag, ','.join(self.attributes_order))
+        return '%s(tag=%s, attributes=[%s], objects=[%s])' % (
+            self.__class__.__name__, self.tag, ','.join([a.name for a in self.attributes_order]),
+            ','.join(self.objects_by_tag.keys()))
 
-def describe_object( tag, attributes = None ):
-    return ObjectDesc( tag, attributes )
+def describe_object( tag, attributes = None, objects = None, min_occurrence = None ):
+    return ObjectDesc( tag, attributes = attributes, objects_desc = objects, min_occurrence = min_occurrence )
 
-class FileDesc(object):
-    def __init__( self, conceptual_file_name, objects_desc = None ):
+class FileDesc(ObjectsDescOwner):
+    def __init__( self, conceptual_file_name, objects = None ):
+        ObjectsDescOwner.__init__( self, objects_desc = objects or [] )
         self.name = conceptual_file_name
-        objects_desc = objects_desc or []
-        self.parent_scope = None
-        self.objects_by_tag = {}
-        self.add_objects( objects_desc )
 
-    def add_objects( self, objects_desc ):
-        for object_desc in objects_desc:
-            assert object_desc.tag not in self.objects_by_tag, object_desc.tag
-            self.objects_by_tag[object_desc.tag] = object_desc
-            object_desc.scope = self
+    def _object_added( self, object_desc ):
+        object_desc._set_file( self )
 
     def __repr__( self ):
         return '%s(name=%s, objects=[%s])' % (self.__class__.__name__, self.name, ','.join(self.objects_by_tag.keys()))
 
-def describe_file( conceptual_file_name, objects_desc = None ):
-    return FileDesc( conceptual_file_name, objects_desc )
+def describe_file( conceptual_file_name, objects = None ):
+    return FileDesc( conceptual_file_name, objects = objects )
 
 class ScopeDesc(object):
     def __init__( self, scope_name, files_desc = None, child_scopes = None ):
@@ -172,9 +215,9 @@ class ScopeDesc(object):
         self.parent_scope = None
         self.child_scopes = []
         self.files_desc_by_name = {}
+        self.__objects_by_tag = None
         self.add_child_scopes( child_scopes )
         self.add_files_desc( files_desc )
-        self.__objects_by_tag = None
 
     @property
     def objects_by_tag( self ):
@@ -193,10 +236,10 @@ class ScopeDesc(object):
         for file_desc in files_desc:
             assert file_desc.name not in self.files_desc_by_name
             self.files_desc_by_name[file_desc.name] = file_desc
-            file_desc.parent_scope = self
+            file_desc._set_scope( self )
 
     def __repr__( self ):
-        return '%s(name=%s, files=[%s])' % (self.__class__.__name__, self.scope_name, ','.join(self.objects_by_tag.keys()))
+        return '%s(name=%s, files=[%s])' % (self.__class__.__name__, self.scope_name, ','.join(self.files_desc_by_name.keys()))
 
 def describe_scope( scope_name, files_desc = None, child_scopes = None ):
     return ScopeDesc( scope_name, files_desc = files_desc, child_scopes = child_scopes )
@@ -606,12 +649,14 @@ LEVEL_RESOURCE_TEMPLATE = """\
 if __name__ == "__main__":
     import unittest
 
-    TEST_GLOBAL_FILE = describe_file( 'global' )
-    TEST_LEVEL_FILE = describe_file( 'level' )
+    TEST_GLOBAL_FILE = describe_file( 'testglobal' )
+    TEST_LEVEL_FILE = describe_file( 'testlevel', objects = [
+        describe_object( 'inline' )
+        ] )
 
-    TEST_GLOBAL_SCOPE = describe_scope( 'global', files_desc = [TEST_GLOBAL_FILE] )
+    TEST_GLOBAL_SCOPE = describe_scope( 'testscope', files_desc = [TEST_GLOBAL_FILE] )
 
-    TEST_LEVEL_SCOPE = describe_scope( 'global.level', files_desc = [TEST_LEVEL_FILE] )
+    TEST_LEVEL_SCOPE = describe_scope( 'testscope.level', files_desc = [TEST_LEVEL_FILE] )
 
     GLOBAL_TEXT = describe_object( 'text', attributes = [
         identifier_attribute( 'id', mandatory = True, reference_familly = 'text',
@@ -633,7 +678,7 @@ if __name__ == "__main__":
                              reference_scope = TEST_LEVEL_SCOPE, init = '', mandatory = True ),
         reference_attribute( 'alt_text', reference_familly = 'text',
                              reference_scope = TEST_LEVEL_SCOPE )
-        ] )
+        ], objects = [ LEVEL_TEXT ] )
 
     TEST_LEVEL_FILE.add_objects( [ LEVEL_TEXT, LEVEL_SIGN ] )
 
@@ -771,5 +816,21 @@ if __name__ == "__main__":
                                        (level2_scope, 'sign1', level_text_attribute),
                                        (level1_scope, 'sign2', level_text_attribute) ]),
                               sorted(tracker.list_references( 'text', 'TEXT_HI' )) )
+
+        def test_descriptions( self ):
+            self.assertEqual( sorted(['text', 'sign', 'inline']), sorted(TEST_LEVEL_SCOPE.objects_by_tag.keys()) )
+            for scope in (TEST_LEVEL_SCOPE, TEST_GLOBAL_SCOPE):
+                for object_desc in scope.objects_by_tag.itervalues():
+                    self.assertEqual( scope, object_desc.scope )
+                for file_desc in scope.files_desc_by_name.itervalues():
+                    self.assertEqual( scope, object_desc.scope )
+            self.assertEqual( sorted([LEVEL_SIGN]), sorted(LEVEL_TEXT.parent_objects) )
+            for file, objects in { TEST_GLOBAL_FILE: [GLOBAL_TEXT],
+                                   TEST_LEVEL_FILE: [LEVEL_TEXT, LEVEL_SIGN] }.iteritems():
+                for object in objects:
+                    self.assertEqual( file, object.file )
+                    self.assert_( object in file.objects_by_tag.values() )
+                    self.assert_( object.tag in file.objects_by_tag )
+                    self.assert_( object.tag in file.scope.objects_by_tag )
 
     unittest.main()
