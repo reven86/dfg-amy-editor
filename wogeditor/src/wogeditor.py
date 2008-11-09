@@ -121,6 +121,7 @@ class GameModel(QtCore.QObject):
            The following signals are provided:
            QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)')
            QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
+           QtCore.SIGNAL('objectAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
            QtCore.SIGNAL('objectPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
            QtCore.SIGNAL('objectRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
         """
@@ -247,6 +248,12 @@ class GameModel(QtCore.QObject):
         self.emit( QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                    level_name, object_scope, element )
 
+    def objectAdded( self, level_name, object_scope, parent_element, element, index_in_parent ):
+        """Signal that an element tree was inserted into another element."""
+        self.is_dirty = True
+        self.emit( QtCore.SIGNAL('objectAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                   level_name, object_scope, parent_element, element, index_in_parent )
+
     def objectRemoved( self, level_name, object_scope, parent_elements, element, index_in_parent ):
         """Signal that an element has been removed from its tree."""
         self.is_dirty = True
@@ -338,7 +345,7 @@ class LevelModel(object):
             pixmap = QtGui.QPixmap()
             if pixmap.load( path ):
                 self.images_by_id[id] = pixmap
-                print 'Loaded', id, path
+##                print 'Loaded', id, path
             else:
                 print 'Failed to load image:', path
         else:
@@ -393,6 +400,21 @@ class LevelModel(object):
                           metawog.LEVEL_SCENE_SCOPE: self.scene_tree,
                           metawog.LEVEL_RESOURCE_SCOPE: self.resource_tree }
         return root_by_scope[object_scope]
+
+    def addElement( self, object_scope, parent_element, element, index = None ):
+        """Adds the specified element (tree) at the specified position in the parent element.
+           If index is None, then the element is added after all the parent children.
+           The element is inserted with all its children.
+           """
+        # Update identifiers & reference related to element
+        self.tracker.element_object_added( self, element, metawog.LEVEL_SCOPE.objects_by_tag.get(element.tag) )
+        # Adds the element
+        if index is None:
+            index = len(parent_element)
+        parent_element.insert( index, element )
+        # Broadcast the insertion event
+        self.dirty_object_types.add( object_scope )
+        self.game_model.objectAdded( self.level_name, object_scope, parent_element, element, index )
 
     def removeElement( self, object_scope, element ):
         """Removes the specified element and all its children from the level."""
@@ -458,6 +480,9 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.connect( self.__game_model,
                       QtCore.SIGNAL('objectRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                       self._refreshOnObjectRemoval )
+        self.connect( self.__game_model,
+                      QtCore.SIGNAL('objectAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                      self._refreshOnObjectInsertion )
 
     def selectLevelOnSubWindowActivation( self ):
         """Called when the user switched MDI window."""
@@ -542,6 +567,8 @@ class LevelGraphicView(QtGui.QGraphicsView):
             # @todo be a bit smarter than this (e.g. refresh just the item)
             # @todo avoid losing selection (should store selected object in level model)
             self.refreshFromModel( self.getLevelModel() )
+
+    _refreshOnObjectInsertion = _refreshOnObjectRemoval
 
     def refreshFromModel( self, game_level_model ):
         scene = self.__scene
@@ -1210,22 +1237,33 @@ class MainWindow(QtGui.QMainWindow):
                           self._refreshLevel )
             self.connect( self._game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                           self._refreshPropertyList )
+            self.connect( self._game_model, QtCore.SIGNAL('objectAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                          self._refreshOnObjectInsertion )
             self.connect( self._game_model, QtCore.SIGNAL('objectRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                           self._refreshOnObjectRemoval )
         except GameModelException, e:
             QtGui.QMessageBox.warning(self, self.tr("Loading WOG levels"),
                                       unicode(e))
 
+    def _refreshOnObjectInsertion( self, level_name, object_scope, parent_element, element, index ):
+        """Called when an object is added to the tree.
+        """
+        tree_view = self.tree_view_by_object_scope[object_scope]
+        parent_item = self._findItemInTreeViewByElement( tree_view, parent_element )
+        if parent_item:
+            self._insertElementNodeInTree( parent_item, element, index )
+        else:
+            print 'Warning: parent_element not found in tree view', parent_element
+
     def _refreshOnObjectRemoval( self, level_name, object_scope, parent_elements, element, index_in_parent ):
         """Called when an object is removed from its tree.
         """
-        # => remove from tree view
         tree_view = self.tree_view_by_object_scope[object_scope]
         item = self._findItemInTreeViewByElement( tree_view, element )
         if item:
             item_row = item.row()
             item.parent().removeRow( item_row )
-        # => ensure property list not on it
+        # Notes: selection will be automatically switched to the previous row in the tree view.
 
     def _refreshLevel( self, old_model, new_game_level_model ):
         """Refresh the tree views and property list on level switch."""
@@ -1237,25 +1275,35 @@ class MainWindow(QtGui.QMainWindow):
     def _refreshElementTree( self, element_tree_view, root_element ):
         """Refresh a tree view using its root element."""
         element_tree_view.model().clear()
-        root_item = None
-        item_parent = element_tree_view.model()
-        items_to_process = [ (item_parent, root_element) ]
-        while items_to_process:
-            item_parent, element = items_to_process.pop(0)
-            item = self._appendChildTreeItem( item_parent, element )
-            if element == root_element:
-                root_item = item
-            
-            for child_element in element:
-                items_to_process.append( (item, child_element) )
+        root_item = self._insertElementTreeInTree( element_tree_view.model(), root_element )
         element_tree_view.setExpanded( root_item.index(), True )
 
-    def _appendChildTreeItem( self, item_parent, element ):
-        """Appends a new child item to item_parent for the specified element and returns item."""
+    def _insertElementTreeInTree( self, item_parent, element, index = None ):
+        """Inserts a sub-tree of item in item_parent at the specified index corresponding to the tree of the specified element.
+           Returns the new root item of the sub-tree.
+           index: if None, append the new sub-tree after all the parent chidlren.
+        """
+        items_to_process = [ (item_parent, element, index) ]
+        root_item = None
+        while items_to_process:
+            item_parent, element, index = items_to_process.pop(0)
+            item = self._insertElementNodeInTree( item_parent, element, index )
+            if root_item is None:
+                root_item = item
+            for child_element in element:
+                items_to_process.append( (item, child_element, None) )
+        return root_item
+
+    def _insertElementNodeInTree( self, item_parent, element, index = None ):
+        """Inserts a single child node in item_parent at the specified index corresponding to the specified element and returns item.
+           index: if None, append the new child item after all the parent chidlren.
+        """
+        if index is None:
+            index = item_parent.rowCount()
         item = QtGui.QStandardItem( element.tag )
         item.setData( QtCore.QVariant( element ), QtCore.Qt.UserRole )
         item.setFlags( item.flags() & ~QtCore.Qt.ItemIsEditable )
-        item_parent.appendRow( item )
+        item_parent.insertRow( index, item )
         return item
                     
     def _refreshGraphicsView( self, game_level_model ):
@@ -1447,10 +1495,8 @@ class MainWindow(QtGui.QMainWindow):
     def _appendChildTag( self, tree_view, object_scope, parent_element_index, new_tag ):
         """Adds the specified child tag to the specified element and update the tree view."""
         parent_element = parent_element_index.data( QtCore.Qt.UserRole ).toPyObject()
-        if parent_element:
-            print 'Adding a', new_tag
+        if parent_element is not None:
             # build the list of attributes with their initial values.
-            # 1) get the object_desc for the tag
             object_desc = metawog.LEVEL_SCOPE.objects_by_tag[new_tag]
             mandatory_attributes = {}
             for attribute_name, attribute_desc in object_desc.attributes_by_name.iteritems():
@@ -1460,15 +1506,17 @@ class MainWindow(QtGui.QMainWindow):
                         init_value = ''
                     mandatory_attributes[attribute_name] = init_value
             # Creates and append to parent the new child element
-            child_element = xml.etree.ElementTree.SubElement( parent_element,
-                                                              new_tag,
-                                                              mandatory_attributes )
-            # Update model & refresh the tree view
-            print type(tree_view.model())
-            item_parent = tree_view.model().itemFromIndex( parent_element_index )
-            item_child = self._appendChildTreeItem( item_parent, child_element )
+            child_element = xml.etree.ElementTree.Element( new_tag, mandatory_attributes )
+            # Notes: when the element is added, the objectAdded() signal will cause the
+            # corresponding item to be inserted into the tree.
+            self.getCurrentLevelModel().addElement( object_scope, parent_element, child_element )
+            # Select new item in tree view
+            item_child = self._findItemInTreeViewByElement( tree_view, child_element )
             selection_model = tree_view.selectionModel()
             selection_model.select( item_child.index(), QtGui.QItemSelectionModel.ClearAndSelect )
+            tree_view.scrollTo( item_child.index() )
+        else:
+            print 'Warning: attempting to add an element to an item without associated elements!', parent_element, parent_element_index
 
     def save(self):
         """Saving all modified elements.

@@ -200,6 +200,7 @@ class ReferenceTracker(object):
 
     def object_added( self, scope_key, object_key, object_desc, attribute_retriever ):
         """Declares object identifier and track referenced objects."""
+##        print 'REF: object_added', object_key
         # Checks if the object has any identifier attribute
         identifier_desc = object_desc.identifier_attribute
         if identifier_desc:
@@ -211,6 +212,7 @@ class ReferenceTracker(object):
             self._register_object_reference( scope_key, object_key, attribute_desc, reference_value )
 
     def _register_object_identifier( self, scope_key, object_key, identifier_desc, identifier_value ):
+##        print '=> registering "%s" with identifier: "%s"' % (object_key, repr(identifier_value))
         if identifier_value is not None:
             references = self.ref_by_scope_and_familly.get( (scope_key,identifier_desc.reference_familly) )
             if references is None:
@@ -228,6 +230,7 @@ class ReferenceTracker(object):
             back_references.add( (scope_key, object_key, attribute_desc) )
 
     def object_about_to_be_removed( self, scope_key, object_key, object_desc, attribute_retriever ):
+##        print 'REF: object_about_to_be_removed', object_key
         # Checks if the object has any identifier attribute
         identifier_desc = object_desc.identifier_attribute
         if identifier_desc:
@@ -239,10 +242,14 @@ class ReferenceTracker(object):
             self._unregister_object_reference( scope_key, object_key, attribute_desc, reference_value )
 
     def _unregister_object_identifier( self, scope_key, object_key, identifier_desc, identifier_value ):
+##        print '=> unregistering "%s" with identifier: "%s"' % (object_key, repr(identifier_value))
         if identifier_value is not None:
             references = self.ref_by_scope_and_familly.get( (scope_key,identifier_desc.reference_familly) )
             if references:
-                del references[identifier_value]
+                try:
+                    del references[identifier_value]
+                except KeyError:    # May happens in case of multiple image with same identifier (usually blank)
+                    pass            # since unicity is not validated yet
 
     def _unregister_object_reference( self, scope_key, object_key, attribute_desc, reference_value ):
         if reference_value is not None:
@@ -505,9 +512,11 @@ LEVEL_GAME_TEMPLATE = """\
 <level ballsrequired="1" letterboxed="false" visualdebug="false" autobounds="true" textcolor="255,255,255" timebugprobability="0" strandgeom="false" allowskip="true" >
 
 	<!-- Camera -->
-	<camera aspect="normal" endpos="0,327" endzoom="0.936">
+	<camera aspect="normal" endpos="0,0" endzoom="1">
+		<poi pos="0,0" traveltime="0" pause="0" zoom="1" />
 	</camera>
-	<camera aspect="widescreen" endpos="0,327" endzoom="1.273">
+	<camera aspect="widescreen" endpos="0,0" endzoom="1.273">
+		<poi pos="0,0" traveltime="0" pause="0" zoom="1.273" />
 	</camera>
 
 	<!-- Level Exit -->
@@ -521,9 +530,9 @@ LEVEL_SCENE_TEMPLATE = """\
 <scene minx="-500" miny="0" maxx="500" maxy="1000" backgroundcolor="0,0,0" >
 	<linearforcefield type="gravity" force="0,-10" dampeningfactor="0" antigrav="true" geomonly="false" />
 
-	<line id="" static="true" tag="detaching" material="rock" anchor="436.5,331.5" normal="-1,-0.0071" />
-	<line id="" static="true" tag="detaching" material="rock" anchor="-437,321" normal="1,-0.0056" />
-	<line id="" static="true" material="rock" anchor="-14,18.5" normal="0,1" />
+	<line id="" static="true" tag="detaching" material="rock" anchor="500,300" normal="-1,0" />
+	<line id="" static="true" tag="detaching" material="rock" anchor="-500,300" normal="1,0" />
+	<line id="" static="true" material="rock" anchor="0,20" normal="0,1" />
 </scene>"""
 
 LEVEL_RESOURCE_TEMPLATE = """\
