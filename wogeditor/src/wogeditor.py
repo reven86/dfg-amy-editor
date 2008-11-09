@@ -24,6 +24,8 @@
 # updated on element property change
 # updated on element addition/removal
 
+# see icons example for context menu, but lack item selection on right click.
+
 import sys
 import os
 import os.path
@@ -97,8 +99,8 @@ class GameModel(QtCore.QObject):
         self._resources = self._loadPackedData( properties_dir, 'resources.xml.bin' )
         self._readonly_resources = set()    # resources in resources.xml that have expanded defaults idprefix & path
         self._texts = self._loadPackedData( properties_dir, 'text.xml.bin' )
-        self._levels = self._loadDirList( os.path.join( self._res_dir, 'levels' ) )
-        self._balls = self._loadDirList( os.path.join( self._res_dir, 'balls' ) )
+        self._levels = self._loadDirList( os.path.join( self._res_dir, 'levels' ), filter = '%s.scene.bin' )
+        self._balls = self._loadDirList( os.path.join( self._res_dir, 'balls' ), filter = 'balls.xml.bin' )
         self.level_models_by_name = {}
         self.current_model = None
         self.is_dirty = False
@@ -122,12 +124,22 @@ class GameModel(QtCore.QObject):
         xml_data = xml.etree.ElementTree.tostring( element_tree )
         wogfile.encrypt_file_data( path, xml_data )
 
-    def _loadDirList( self, dir ):
+    def _loadDirList( self, dir, filter ):
         if not os.path.isdir( dir ):
             raise GameModelException( tr('LoadLevelList',
                 'Directory "%1" does not exist. You likely provided an incorrect WOG directory.' ).arg( dir ) )
-        dirs = [ entry for entry in os.listdir( dir )
-                 if os.path.isdir( os.path.join( dir, entry ) ) ]
+        def is_valid_dir( entry ):
+            """Accepts the directory only if it contains a specified file."""
+            dir_path = os.path.join( dir, entry )
+            if os.path.isdir( dir_path ):
+                try:
+                    filter_file_path = filter % entry
+                except TypeError:
+                    filter_file_path = filter
+                if os.path.isfile( os.path.join( dir_path, filter_file_path ) ):
+                    return True
+            return False
+        dirs = [ entry for entry in os.listdir( dir ) if is_valid_dir( entry ) ]
         dirs.sort()
         return dirs
 
@@ -243,7 +255,9 @@ class GameModel(QtCore.QObject):
         """Adds a new level using the specified level, scene and resource tree.
            The level directory is created, but the level xml files will not be saved immediately.
         """
-        os.mkdir( os.path.join( self._res_dir, 'levels', level_name ) )
+        level_dir_path = os.path.join( self._res_dir, 'levels', level_name )
+        if not os.path.isdir( level_dir_path ):
+            os.mkdir( level_dir_path )
         # Fix the hard-coded level name in resource tree: <Resources id="scene_NewTemplate" >
         for resource_element in resource_tree.findall( './/Resources' ):
             resource_element.set( 'id', 'scene_%s' % level_name )
@@ -270,20 +284,24 @@ class LevelModel(object):
 
         self.images_by_id = {}
         for image_element in self.resource_tree.findall( './/Image' ):
-            id, path = image_element.get('id'), image_element.get('path')
-            path = game_model.getResourcePath( path + '.png' )
-            if os.path.isfile( path ):
-                pixmap = QtGui.QPixmap()
-                if pixmap.load( path ):
-                    self.images_by_id[id] = pixmap
-##                    print 'Loaded', id, path
-                else:
-                    print 'Failed to load image:', path
-        #@todo listen for resource property value change
+            self._loadImageFromElement( image_element )
 
     @property
     def tracker( self ):
         return self.game_model.tracker
+
+    def _loadImageFromElement( self, image_element ):
+        id, path = image_element.get('id'), image_element.get('path')
+        path = self.game_model.getResourcePath( path + '.png' )
+        if os.path.isfile( path ):
+            pixmap = QtGui.QPixmap()
+            if pixmap.load( path ):
+                self.images_by_id[id] = pixmap
+                print 'Loaded', id, path
+            else:
+                print 'Failed to load image:', path
+        else:
+            print 'Invalid image path for "%s": "%s"' % (id,path)
 
     def _initializeLevelReferences( self ):
         level_object_desc = metawog.LEVEL_SCOPE.objects_by_tag
@@ -310,11 +328,20 @@ class LevelModel(object):
 
     def updateObjectPropertyValue( self, object_scope, element, property_name, new_value ):
         """Changes the property value of an object (scene, level or resource)."""
-        if element.tag == 'Image' and property_name == 'id': # update pixmap cache
-            self.images_by_id[new_value] = self.images_by_id[element.get('id')]
-            del self.images_by_id[element.get('id')]
+        reload_image = False
+        if element.tag == 'Image':
+            reload_image = True # reload image if path changed or image was not in cache
+            if property_name == 'id': # update pixmap cache
+                old_id = element.get('id')
+                old_pixmap = self.images_by_id.get(old_id)
+                if old_pixmap:
+                    self.images_by_id[new_value] = old_pixmap
+                    del self.images_by_id[old_id]
+                    reload_image = False
         self.game_model.tracker.update_element_attribute( self, metawog.LEVEL_SCOPE, element,
                                                           property_name, new_value )
+        if reload_image:
+            self._loadImageFromElement( element )
         self.dirty_object_types.add( object_scope )
         self.game_model.objectPropertyValueChanged( self.level_name,
                                                     object_scope, element,
@@ -1120,22 +1147,27 @@ class MainWindow(QtGui.QMainWindow):
 
     def _refreshElementTree( self, element_tree_view, root_element ):
         """Refresh a tree view using its root element."""
-        element_tree_view.clear()
+        element_tree_view.model().clear()
         root_item = None
-        item_parent = element_tree_view
+        item_parent = element_tree_view.model()
         items_to_process = [ (item_parent, root_element) ]
         while items_to_process:
             item_parent, element = items_to_process.pop(0)
-            
-            item = QtGui.QTreeWidgetItem( item_parent )
-            item.setText( 0, element.tag )
-            item.setData( 0, QtCore.Qt.UserRole, QtCore.QVariant( element ) )
+            item = self._appendChildTreeItem( item_parent, element )
             if element == root_element:
                 root_item = item
             
             for child_element in element:
                 items_to_process.append( (item, child_element) )
-        element_tree_view.expandItem( root_item )
+        element_tree_view.setExpanded( root_item.index(), True )
+
+    def _appendChildTreeItem( self, item_parent, element ):
+        """Appends a new child item to item_parent for the specified element and returns item."""
+        item = QtGui.QStandardItem( element.tag )
+        item.setData( QtCore.QVariant( element ), QtCore.Qt.UserRole )
+        item.setFlags( item.flags() & ~QtCore.Qt.ItemIsEditable )
+        item_parent.appendRow( item )
+        return item
 
     def _refreshGraphicsView( self, game_level_model ):
         level_mdi = self._findLevelGraphicView( game_level_model.level_name )
@@ -1143,33 +1175,37 @@ class MainWindow(QtGui.QMainWindow):
             level_view = level_mdi.widget()
             level_view.refreshFromModel( game_level_model )
         
-    def _onElementTreeSelectionChange( self, tree_view, object_scope ):
+    def _onElementTreeSelectionChange( self, tree_view, object_scope, selected, deselected ):
         """Called whenever the scene tree selection change."""
-        selected_items = tree_view.selectedItems()
-        if len( selected_items ) == 1:
-            item = selected_items[0]
-            element = item.data( 0, QtCore.Qt.UserRole ).toPyObject()
+        selected_indexes = selected.indexes()
+        if len( selected_indexes ) == 1: # Do not handle multiple selection yet
+            item = tree_view.model().itemFromIndex( selected_indexes[0] )
+            element = item.data( QtCore.Qt.UserRole ).toPyObject()
             game_level_model = self.getCurrentLevelModel()
             if game_level_model:
                 game_level_model.objectSelected( object_scope, element )
-##            self._refreshPropertyListFromElement( element )
-        else:
-            for item in tree_view.selectedItems():
-                pass # need to get an handle on the element
 
     def _refreshPropertyList( self, level_name, object_scope, element ):
         self._refreshPropertyListFromElement( object_scope, element )
         self._refreshSceneTreeSelection( object_scope, element )
 
     def _refreshSceneTreeSelection( self, object_scope, element ):
-        for item in qthelper.iterQTreeWidget( self.sceneTree ):
-            if item.data( 0, QtCore.Qt.UserRole ).toPyObject() == element:
-                item.setSelected( True )
-                item.setExpanded( True )
-                index = self.sceneTree.indexFromItem( item ) # Why is this method protected ???
-                self.sceneTree.scrollTo( index )
-            elif item.isSelected():
-                item.setSelected( False )
+        """Select the item corresponding to element in the tree view.
+        """
+        tree_view = self.tree_view_by_object_scope[object_scope]
+        selected_index = None
+        for item in qthelper.standardModelTreeItems( tree_view.model() ):
+            if item.data( QtCore.Qt.UserRole ).toPyObject() == element:
+                selected_index = item.index()
+                break
+        if selected_index:
+            selection_model = tree_view.selectionModel()
+            selection_model.select( selected_index, QtGui.QItemSelectionModel.ClearAndSelect )
+            tree_view.setExpanded( selected_index, True )
+            tree_view.parent().raise_() # Raise the dock windows associated to the tree view
+            tree_view.scrollTo( selected_index )
+        else:
+            print 'Warning: selected item not found in tree view.', tree_view, object_scope, element
 
     def _refreshPropertyListFromElement( self, object_scope, element ):
         # Order the properties so that main attributes are at the beginning
@@ -1207,12 +1243,17 @@ class MainWindow(QtGui.QMainWindow):
                 ui.levelList.addItem( level_name )
             if dialog.exec_() and ui.levelList.currentItem:
                 level_name = unicode( ui.levelList.currentItem().text() )
-                self._game_model.selectLevel( level_name )
-                sub_window = self._findLevelGraphicView( level_name )
-                if sub_window:
-                    self.mdiArea.setActiveSubWindow( sub_window )
+                try:
+                    self._game_model.selectLevel( level_name )
+                except GameModelException, e:
+                    QtGui.QMessageBox.warning(self, self.tr("Failed to load level!"),
+                              unicode(e))
                 else:
-                    self._addLevelGraphicView( level_name )
+                    sub_window = self._findLevelGraphicView( level_name )
+                    if sub_window:
+                        self.mdiArea.setActiveSubWindow( sub_window )
+                    else:
+                        self._addLevelGraphicView( level_name )
 
     def _addLevelGraphicView( self, level_name ):
         """Adds a new MDI LevelGraphicView window for the specified level."""
@@ -1259,6 +1300,54 @@ class MainWindow(QtGui.QMainWindow):
             self.getCurrentLevelModel().updateObjectPropertyValue( object_scope, element, property_name, str(new_value) )
         else:
             print 'Warning: no data on edited item!'
+
+    def _onTreeViewCustomContextMenu( self, tree_view, object_scope, menu_pos ):
+        # Select the right clicked item
+        index = tree_view.indexAt(menu_pos)
+        if index.isValid():
+            element = index.data( QtCore.Qt.UserRole ).toPyObject()
+            if element is None:
+                print 'Warning: somehow managed to activate context menu on non item???'
+            else:
+                selection_model = tree_view.selectionModel()
+                selection_model.select( index, QtGui.QItemSelectionModel.ClearAndSelect )
+                # Notes: a selectionChanged signal may have been emitted due to selection change.
+                # Check out FormWindow::initializePopupMenu in designer, it does plenty of interesting stuff...
+                menu = QtGui.QMenu( tree_view )
+                tag_by_actions = {}
+                for tag in sorted(metawog.LEVEL_SCOPE.objects_by_tag.iterkeys()):
+                    action = menu.addAction( self.tr("Add child %1").arg(tag) )
+                    tag_by_actions[action] = tag
+                selected_action = menu.exec_( tree_view.viewport().mapToGlobal(menu_pos) )
+                selected_tag = tag_by_actions.get( selected_action )
+                if selected_tag:
+                    self._appendChildTag( tree_view, object_scope, index, selected_tag )
+
+    def _appendChildTag( self, tree_view, object_scope, parent_element_index, new_tag ):
+        """Adds the specified child tag to the specified element and update the tree view."""
+        parent_element = parent_element_index.data( QtCore.Qt.UserRole ).toPyObject()
+        if parent_element:
+            print 'Adding a', new_tag
+            # build the list of attributes with their initial values.
+            # 1) get the object_desc for the tag
+            object_desc = metawog.LEVEL_SCOPE.objects_by_tag[new_tag]
+            mandatory_attributes = {}
+            for attribute_name, attribute_desc in object_desc.attributes_by_name.iteritems():
+                if attribute_desc.mandatory:
+                    init_value = attribute_desc.init
+                    if init_value is None:
+                        init_value = ''
+                    mandatory_attributes[attribute_name] = init_value
+            # Creates and append to parent the new child element
+            child_element = xml.etree.ElementTree.SubElement( parent_element,
+                                                              new_tag,
+                                                              mandatory_attributes )
+            # Update model & refresh the tree view
+            print type(tree_view.model())
+            item_parent = tree_view.model().itemFromIndex( parent_element_index )
+            item_child = self._appendChildTreeItem( item_parent, child_element )
+            selection_model = tree_view.selectionModel()
+            selection_model.select( item_child.index(), QtGui.QItemSelectionModel.ClearAndSelect )
 
     def save(self):
         """Saving all modified elements.
@@ -1448,26 +1537,35 @@ class MainWindow(QtGui.QMainWindow):
     def createElementTreeView(self, name, object_scope, sibling_tabbed_dock = None ):
         dock = QtGui.QDockWidget( self.tr( name ), self )
         dock.setAllowedAreas( QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea )
-        element_tree_view = QtGui.QTreeWidget( dock )
-        element_tree_view.headerItem().setText( 0, self.tr( 'Element' ) )
+        element_tree_view = QtGui.QTreeView( dock )
+        tree_model = QtGui.QStandardItemModel(0, 1, element_tree_view)  # nb rows, nb cols
+        tree_model.setHorizontalHeaderLabels( [self.tr('Element')] )
+        element_tree_view.setModel( tree_model )
         dock.setWidget( element_tree_view )
         self.addDockWidget( QtCore.Qt.RightDockWidgetArea, dock )
         if sibling_tabbed_dock: # Stacks the dock widget together
             self.tabifyDockWidget( sibling_tabbed_dock, dock )
-        class OnTreeSelectionChangeBinder(object):
+        class TreeBinder(object):
             def __init__( self, tree_view, object_scope, handler ):
                 self.__tree_view = tree_view
                 self.__object_type = object_scope
                 self.__handler = handler
 
-            def __call__( self ):
-                self.__handler( self.__tree_view, self.__object_type )
-        callback = OnTreeSelectionChangeBinder( element_tree_view, object_scope,
-                                                self._onElementTreeSelectionChange )
-        self.connect(element_tree_view, QtCore.SIGNAL("itemSelectionChanged()"),callback)
+            def __call__( self, *args ):
+                self.__handler( self.__tree_view, self.__object_type, *args )
+        # On tree node selection change
+        selection_model = element_tree_view.selectionModel()
+        self.connect( selection_model, QtCore.SIGNAL("selectionChanged(QItemSelection,QItemSelection)"),
+                      TreeBinder( element_tree_view, object_scope, self._onElementTreeSelectionChange) )
+        # Hook context menu popup signal
+        element_tree_view.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
+        self.connect( element_tree_view, QtCore.SIGNAL("customContextMenuRequested(QPoint)"),
+                      TreeBinder( element_tree_view, object_scope, self._onTreeViewCustomContextMenu) )
+        self.tree_view_by_object_scope[object_scope] = element_tree_view
         return dock, element_tree_view
         
     def createDockWindows(self):
+        self.tree_view_by_object_scope = {} # map of all tree views
         scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', metawog.LEVEL_SCENE_SCOPE )
         level_dock, self.levelTree = self.createElementTreeView( 'Level', metawog.LEVEL_GAME_SCOPE, scene_dock )
         resource_dock, self.levelResourceTree = self.createElementTreeView( 'Resource',
