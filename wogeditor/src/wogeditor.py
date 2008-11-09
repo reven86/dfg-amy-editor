@@ -46,20 +46,54 @@ def tr( context, message ):
 
 MODEL_TYPE_LEVEL = 'Level'
 
+def find_element_in_tree( root_element, element ):
+    """Searchs the specified element in the root_element children and returns all its parent, and its index in its immediate parent.
+       Returns None if the element is not found, otherwise returns a tuple ([parent_elements], child_index)
+       root_element, element: must provides the interface xml.etree.ElementTree.
+    """
+    for index, child_element in enumerate(root_element):
+        if child_element is element:
+            return ([root_element], index)
+        found = find_element_in_tree( child_element, element )
+        if found is not None:
+            found_parents, found_index = found
+            found_parents.insert( 0, root_element )
+            return found_parents, found_index
+    return None
+
+def flattened_element_children( element ):
+    """Returns a list of all the element children, including its grand-children..."""
+    children = []
+    for child_element in element:
+        children.append( child_element )
+        children.extend( flattened_element_children( child_element ) )
+    return children
+
 class ElementReferenceTracker(metawog.ReferenceTracker):
     """Specialized version of the ReferenceTracker that provides helper for element tree based objects.
     """
-    count = 0
     def element_object_added( self, scope_key, object, object_desc ):
         """Registers the specified element and all its children that are declared in the scope description.
         """
         metawog.ReferenceTracker.object_added( self, scope_key, object, object_desc, self._retrieve_element_attribute )
         scope_desc = object_desc.scope
-        self.count += 1
         for child_element in object:    # recurse to add all child elements
             child_object_desc = scope_desc.objects_by_tag.get( child_element.tag )
             if child_object_desc:
                 self.element_object_added( scope_key, child_element, child_object_desc )
+
+    def element_object_about_to_be_removed( self, scope_key, element, object_desc ):
+        """Unregisters the specified element and all its children that are declared in the scope description.
+        """
+        if object_desc is None:
+            return
+        metawog.ReferenceTracker.object_about_to_be_removed( self, scope_key, element, object_desc,
+                                                             self._retrieve_element_attribute )
+        scope_desc = object_desc.scope
+        for child_element in element:    # recurse to add all child elements
+            child_object_desc = scope_desc.objects_by_tag.get( child_element.tag )
+            if child_object_desc:
+                self.element_object_about_to_be_removed( scope_key, child_element, child_object_desc )
 
     def update_element_attribute( self, scope_key, scope_desc, element, attribute_name, new_value ):
         """Updates an element attribute value and automatically updates related identifier/back-references.
@@ -88,6 +122,7 @@ class GameModel(QtCore.QObject):
            QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)')
            QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
            QtCore.SIGNAL('objectPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
+           QtCore.SIGNAL('objectRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
         """
         QtCore.QObject.__init__( self )
         self._wog_path = wog_path
@@ -211,6 +246,12 @@ class GameModel(QtCore.QObject):
         """Signal that the specified object has been selected."""
         self.emit( QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                    level_name, object_scope, element )
+
+    def objectRemoved( self, level_name, object_scope, parent_elements, element, index_in_parent ):
+        """Signal that an element has been removed from its tree."""
+        self.is_dirty = True
+        self.emit( QtCore.SIGNAL('objectRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                   level_name, object_scope, parent_elements, element, index_in_parent )
 
     def objectPropertyValueChanged( self, level_name, object_scope, element, property_name, value ):
         """Signal that an element attribute value has changed."""
@@ -347,6 +388,32 @@ class LevelModel(object):
                                                     object_scope, element,
                                                     property_name, new_value )
 
+    def getObjectScopeRootElement( self, object_scope ):
+        root_by_scope = { metawog.LEVEL_GAME_SCOPE: self.level_tree,
+                          metawog.LEVEL_SCENE_SCOPE: self.scene_tree,
+                          metawog.LEVEL_RESOURCE_SCOPE: self.resource_tree }
+        return root_by_scope[object_scope]
+
+    def removeElement( self, object_scope, element ):
+        """Removes the specified element and all its children from the level."""
+        # Update element reference & identifiers in tracker
+        if element in (self.scene_tree, self.level_tree, self.resource_tree):
+            print 'Warning: attempted to remove root element, GUI should not allow that'
+            return False # can not remove those elements
+        # @todo makes tag look-up fails once model is complete
+        self.tracker.element_object_about_to_be_removed( self, element, metawog.LEVEL_SCOPE.objects_by_tag.get(element.tag) )
+        found = find_element_in_tree( self.getObjectScopeRootElement(object_scope), element )
+        if found is None:
+            print 'Warning: inconsistency, element to remove in not in the specified object_scope', element
+            return False
+        parent_elements, index_in_parent = found
+        # Remove the element from its parent
+        del parent_elements[-1][index_in_parent]
+        # broadcast element removal event...
+        self.game_model.objectRemoved( self.level_name, object_scope, parent_elements, element, index_in_parent )
+        self.dirty_object_types.add( object_scope )
+        return True
+
     def getImagePixmap( self, image_id ):
         return self.images_by_id.get(image_id)
 
@@ -388,6 +455,9 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.connect( self.__game_model,
                       QtCore.SIGNAL('objectPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                       self._refreshOnObjectPropertyValueChange )
+        self.connect( self.__game_model,
+                      QtCore.SIGNAL('objectRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                      self._refreshOnObjectRemoval )
 
     def selectLevelOnSubWindowActivation( self ):
         """Called when the user switched MDI window."""
@@ -462,6 +532,12 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
     def _refreshOnObjectPropertyValueChange( self, level_name, object_scope, element, property_name, value ):
         """Refresh the view when an object property change (usually via the property list edition)."""
+        if level_name == self.__level_name:
+            # @todo be a bit smarter than this (e.g. refresh just the item)
+            # @todo avoid losing selection (should store selected object in level model)
+            self.refreshFromModel( self.getLevelModel() )
+
+    def _refreshOnObjectRemoval( self, level_name, object_scope, parent_elements, element, index_in_parent ):
         if level_name == self.__level_name:
             # @todo be a bit smarter than this (e.g. refresh just the item)
             # @todo avoid losing selection (should store selected object in level model)
@@ -1134,9 +1210,22 @@ class MainWindow(QtGui.QMainWindow):
                           self._refreshLevel )
             self.connect( self._game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                           self._refreshPropertyList )
+            self.connect( self._game_model, QtCore.SIGNAL('objectRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                          self._refreshOnObjectRemoval )
         except GameModelException, e:
             QtGui.QMessageBox.warning(self, self.tr("Loading WOG levels"),
                                       unicode(e))
+
+    def _refreshOnObjectRemoval( self, level_name, object_scope, parent_elements, element, index_in_parent ):
+        """Called when an object is removed from its tree.
+        """
+        # => remove from tree view
+        tree_view = self.tree_view_by_object_scope[object_scope]
+        item = self._findItemInTreeViewByElement( tree_view, element )
+        if item:
+            item_row = item.row()
+            item.parent().removeRow( item_row )
+        # => ensure property list not on it
 
     def _refreshLevel( self, old_model, new_game_level_model ):
         """Refresh the tree views and property list on level switch."""
@@ -1168,7 +1257,7 @@ class MainWindow(QtGui.QMainWindow):
         item.setFlags( item.flags() & ~QtCore.Qt.ItemIsEditable )
         item_parent.appendRow( item )
         return item
-
+                    
     def _refreshGraphicsView( self, game_level_model ):
         level_mdi = self._findLevelGraphicView( game_level_model.level_name )
         if level_mdi:
@@ -1189,16 +1278,19 @@ class MainWindow(QtGui.QMainWindow):
         self._refreshPropertyListFromElement( object_scope, element )
         self._refreshSceneTreeSelection( object_scope, element )
 
+    def _findItemInTreeViewByElement( self, tree_view, element ):
+        for item in qthelper.standardModelTreeItems( tree_view.model() ):
+            if item.data( QtCore.Qt.UserRole ).toPyObject() is element:
+                return item
+        return None
+
     def _refreshSceneTreeSelection( self, object_scope, element ):
         """Select the item corresponding to element in the tree view.
         """
         tree_view = self.tree_view_by_object_scope[object_scope]
-        selected_index = None
-        for item in qthelper.standardModelTreeItems( tree_view.model() ):
-            if item.data( QtCore.Qt.UserRole ).toPyObject() == element:
-                selected_index = item.index()
-                break
-        if selected_index:
+        selected_item = self._findItemInTreeViewByElement( tree_view, element )
+        if selected_item:
+            selected_index = selected_item.index()
             selection_model = tree_view.selectionModel()
             selection_model.select( selected_index, QtGui.QItemSelectionModel.ClearAndSelect )
             tree_view.setExpanded( selected_index, True )
@@ -1336,6 +1428,10 @@ class MainWindow(QtGui.QMainWindow):
                 # Notes: a selectionChanged signal may have been emitted due to selection change.
                 # Check out FormWindow::initializePopupMenu in designer, it does plenty of interesting stuff...
                 menu = QtGui.QMenu( tree_view )
+                remove_action = menu.addAction( self.tr("Remove element") )
+                menu.addSeparator()
+                if index.parent() is None:
+                    remove_action.setEnable( False )
                 tag_by_actions = {}
                 for tag in sorted(metawog.LEVEL_SCOPE.objects_by_tag.iterkeys()):
                     action = menu.addAction( self.tr("Add child %1").arg(tag) )
@@ -1344,6 +1440,9 @@ class MainWindow(QtGui.QMainWindow):
                 selected_tag = tag_by_actions.get( selected_action )
                 if selected_tag:
                     self._appendChildTag( tree_view, object_scope, index, selected_tag )
+                elif selected_action is remove_action:
+                    element_to_remove = tree_view.model().itemFromIndex( index ).data( QtCore.Qt.UserRole ).toPyObject()
+                    self.getCurrentLevelModel().removeElement( object_scope, element_to_remove )
 
     def _appendChildTag( self, tree_view, object_scope, parent_element_index, new_tag ):
         """Adds the specified child tag to the specified element and update the tree view."""
