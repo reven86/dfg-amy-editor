@@ -114,7 +114,7 @@ class ObjectDesc(object):
     def __init__( self, tag, attributes = None ):
         self.tag = tag
         attributes = attributes or []
-        self.attributes_order = [ attribute.name for attribute in attributes ]
+        self.attributes_order = []
         self.attributes_by_name = {}
         self.identifier_attribute = None
         self.reference_attributes = set()
@@ -126,6 +126,7 @@ class ObjectDesc(object):
             assert attribute.name not in self.attributes_by_name, attribute.name
             self.attributes_by_name[attribute.name] = attribute
             attribute.attach_to_object_desc( self )
+        self.attributes_order.extend( attributes )
 
     def get_attribute_desc( self, attribute_name ):
         return self.attributes_by_name.get( attribute_name )

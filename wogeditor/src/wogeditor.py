@@ -1209,30 +1209,52 @@ class MainWindow(QtGui.QMainWindow):
 
     def _refreshPropertyListFromElement( self, object_scope, element ):
         # Order the properties so that main attributes are at the beginning
-        attribute_names = element.keys()
-        attribute_order = ( 'id', 'name', 'x', 'y', 'depth', 'radius',
-                            'rotation', 'scalex', 'scaley', 'image', 'alpha' )
-        ordered_attributes = []
-        for name in attribute_order:
-            try:
-                index = attribute_names.index( name )
-            except ValueError: # name not found
-                pass
-            else: # name found
-                del attribute_names[index]
-                ordered_attributes.append( (name, element.get(name)) )
-        ordered_attributes.extend( [ (name, element.get(name)) for name in attribute_names ] )
-        # Update the property list model
-        self._resetPropertyListModel()
-        for name, value in ordered_attributes:
-            item_name = QtGui.QStandardItem( name )
-            item_name.setEditable( False )
-            item_value = QtGui.QStandardItem( value )
-            # @todo object_desc & scope_key should be parameters...
-            object_desc = metawog.LEVEL_SCOPE.objects_by_tag.get( element.tag )
+        object_desc = metawog.LEVEL_SCOPE.objects_by_tag.get(element.tag)
+        if object_desc is None:  # path for data without meta-model (to be removed)
+            attribute_names = element.keys()
+            attribute_order = ( 'id', 'name', 'x', 'y', 'depth', 'radius',
+                                'rotation', 'scalex', 'scaley', 'image', 'alpha' )
+            ordered_attributes = []
+            for name in attribute_order:
+                try:
+                    index = attribute_names.index( name )
+                except ValueError: # name not found
+                    pass
+                else: # name found
+                    del attribute_names[index]
+                    ordered_attributes.append( (name, element.get(name)) )
+            ordered_attributes.extend( [ (name, element.get(name)) for name in attribute_names ] )
+            # Update the property list model
+            self._resetPropertyListModel()
+            for name, value in ordered_attributes:
+                item_name = QtGui.QStandardItem( name )
+                item_name.setEditable( False )
+                item_value = QtGui.QStandardItem( value )
+                # @todo object_desc & scope_key should be parameters...
+                object_desc = metawog.LEVEL_SCOPE.objects_by_tag.get( element.tag )
+                scope_key = self.getCurrentLevelModel()
+                item_value.setData( QtCore.QVariant( (scope_key, object_scope, object_desc, element, name) ), QtCore.Qt.UserRole )
+                self.propertiesListModel.appendRow( [ item_name, item_value ] )
+        else: # Update the property list using the model
+            self._resetPropertyListModel()
             scope_key = self.getCurrentLevelModel()
-            item_value.setData( QtCore.QVariant( (scope_key, object_scope, object_desc, element, name) ), QtCore.Qt.UserRole )
-            self.propertiesListModel.appendRow( [ item_name, item_value ] )
+            for attribute_desc in object_desc.attributes_order:
+                attribute_name = attribute_desc.name
+                attribute_value = element.get( attribute_name )
+                item_name = QtGui.QStandardItem( attribute_name )
+                item_name.setEditable( False )
+                if attribute_value is not None: # bold property name for defined property
+                    font = item_name.font()
+                    font.setBold( True )
+                    if attribute_value is None and attribute_desc.mandatory:
+                        # @todo Also put name in red if value is not valid.
+                        brush = QtGui.QBrush( QtGui.QColor( 255, 0, 0 ) )
+                        font.setForeground( brush )
+                    item_name.setFont( font )
+                item_value = QtGui.QStandardItem( attribute_value or '' )
+                item_value.setData( QtCore.QVariant( (scope_key, object_scope, object_desc, element, attribute_name) ),
+                                    QtCore.Qt.UserRole )
+                self.propertiesListModel.appendRow( [ item_name, item_value ] )
 
     def editLevel( self ):
         if self._game_model:
