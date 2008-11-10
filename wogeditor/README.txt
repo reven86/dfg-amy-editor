@@ -5,8 +5,10 @@ wogfile: can pack/unpack a .bin from/to an .xml file.
 scanbinfile: convert all .bin file found in a directory into .xml in a target directory
 scanxmlfile: help understanding the structure and meaning of .xml by scanning through many at once.
 
-In addition to that, a GUI editor that provides only provides level visualization is available:
+In addition to that, a GUI editor that provides only provides basic level edition:
 wogeditor.
+
+It is an early release, makes sure to watch out for error in the console window.
 
 * Running from the source:
 - you need to install python 2.5 (http://python.org)
