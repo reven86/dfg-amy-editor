@@ -1144,6 +1144,7 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
 
     def createEditor( self, parent, option, index ):
         """Returns the widget used to edit the item specified by index for editing. The parent widget and style option are used to control how the editor widget appears."""
+        # see QDefaultItemEditorFactory::createEditor for example of implementations
         scope_key, object_file, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
         need_specific_editor = handler_data and handler_data.get('editor')
         if need_specific_editor:

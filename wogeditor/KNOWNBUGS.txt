@@ -1,5 +1,7 @@
 - rectangle/circle on display either pixmap or geometry shape.
-- it is possible to by-pass validity check by clicking on another property
+- it is possible to by-pass validity check by clicking on another property or alt-tabbing
+  Solution: must reimplement our own validation framework on top of QLineEdit. The QValidator framework
+  is useless. On focus lost, should restore previous content.
 - alt-tab while editing a property value cause the property not to be updated (inspite of what is displayed)
 - when selecting an item in tree view, selection in other tree views is not cleared. This cause properties not to be refreshed when selecting the previously selected item in the other tree view.
   Solution: on item selection change, clear all other tree selections.
