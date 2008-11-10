@@ -56,6 +56,10 @@ class EnumeratedAttributeDesc(AttributeDesc):
         self.values = set( values )
         self.is_list = is_list
 
+class BooleanAttributeDesc(EnumeratedAttributeDesc):
+    def __init__( self, name, **kwargs ):
+        EnumeratedAttributeDesc.__init__( self, name, ('true','false'), BOOLEAN_TYPE, **kwargs )
+
 class ReferenceAttributeDesc(AttributeDesc):
     def __init__( self, name, reference_familly, reference_scope, **kwargs ):
         AttributeDesc.__init__( self, name, REFERENCE_TYPE, **kwargs )
@@ -82,7 +86,7 @@ class PathAttributeDesc(AttributeDesc):
         self.strip_extension = strip_extension
 
 def bool_attribute( name, **kwargs ):
-    return AttributeDesc( name, BOOLEAN_TYPE, **kwargs )
+    return BooleanAttributeDesc( name, **kwargs )
 
 def int_attribute( name, min_value = None, **kwargs ):
     return NumericAttributeDesc( name, INTEGER_TYPE, min_value = min_value, **kwargs )

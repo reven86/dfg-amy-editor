@@ -1027,15 +1027,10 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
 
 
-# For a given attribute type, we need:
-# an editor creator or an optional validator
-# the editor to text converter (can be defaulted)
 
-TRUE_BOOLEANS_TEXT = set(u'true yes ok'.split())
-FALSE_BOOLEANS_TEXT = set(u'false no'.split())
-BOOLEANS_TEXT = set( list(TRUE_BOOLEANS_TEXT) + list(FALSE_BOOLEANS_TEXT) )
-
-def do_validate_enumerated_property( input, enum_values, type_name, is_list = False ):
+def validate_enumerated_property( scope_key, attribute_desc, input ):
+    type_name = attribute_desc.name
+    is_list = attribute_desc.is_list
     input = unicode( input.toLower() )
     input_values = input.split(',')
     if len(input_values) == 0:
@@ -1045,28 +1040,13 @@ def do_validate_enumerated_property( input, enum_values, type_name, is_list = Fa
     elif len(input_values) != 1 and not is_list:
         return QtGui.QValidator.Intermediate, 'Only one %s value is allowed' % type_name
     for input_value in input_values:
-        if input_value not in enum_values:
+        if input_value not in attribute_desc.values:
             return ( QtGui.QValidator.Intermediate, 'Invalid %s value: "%%1". Valid values: %%2' % type_name,
-                     input_value, ','.join(enum_values) )
+                     input_value, ','.join(attribute_desc.values) )
     return QtGui.QValidator.Acceptable
-
-def validate_enumerated_property( scope_key, attribute_desc, input ):
-    return do_validate_enumerated_property( input, attribute_desc.values, attribute_desc.name, attribute_desc.is_list )
 
 def complete_enumerated_property( scope_key, attribute_desc ):
     return sorted(attribute_desc.values)
-
-def validate_boolean_property( scope_key, attribute_desc, input ):
-    return do_validate_enumerated_property( input, BOOLEANS_TEXT, 'boolean' )
-
-def convert_boolean_property( editor, model, index, attribute_desc ):
-    input = editor.text()
-    if do_validate_enumerated_property( input, TRUE_BOOLEANS_TEXT, 'boolean' ) == QtGui.QValidator.Acceptable:
-        value = u'true'
-    else:
-        assert do_validate_enumerated_property( input, FALSE_BOOLEANS_TEXT, 'boolean' ) == QtGui.QValidator.Acceptable
-        value = u'false'
-    model.setData(index, QtCore.QVariant( unicode(value) ), QtCore.Qt.EditRole)
 
 def do_validate_numeric_property( attribute_desc, input, value_type, error_message ):
     try:
@@ -1137,15 +1117,14 @@ def complete_reference_property( scope_key, attribute_desc ):
 # converter: called when the user valid the input (enter key usualy) to store the edited value into the model.
 #            a callable(editor, model, index, attribute_desc).
 ATTRIBUTE_TYPE_EDITOR_HANDLERS = {
-    metaworld.BOOLEAN_TYPE: { 'validator': validate_boolean_property,
-                              'converter': convert_boolean_property,
-                              'completer': lambda scope_key, attribute_desc: ('true', 'false') },
+    metaworld.BOOLEAN_TYPE: { 'validator': validate_enumerated_property,
+                              'converter': complete_enumerated_property },
+    metaworld.ENUMERATED_TYPE: { 'validator': validate_enumerated_property,
+                                 'completer': complete_enumerated_property },
     metaworld.INTEGER_TYPE: { 'validator': validate_integer_property },
     metaworld.REAL_TYPE: { 'validator': validate_real_property },
     metaworld.RGB_COLOR_TYPE: { 'validator': validate_rgb_property },
     metaworld.XY_TYPE: { 'validator': validate_xy_property },
-    metaworld.ENUMERATED_TYPE: { 'validator': validate_enumerated_property,
-                                 'completer': complete_enumerated_property },
     metaworld.ANGLE_DEGREES_TYPE:  { 'validator': validate_real_property },
     metaworld.REFERENCE_TYPE: { 'validator': validate_reference_property,
                                 'completer': complete_reference_property }
