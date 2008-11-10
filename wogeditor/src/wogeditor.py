@@ -1053,6 +1053,9 @@ def do_validate_enumerated_property( input, enum_values, type_name, is_list = Fa
 def validate_enumerated_property( scope_key, attribute_desc, input ):
     return do_validate_enumerated_property( input, attribute_desc.values, attribute_desc.name, attribute_desc.is_list )
 
+def complete_enumerated_property( scope_key, attribute_desc ):
+    return sorted(attribute_desc.values)
+
 def validate_boolean_property( scope_key, attribute_desc, input ):
     return do_validate_enumerated_property( input, BOOLEANS_TEXT, 'boolean' )
 
@@ -1114,6 +1117,9 @@ def validate_reference_property( scope_key, attribute_desc, input ):
         return QtGui.QValidator.Acceptable
     return QtGui.QValidator.Intermediate, '"%%1" is not a valid reference to an object of type %s' % attribute_desc.reference_familly, input
 
+def complete_reference_property( scope_key, attribute_desc ):
+    return scope_key.tracker.list_identifiers( scope_key, attribute_desc.reference_familly )
+
 # For later
 ##def editor_rgb_property( parent, option, index, element, attribute_desc, default_editor_factory ):
 ##    widget = QtGui.QWidget( parent )
@@ -1131,14 +1137,18 @@ def validate_reference_property( scope_key, attribute_desc, input ):
 # converter: called when the user valid the input (enter key usualy) to store the edited value into the model.
 #            a callable(editor, model, index, attribute_desc).
 ATTRIBUTE_TYPE_EDITOR_HANDLERS = {
-    metaworld.BOOLEAN_TYPE: { 'validator': validate_boolean_property, 'converter': convert_boolean_property },
+    metaworld.BOOLEAN_TYPE: { 'validator': validate_boolean_property,
+                              'converter': convert_boolean_property,
+                              'completer': lambda scope_key, attribute_desc: ('true', 'false') },
     metaworld.INTEGER_TYPE: { 'validator': validate_integer_property },
     metaworld.REAL_TYPE: { 'validator': validate_real_property },
     metaworld.RGB_COLOR_TYPE: { 'validator': validate_rgb_property },
     metaworld.XY_TYPE: { 'validator': validate_xy_property },
-    metaworld.ENUMERATED_TYPE: { 'validator': validate_enumerated_property },
+    metaworld.ENUMERATED_TYPE: { 'validator': validate_enumerated_property,
+                                 'completer': complete_enumerated_property },
     metaworld.ANGLE_DEGREES_TYPE:  { 'validator': validate_real_property },
-    metaworld.REFERENCE_TYPE: { 'validator': validate_reference_property }
+    metaworld.REFERENCE_TYPE: { 'validator': validate_reference_property,
+                                'completer': complete_reference_property }
     }
 
 class PropertyValidator(QtGui.QValidator):
@@ -1187,6 +1197,14 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
         if handler_data and handler_data.get('validator'):
             validator = PropertyValidator( editor, self.main_window, scope_key, attribute_desc, handler_data['validator'] )
             editor.setValidator( validator )
+        if handler_data and handler_data.get('completer'):
+            word_list = QtCore.QStringList()
+            for word in sorted(handler_data.get('completer')( scope_key, attribute_desc )):
+                word_list.append( word )
+            completer = QtGui.QCompleter( word_list, editor )
+            completer.setCaseSensitivity( QtCore.Qt.CaseInsensitive )
+            completer.setCompletionMode( QtGui.QCompleter.UnfilteredPopupCompletion )
+            editor.setCompleter( completer )
         return editor
 
     def _getHandlerData( self, index ):
