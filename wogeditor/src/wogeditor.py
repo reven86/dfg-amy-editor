@@ -18,14 +18,6 @@
 # - updated level
 # - specific text/fx resources 
 
-# reference needs to be tracked:
-# by scope
-# initialized on load
-# updated on element property change
-# updated on element addition/removal
-
-# see icons example for context menu, but lack item selection on right click.
-
 import sys
 import os
 import os.path
@@ -33,6 +25,7 @@ import math
 import itertools
 import subprocess
 import wogfile
+import metaworld
 import metawog
 import xml.etree.ElementTree 
 from PyQt4 import QtCore, QtGui
@@ -69,13 +62,13 @@ def flattened_element_children( element ):
         children.extend( flattened_element_children( child_element ) )
     return children
 
-class ElementReferenceTracker(metawog.ReferenceTracker):
+class ElementReferenceTracker(metaworld.ReferenceTracker):
     """Specialized version of the ReferenceTracker that provides helper for element tree based objects.
     """
     def element_object_added( self, scope_key, object, object_desc ):
         """Registers the specified element and all its children that are declared in the scope description.
         """
-        metawog.ReferenceTracker.object_added( self, scope_key, object, object_desc, self._retrieve_element_attribute )
+        metaworld.ReferenceTracker.object_added( self, scope_key, object, object_desc, self._retrieve_element_attribute )
         scope_desc = object_desc.scope
         for child_element in object:    # recurse to add all child elements
             child_object_desc = scope_desc.objects_by_tag.get( child_element.tag )
@@ -87,7 +80,7 @@ class ElementReferenceTracker(metawog.ReferenceTracker):
         """
         if object_desc is None:
             return
-        metawog.ReferenceTracker.object_about_to_be_removed( self, scope_key, element, object_desc,
+        metaworld.ReferenceTracker.object_about_to_be_removed( self, scope_key, element, object_desc,
                                                              self._retrieve_element_attribute )
         scope_desc = object_desc.scope
         for child_element in element:    # recurse to add all child elements
@@ -1103,14 +1096,14 @@ def validate_reference_property( scope_key, attribute_desc, input ):
 # converter: called when the user valid the input (enter key usualy) to store the edited value into the model.
 #            a callable(editor, model, index, attribute_desc).
 ATTRIBUTE_TYPE_EDITOR_HANDLERS = {
-    metawog.BOOLEAN_TYPE: { 'validator': validate_boolean_property, 'converter': convert_boolean_property },
-    metawog.INTEGER_TYPE: { 'validator': validate_integer_property },
-    metawog.REAL_TYPE: { 'validator': validate_real_property },
-    metawog.RGB_COLOR_TYPE: { 'validator': validate_rgb_property },
-    metawog.XY_TYPE: { 'validator': validate_xy_property },
-    metawog.ENUMERATED_TYPE: { 'validator': validate_enumerated_property },
-    metawog.ANGLE_DEGREES_TYPE:  { 'validator': validate_real_property },
-    metawog.REFERENCE_TYPE: { 'validator': validate_reference_property }
+    metaworld.BOOLEAN_TYPE: { 'validator': validate_boolean_property, 'converter': convert_boolean_property },
+    metaworld.INTEGER_TYPE: { 'validator': validate_integer_property },
+    metaworld.REAL_TYPE: { 'validator': validate_real_property },
+    metaworld.RGB_COLOR_TYPE: { 'validator': validate_rgb_property },
+    metaworld.XY_TYPE: { 'validator': validate_xy_property },
+    metaworld.ENUMERATED_TYPE: { 'validator': validate_enumerated_property },
+    metaworld.ANGLE_DEGREES_TYPE:  { 'validator': validate_real_property },
+    metaworld.REFERENCE_TYPE: { 'validator': validate_reference_property }
     }
 
 class PropertyValidator(QtGui.QValidator):
