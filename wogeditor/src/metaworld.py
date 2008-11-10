@@ -23,7 +23,7 @@ class AttributeDesc(object):
     def __init__( self, name, type, init = None, default = None, allow_empty = False, mandatory = False ):
         self.name = name
         self.type = type
-        self.init = init
+        self.init = str(init)
         self.default = default
         self.allow_empty = allow_empty
         self.mandatory = mandatory
