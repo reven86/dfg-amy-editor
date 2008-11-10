@@ -247,7 +247,7 @@ LEVEL_SCENE_FILE.add_objects( [
         angle_radians_attribute( 'imagerot' ),
         xy_attribute( 'imagescale' ),
         real_attribute( 'rotspeed' ),
-        bool_attribute( 'static' ),
+        bool_attribute( 'static', default = 'false', init = 'true' ), # Notes: if static = false, then mass is required.
         real_attribute( 'mass' ),
         reference_attribute( 'material', reference_familly = 'material', reference_scope = GLOBAL_SCOPE,
                              init = '' ),
@@ -264,7 +264,7 @@ LEVEL_SCENE_FILE.add_objects( [
         angle_radians_attribute( 'imagerot' ),
         xy_attribute( 'imagescale' ),
         real_attribute( 'rotspeed' ),
-        bool_attribute( 'static' ),
+        bool_attribute( 'static', default = 'false', init = 'true' ), # Notes: if static = false, then mass is required.
         string_attribute( 'tag' ),
         bool_attribute( 'contacts' ),
         real_attribute( 'mass' ),
