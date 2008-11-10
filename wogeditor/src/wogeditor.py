@@ -21,6 +21,7 @@
 import sys
 import os
 import os.path
+import glob
 import math
 import itertools
 import subprocess
@@ -407,6 +408,8 @@ class LevelModel(object):
         parent_element.insert( index, element )
         # Broadcast the insertion event
         self.dirty_object_types.add( object_file )
+        if element.tag == 'Image':  # @todo dirty hack, need to be cleaner
+            self._loadImageFromElement( element )
         self.game_model.objectAdded( self.level_name, object_file, parent_element, element, index )
 
     def removeElement( self, object_file, element ):
@@ -434,9 +437,41 @@ class LevelModel(object):
 
     def objectSelected( self, object_file, element ):
         """Indicates that the specified object has been selected.
-           object_file: one of metawog.LEVEL_GAME_FILE, metawog.LEVEL_SCENE_FILE
+           object_file: one of metawog.LEVEL_GAME_FILE, metawog.LEVEL_SCENE_FILE, metawog.LEVEL_RESOURCE_FILE
         """
         self.game_model.objectSelected( self.level_name, object_file, element )
+
+    def updateLevelResources( self ):
+        """Ensures all image/sound resource present in the level directory are in the resource tree."""
+        game_dir = os.path.normpath( self.game_model._wog_dir )
+        level_dir = os.path.join( game_dir, 'res', 'levels', self.level_name )
+        resource_element = self.resource_tree.find( './/Resources' )
+        if resource_element is None:
+            print 'Warning: root element not found in resource tree'
+            return []
+        added_elements = []
+        for tag, extension, id_prefix in ( ('Image','png', 'LEVEL_IMAGE_'), ('Sound','ogg', 'LEVEL_SOUND_') ):
+            known_paths = set()
+            for element in self.resource_tree.findall( './/' + tag ):
+                path = os.path.normpath( os.path.splitext( element.get('path','').lower() )[0] )
+                # known path are related to wog top dir in unix format & lower case without the file extension
+                known_paths.add( path )
+            existing_paths = glob.glob( os.path.join( level_dir, '*.' + extension ) )
+            for existing_path in existing_paths:
+                existing_path = existing_path[len(game_dir)+1:] # makes path relative to wog top dir
+                existing_path = os.path.splitext(existing_path)[0] # strip file extension
+                path = os.path.normpath( existing_path ).lower()
+                if path not in known_paths:
+                    existing_path = os.path.split( existing_path )[1]
+                    id = id_prefix + ''.join( c for c in existing_path if c.upper() in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789' )
+                    resource_path = 'res/levels/%s/%s' % (self.level_name,existing_path)
+                    new_resource = xml.etree.ElementTree.Element( tag, {'id':id.upper(),
+                                                                        'path':resource_path} )
+                    self.addElement( metawog.LEVEL_RESOURCE_FILE, resource_element, new_resource )
+                    added_elements.append( new_resource )
+        return added_elements
+            
+        
 
 Z_LEVEL_ITEMS = 10000.0
 Z_PHYSIC_ITEMS = 9000.0
@@ -1495,7 +1530,7 @@ class MainWindow(QtGui.QMainWindow):
                 if index.parent() is None:
                     remove_action.setEnable( False )
                 tag_by_actions = {}
-                for tag in sorted(metawog.LEVEL_SCOPE.objects_by_tag.iterkeys()):
+                for tag in sorted(object_file.objects_by_tag.iterkeys()):
                     action = menu.addAction( self.tr("Add child %1").arg(tag) )
                     tag_by_actions[action] = tag
                 selected_action = menu.exec_( tree_view.viewport().mapToGlobal(menu_pos) )
@@ -1604,6 +1639,14 @@ class MainWindow(QtGui.QMainWindow):
                     QtGui.QMessageBox.warning(self, self.tr("Failed to create the new cloned level!"),
                                               unicode(e))
 
+    def updateLevelResources( self ):
+        """Adds the required resource in the level based on existing file."""
+        level_model = self.getCurrentLevelModel()
+        if level_model:
+            added_resource_elements = level_model.updateLevelResources()
+            if added_resource_elements:
+                level_model.objectSelected( metawog.LEVEL_RESOURCE_FILE, added_resource_elements[0] )
+
     def undo( self ):
         pass
         
@@ -1625,6 +1668,7 @@ class MainWindow(QtGui.QMainWindow):
         can_save = has_wog_dir and self._game_model.is_dirty
         self.saveAction.setEnabled( can_save and True or False )
         self.playAction.setEnabled( is_level_selected )
+        self.updateLevelResourcesAction.setEnabled( is_level_selected )
 
     def createMDIArea( self ):
         self.mdiArea = QtGui.QMdiArea()
@@ -1660,6 +1704,12 @@ class MainWindow(QtGui.QMainWindow):
         self.playAction.setShortcut(self.tr("Ctrl+P"))
         self.playAction.setStatusTip(self.tr("Save all changes and play the selected level"))
         self.connect(self.playAction, QtCore.SIGNAL("triggered()"), self.saveAndPlayLevel)
+        
+        self.updateLevelResourcesAction = QtGui.QAction(QtGui.QIcon(":/images/update-level-resources.png"),
+                                                        self.tr("&Update level resources..."), self)
+        self.updateLevelResourcesAction.setShortcut(self.tr("Ctrl+U"))
+        self.updateLevelResourcesAction.setStatusTip(self.tr("Adds automatically all .png & .ogg files in the level directory to the level resources"))
+        self.connect(self.updateLevelResourcesAction, QtCore.SIGNAL("triggered()"), self.updateLevelResources)
 
 ##        self.undoAct = QtGui.QAction(QtGui.QIcon(":/images/undo.png"), self.tr("&Undo"), self)
 ##        self.undoAct.setShortcut(self.tr("Ctrl+Z"))
@@ -1691,6 +1741,7 @@ class MainWindow(QtGui.QMainWindow):
         self.fileMenu.addAction(self.quitAct)
         
         self.editMenu = self.menuBar().addMenu(self.tr("&Edit"))
+        self.editMenu.addAction( self.updateLevelResourcesAction )
 ##        self.editMenu.addAction(self.editLevelAction)
         
         self.menuBar().addSeparator()
@@ -1709,7 +1760,8 @@ class MainWindow(QtGui.QMainWindow):
         self.fileToolBar.addAction(self.saveAction)
         self.fileToolBar.addAction(self.playAction)
         
-##        self.editToolBar = self.addToolBar(self.tr("Edit"))
+        self.editToolBar = self.addToolBar(self.tr("Edit"))
+        self.editToolBar.addAction( self.updateLevelResourcesAction )
 ##        self.editToolBar.addAction(self.undoAct)
         
     def createStatusBar(self):

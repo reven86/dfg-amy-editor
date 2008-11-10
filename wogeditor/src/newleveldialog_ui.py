@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'newleveldialog.ui'
 #
-# Created: Sat Nov 08 21:08:22 2008
+# Created: Mon Nov 10 17:34:53 2008
 #      by: PyQt4 UI code generator 4.4.2
 #
 # WARNING! All changes made in this file will be lost!

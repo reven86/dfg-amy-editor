@@ -11,5 +11,6 @@
   <file>images/play.png</file>
   <file>images/new-level.png</file>
   <file>images/clone-level.png</file>
+  <file>images/update-level-resources.png</file>
 </qresource>
 </RCC>
