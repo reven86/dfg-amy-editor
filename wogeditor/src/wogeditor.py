@@ -260,6 +260,13 @@ class GameModel(QtCore.QObject):
         self.emit( QtCore.SIGNAL('objectPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                    level_name, object_file, element, property_name, value )
 
+    def hasModifiedReadOnlyLevels( self ):
+        """Checks if the user has modified read-only level."""
+        for level_model in self.level_models_by_name.itervalues():
+            if level_model.isDirty() and level_model.isReadOnlyLevel():
+                return True
+        return False
+
     def save( self ):
         """Save all changes.
            Raise exception IOError on failure.
@@ -332,6 +339,12 @@ class LevelModel(object):
     def tracker( self ):
         return self.game_model.tracker
 
+    def isDirty( self ):
+        return len(self.dirty_object_types) != 0
+
+    def isReadOnlyLevel( self ):
+        return self.level_name.lower() in 'ab3 beautyandthetentacle beautyschool blusteryday bulletinboardsystem burningman chain deliverance drool economicdivide fistyreachesout flyawaylittleones flyingmachine geneticsortingmachine goingup gracefulfailure grapevinevirus graphicprocessingunit hanglow helloworld htinnovationcommittee immigrationnaturalizationunit impalesticky incinerationdestination infestytheworm ivytower leaphole mapworldview mistyslongbonyroad mom observatoryobservationstation odetobridgebuilder productlauncher redcarpet regurgitationpumpingstation roadblocks secondhandsmoke superfusechallengetime theserver thirdwheel thrustertest towerofgoo tumbler uppershaft volcanicpercolatordayspa waterlock weathervane whistler youhavetoexplodethehead'.split()
+
     def _loadImageFromElement( self, image_element ):
         id, path = image_element.get('id'), image_element.get('path')
         path = self.game_model.getResourcePath( path + '.png' )
@@ -356,6 +369,9 @@ class LevelModel(object):
 
     def saveModifiedElements( self ):
         """Save the modified scene, level, resource tree."""
+        if self.isReadOnlyLevel():  # Discards change made on read-only level
+            self.dirty_object_types = set()
+            return
         level_name = self.level_name
         level_dir = os.path.join( self.game_model._res_dir, 'levels', level_name )
         if metawog.LEVEL_GAME_FILE in self.dirty_object_types:
@@ -1568,18 +1584,24 @@ class MainWindow(QtGui.QMainWindow):
         """Saving all modified elements.
         """
         if self._game_model:
+            had_modified_readonly_level = self._game_model.hasModifiedReadOnlyLevels()
             try:
                 try:
                     QtGui.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
                     self._game_model.save()
-                    return True
                 finally:
                     QtGui.QApplication.restoreOverrideCursor()
+                self.statusBar().showMessage(self.tr("Saved all modified levels"), 2000)
+                if had_modified_readonly_level:
+                    QtGui.QMessageBox.warning(self, self.tr("Can not save save World Of Goo standard level!"),
+                              self.tr('You can not save change made to levels that comes with World Of Goo.\n'
+                                      'Instead, clone the standard level using the clone selected level tool.\n'
+                                      'Do so now, or your change will be lost once you quit the editor' ) )
+                else:
+                    return True
             except IOError, e:
                 QtGui.QMessageBox.warning(self, self.tr("Failed saving levels"),
                           unicode(e))
-            else:
-                self.statusBar().showMessage(self.tr("Saved all modified levels"), 2000)
         return False
 
     def saveAndPlayLevel(self):
