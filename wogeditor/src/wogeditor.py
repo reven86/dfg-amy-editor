@@ -1247,7 +1247,7 @@ class MainWindow(QtGui.QMainWindow):
             self.connect( self._game_model, QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)'),
                           self._refreshLevel )
             self.connect( self._game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                          self._refreshPropertyList )
+                          self._refreshOnSelectedObjectChange )
             self.connect( self._game_model, QtCore.SIGNAL('objectAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                           self._refreshOnObjectInsertion )
             self.connect( self._game_model, QtCore.SIGNAL('objectRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
@@ -1333,7 +1333,7 @@ class MainWindow(QtGui.QMainWindow):
             if game_level_model:
                 game_level_model.objectSelected( object_file, element )
 
-    def _refreshPropertyList( self, level_name, object_file, element ):
+    def _refreshOnSelectedObjectChange( self, level_name, object_file, element ):
         self._refreshPropertyListFromElement( object_file, element )
         self._refreshSceneTreeSelection( object_file, element )
 
@@ -1347,6 +1347,9 @@ class MainWindow(QtGui.QMainWindow):
         """Select the item corresponding to element in the tree view.
         """
         tree_view = self.tree_view_by_object_scope[object_file]
+        for other_tree_view in self.tree_view_by_object_scope.itervalues():  
+            if other_tree_view != tree_view: # unselect objects on all other tree views
+                other_tree_view.selectionModel().clear()
         selected_item = self._findItemInTreeViewByElement( tree_view, element )
         if selected_item:
             selected_index = selected_item.index()
