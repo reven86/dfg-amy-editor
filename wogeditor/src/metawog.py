@@ -6,10 +6,12 @@ BOOLEAN_TYPE = 'boolean'
 INTEGER_TYPE = 'integer'
 REAL_TYPE = 'real'
 RGB_COLOR_TYPE = 'rgb_color'
+ARGB_COLOR_TYPE = 'argb_color'
 XY_TYPE = 'xy'
 ENUMERATED_TYPE = 'enumerated'
 STRING_TYPE = 'string'
 ANGLE_DEGREES_TYPE = 'angle.degrees'
+ANGLE_RADIANS_TYPE = 'angle.radians'
 REFERENCE_TYPE = 'reference'
 IDENTIFIER_TYPE = 'identifier'
 PATH_TYPE = 'path'
@@ -89,6 +91,9 @@ def real_attribute( name, min_value = None, max_value = None, **kwargs ):
 def rgb_attribute( name, **kwargs ):
     return ColorAttributeDesc( name, RGB_COLOR_TYPE, components = 3, **kwargs )
 
+def argb_attribute( name, **kwargs ):
+    return ColorAttributeDesc( name, ARGB_COLOR_TYPE, components = 4, **kwargs )
+
 def xy_attribute( name, **kwargs ):
     return Vector2DAttributeDesc( name, XY_TYPE, **kwargs )
 
@@ -100,6 +105,9 @@ def string_attribute( name, **kwargs ):
 
 def angle_degrees_attribute( name, min_value = None, max_value = None, **kwargs ):
     return NumericAttributeDesc( name, ANGLE_DEGREES_TYPE, min_value = min_value, max_value = max_value, **kwargs )
+
+def angle_radians_attribute( name, min_value = None, max_value = None, **kwargs ):
+    return NumericAttributeDesc( name, ANGLE_RADIANS_TYPE, min_value = min_value, max_value = max_value, **kwargs )
 
 def reference_attribute( name, reference_familly, reference_scope, **kwargs ):
     return ReferenceAttributeDesc( name, reference_familly = reference_familly, reference_scope = reference_scope, **kwargs )
@@ -458,8 +466,38 @@ LEVEL_GAME_FILE.add_objects( [
                              init = '', mandatory = True ),
         reference_attribute( 'gb2', reference_familly = 'BallInstance', reference_scope = LEVEL_SCOPE,
                              init = '', mandatory = True )
+        ] ),
+    describe_object( 'music', attributes = [
+        reference_attribute( 'id', reference_familly = 'sound', reference_scope = LEVEL_SCOPE, mandatory = True )
+        ] ),
+    describe_object( 'loopsound', attributes = [
+        reference_attribute( 'id', reference_familly = 'sound', reference_scope = LEVEL_SCOPE, mandatory = True )
+        ] ),
+    describe_object( 'levelexit', attributes = [
+        string_attribute( 'id', mandatory = True, init = 'theExit' ),
+        string_attribute( 'filter', mandatory = True, init = '' ),  # @todo revisit 0..1 occ of enum occurrence
+        xy_attribute( 'pos', mandatory = True, init = '0,0' ),
+        real_attribute( 'radius', mandatory = True, init = '75' )
+        ] ),
+    describe_object( 'endoncollision', attributes = [
+        reference_attribute( 'id1', reference_familly = 'geometry', reference_scope = LEVEL_SCOPE, mandatory = True ),
+        reference_attribute( 'id2', reference_familly = 'geometry', reference_scope = LEVEL_SCOPE, mandatory = True ),
+        real_attribute( 'delay', mandatory = True, init = '1' )
+        ] ),
+    describe_object( 'endonmessage', attributes = [
+        string_attribute( 'id', mandatory = True )  # values seems to be hard-coded
+        ] ),
+    describe_object( 'fire', attributes = [
+        real_attribute( 'x', mandatory = True, init = '0' ),
+        real_attribute( 'y', mandatory = True, init = '0' ),
+        real_attribute( 'radius', mandatory = True, init = '50' ),
+        real_attribute( 'depth', mandatory = True, init = '0' ),
+        reference_attribute( 'particles', reference_familly = 'effect',
+                             reference_scope = GLOBAL_SCOPE, mandatory = True )
+        ] ),
+    describe_object( 'targetheight', attributes = [
+        real_attribute( 'y', mandatory = True, init = '300' )
         ] )
-    # @todo complete level description
     ] )
 
 
@@ -515,9 +553,160 @@ LEVEL_SCENE_FILE.add_objects( [
         real_attribute( 'scaley', default='1'),
         bool_attribute( 'tilex', default='false'),
         bool_attribute( 'tiley', default='false')
+        ] ),
+    describe_object( 'button', attributes = [
+        string_attribute( 'id', mandatory = True ),
+        real_attribute( 'x', mandatory = True, init = '0' ),
+        real_attribute( 'y', mandatory = True, init = '0' ),
+        real_attribute( 'depth', mandatory = True, init = '10' ),
+        real_attribute( 'alpha', mandatory = True, init = '1' ),
+        real_attribute( 'rotation', mandatory = True, init = '0' ),
+        real_attribute( 'scalex', mandatory = True, init = '1' ),
+        real_attribute( 'scaley', mandatory = True, init = '1' ),
+        rgb_attribute( 'colorize', mandatory = True, init = '255,255,255' ),
+        reference_attribute( 'up', reference_familly = 'image', reference_scope = LEVEL_SCOPE,
+                             init = '', mandatory = True ),
+        reference_attribute( 'over', reference_familly = 'image', reference_scope = LEVEL_SCOPE,
+                             init = '', mandatory = True ),
+        string_attribute( 'context' ),
+        reference_attribute( 'disabled', reference_familly = 'image', reference_scope = LEVEL_SCOPE ),
+        reference_attribute( 'font', reference_familly = 'font', reference_scope = GLOBAL_SCOPE ),
+        string_attribute( 'onclick' ),
+        string_attribute( 'onmouseenter' ),
+        string_attribute( 'onmouseexit' ),
+        bool_attribute( 'overlay' ),
+        bool_attribute( 'screenspace' ),
+        reference_attribute( 'text', reference_familly = 'text', reference_scope = GLOBAL_SCOPE ),
+        argb_attribute( 'textcolorup' ),
+        argb_attribute( 'textcolorupover' ),
+        reference_attribute( 'tooltip', reference_familly = 'text', reference_scope = GLOBAL_SCOPE )
+        ] ),
+    describe_object( 'buttongroup', attributes = [
+        string_attribute( 'id', mandatory = True ),
+        xy_attribute( 'osx', mandatory = True )
+        ] ),
+    describe_object( 'label', attributes = [
+        string_attribute( 'id', mandatory = True ),
+        real_attribute( 'x', mandatory = True, init = '0' ),
+        real_attribute( 'y', mandatory = True, init = '0' ),
+        reference_attribute( 'text', reference_familly = 'text', reference_scope = GLOBAL_SCOPE ),
+        angle_radians_attribute( 'rotation', mandatory = True, init = '0' ),
+        real_attribute( 'scale', mandatory = True, init = '1' ),
+        string_attribute( 'font', mandatory = True ),
+        enum_attribute( 'align', ('right', 'center', 'left'), mandatory = True, init = 'center' ),
+        real_attribute( 'depth', mandatory = True, init = '10' ),
+        bool_attribute( 'overlay', mandatory = True, init = 'false' ),
+        bool_attribute( 'screenspace', mandatory = True, init = 'false' )
+        ] ),
+    describe_object( 'rectangle', attributes = [
+        identifier_attribute( 'id', mandatory = True, reference_familly = 'geometry', reference_scope = LEVEL_SCOPE ),
+        real_attribute( 'x', mandatory = True, init = '0' ),
+        real_attribute( 'y', mandatory = True, init = '0' ),
+        angle_radians_attribute( 'rotation', mandatory = True, init = '0' ),
+        real_attribute( 'width', mandatory = True, init = '100' ),
+        real_attribute( 'height', mandatory = True, init = '100' ),
+        bool_attribute( 'contacts' ),
+        reference_attribute( 'image', reference_familly = 'image', reference_scope = LEVEL_SCOPE,
+                             init = '' ),
+        xy_attribute( 'imagepos' ),
+        angle_radians_attribute( 'imagerot' ),
+        xy_attribute( 'imagescale' ),
+        real_attribute( 'rotspeed' ),
+        bool_attribute( 'static' ),
+        real_attribute( 'mass' ),
+        reference_attribute( 'material', reference_familly = 'material', reference_scope = GLOBAL_SCOPE,
+                             init = '' ),
+        string_attribute( 'tag' )
+        ] ),
+    describe_object( 'circle', attributes = [
+        identifier_attribute( 'id', mandatory = True, reference_familly = 'geometry', reference_scope = LEVEL_SCOPE ),
+        real_attribute( 'x', mandatory = True, init = '0' ),
+        real_attribute( 'y', mandatory = True, init = '0' ),
+        real_attribute( 'radius', mandatory = True, init = '75' ),
+        reference_attribute( 'image', reference_familly = 'image', reference_scope = LEVEL_SCOPE,
+                             init = '' ),
+        xy_attribute( 'imagepos' ),
+        angle_radians_attribute( 'imagerot' ),
+        xy_attribute( 'imagescale' ),
+        real_attribute( 'rotspeed' ),
+        bool_attribute( 'static' ),
+        string_attribute( 'tag' ),
+        bool_attribute( 'contacts' ),
+        real_attribute( 'mass' ),
+        reference_attribute( 'material', reference_familly = 'material', reference_scope = GLOBAL_SCOPE,
+                             init = '' ),
+        bool_attribute( 'nogeomcollisions' )
+        ] ),
+    describe_object( 'compositegeom', attributes = [
+        identifier_attribute( 'id', mandatory = True, reference_familly = 'geometry', reference_scope = LEVEL_SCOPE ),
+        real_attribute( 'x', mandatory = True, init = '0' ),
+        real_attribute( 'y', mandatory = True, init = '0' ),
+        angle_radians_attribute( 'rotation', mandatory = True, init = '0' ),
+        reference_attribute( 'material', reference_familly = 'material', reference_scope = GLOBAL_SCOPE,
+                             init = '', mandatory = True ),
+        bool_attribute( 'static', mandatory = True, init = 'true' ),
+        string_attribute( 'tag' ),
+        reference_attribute( 'image', reference_familly = 'image', reference_scope = LEVEL_SCOPE ),
+        xy_attribute( 'imagepos', default = '0,0' ),
+        angle_radians_attribute( 'imagerot' ),
+        xy_attribute( 'imagescale' ),
+        real_attribute( 'rotspeed' ),
+        bool_attribute( 'nogeomcollisions' )
+        ] ),
+    describe_object( 'line', attributes = [
+        string_attribute( 'id', mandatory = True ),
+        xy_attribute( 'anchor', mandatory = True, init = '0,0' ),
+        xy_attribute( 'normal', mandatory = True, init = '10,0' ),
+        reference_attribute( 'material', reference_familly = 'material', reference_scope = GLOBAL_SCOPE,
+                             init = '', mandatory = True ),
+        bool_attribute( 'static', init = 'true', mandatory = True ),
+        string_attribute( 'tag' )
+        ] ),
+    describe_object( 'linearforcefield', attributes = [
+        string_attribute( 'id', mandatory = True ),
+        xy_attribute( 'force', mandatory = True, init = '0,-10' ),
+        real_attribute( 'dampeningfactor', mandatory = True, init = '0' ),
+        bool_attribute( 'antigrav', mandatory = True, init = 'false' ),
+        enum_attribute( 'type', ('force', 'gravity'), init = 'gravity', mandatory = True ),
+        xy_attribute( 'center', init = '0,0' ),
+        real_attribute( 'width' ),
+        real_attribute( 'height' ),
+        real_attribute( 'depth' ),
+        argb_attribute( 'color' ),
+        bool_attribute( 'enabled' ),
+        bool_attribute( 'geomonly' )
+        ] ),
+    describe_object( 'radialforcefield', attributes = [
+        string_attribute( 'id', mandatory = True ),
+        real_attribute( 'forceatcenter', mandatory = True, init = '10,0' ),
+        real_attribute( 'forceatedge', mandatory = True, init = '0,0' ),
+        real_attribute( 'dampeningfactor', mandatory = True, init = '0' ),
+        bool_attribute( 'antigrav', mandatory = True, init = 'false' ),
+        enum_attribute( 'type', ('force', 'gravity'), init = 'gravity', mandatory = True ), # @todo in game, only gravity
+        xy_attribute( 'center', mandatory = True, init = '0,0' ),
+        real_attribute( 'radius', mandatory = True, init = '100' ),
+        real_attribute( 'depth' ),
+        bool_attribute( 'enabled' ),
+        bool_attribute( 'geomonly' )
+        ] ),
+    describe_object( 'hinge', attributes = [
+        xy_attribute( 'anchor', mandatory = True ),
+        reference_attribute( 'body1', reference_familly = 'geometry', reference_scope = LEVEL_SCOPE, mandatory = True ),
+        reference_attribute( 'body2', reference_familly = 'geometry', reference_scope = LEVEL_SCOPE, mandatory = True ),
+        real_attribute( 'bounce' )
+        ] ),
+    describe_object( 'motor', attributes = [
+        reference_attribute( 'body', reference_familly = 'geometry', reference_scope = LEVEL_SCOPE, mandatory = True ),
+        real_attribute( 'maxforce', mandatory = True, init = '20' ),
+        real_attribute( 'speed', mandatory = True, init = '-0.01' )
+        ] ),
+    describe_object( 'particles', attributes = [
+        real_attribute( 'depth', mandatory = True, init = '-20' ),
+        reference_attribute( 'effect', reference_familly = 'effect', reference_scope = GLOBAL_SCOPE, mandatory = True ),
+        xy_attribute( 'pos' ),
+        real_attribute( 'pretick', default = '0' )
         ] )
     ] )
-    
 
 
 GLOBAL_TEXT_FILE.add_objects( [
@@ -555,7 +744,7 @@ GLOBAL_RESOURCE_FILE.add_objects( [
             path_attribute( 'path', strip_extension = '.ogg', mandatory = True )
             ] ),
     describe_object( 'font', attributes = [
-            identifier_attribute( 'id', mandatory = True, reference_familly = 'sound',
+            identifier_attribute( 'id', mandatory = True, reference_familly = 'font',
                                   reference_scope = GLOBAL_SCOPE ),
             path_attribute( 'path', strip_extension = '.png', mandatory = True ) # @todo also check existence of .txt
             ] )
