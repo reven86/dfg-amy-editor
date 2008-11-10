@@ -1544,7 +1544,8 @@ class MainWindow(QtGui.QMainWindow):
                 if index.parent() is None:
                     remove_action.setEnable( False )
                 tag_by_actions = {}
-                for tag in sorted(object_file.objects_by_tag.iterkeys()):
+                object_desc = object_file.find_object_desc_by_tag(element.tag)
+                for tag in sorted(object_desc.objects_by_tag.iterkeys()):
                     action = menu.addAction( self.tr("Add child %1").arg(tag) )
                     tag_by_actions[action] = tag
                 selected_action = menu.exec_( tree_view.viewport().mapToGlobal(menu_pos) )
