@@ -1179,15 +1179,32 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
 
     def setEditorData( self, editor, index ):
         """Sets the data to be displayed and edited by the editor from the data model item specified by the model index."""
-        QtGui.QStyledItemDelegate.setEditorData( self, editor, index )
+        scope_key, object_file, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
+        editor.setText( element.get( property_name, u'' ) )
+#        QtGui.QStyledItemDelegate.setEditorData( self, editor, index )
+
 
     def setModelData( self, editor, model, index ):
-        """Gets data drom the editor widget and stores it in the specified model at the item index."""
+        """Gets data drom the editor widget and stores it in the specified model at the item index.
+           setModelData() is called by either.
+           - QAbstractItemView::commitData, which itself may be called by the signal QAbstractItemDelegate::commitData
+             which can be emitted by:
+             - QItemDelegatePrivate::_q_commitDataAndCloseEditor
+             - QItemDelegate::eventFilter, on Tab, BackTab, FocusOut
+             - QStyledItemDelegate::eventFilter (looks like a big copy/paste of the above one)
+           - or QAbstractItemView::currentChanged, when the current item change
+           Conclusion: we set the data into the model, only if they are valid as QLineEdit validation may have
+           been by-passed on focus change or current item change.
+        """
         scope_key, object_file, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
+        if not editor.hasAcceptableInput(): # input is invalid, discard it
+            return
         need_specific_converter = handler_data and handler_data.get('converter')
         if need_specific_converter:
             handler_data['converter']( editor, model, index, attribute_desc )
         else:
+##            value = editor.text()
+##            model.setData(index, QtCore.QVariant( value ), QtCore.Qt.EditRole)
             QtGui.QStyledItemDelegate.setModelData( self, editor, model, index )
 
 
