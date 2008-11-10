@@ -773,17 +773,18 @@ class LevelGraphicView(QtGui.QGraphicsView):
         vertexes = []
         for vertex_element in element:
             vertexes.append( self._elementXY(vertex_element) )
-        path = QtGui.QPainterPath()
-        path.moveTo( *vertexes[0] )
-        for vertex in vertexes[1:]:
-            path.lineTo( *vertex )
-                
-        pen = QtGui.QPen()
-        pen.setWidth( 10 )
-##        brush = QtGui.QBrush( QtCore.Qt.SolidPattern )
-##        item = scene.addPath( path, pen, brush )
-        item = scene.addPath( path, pen )
-        return item
+        if vertexes:
+            path = QtGui.QPainterPath()
+            path.moveTo( *vertexes[0] )
+            for vertex in vertexes[1:]:
+                path.lineTo( *vertex )
+                    
+            pen = QtGui.QPen()
+            pen.setWidth( 10 )
+    ##        brush = QtGui.QBrush( QtCore.Qt.SolidPattern )
+    ##        item = scene.addPath( path, pen, brush )
+            item = scene.addPath( path, pen )
+            return item
 
     def _levelBallInstanceBuilder( self, scene, element ):
         x, y = self._elementXY( element )
@@ -1047,7 +1048,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
 def validate_enumerated_property( scope_key, attribute_desc, input ):
     type_name = attribute_desc.name
     is_list = attribute_desc.is_list
-    input = unicode( input.toLower() )
+    input = unicode( input )
     input_values = input.split(',')
     if len(input_values) == 0:
         if is_list:

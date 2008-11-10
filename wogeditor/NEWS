@@ -1,0 +1,11 @@
+- Version 0.3.1:
+* Fixed bug that prevented
+
+
+- Version 0.3.0:
+
+* Added support for adding/removing object in level, scene and resourc file
+* Added support for editing objects' properties in level, scene and resource file
+* Validation based on properties type (including reference to other object)
+* New level, clone level tool, update level resource tool added
+* Save tool, and test level tool added

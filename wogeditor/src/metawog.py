@@ -78,7 +78,7 @@ LEVEL_GAME_FILE.add_objects( [
         identifier_attribute( 'id', mandatory = True, reference_familly = 'pipe',
                               reference_scope = LEVEL_SCOPE, init ='exitPipe' ),
         real_attribute( 'depth', init = 0, mandatory = True ),
-        enum_attribute( 'type', values = ('', 'BEAUTY', 'BLACK', 'ISH'), init = '', mandatory = True )
+        enum_attribute( 'type', values = ('BEAUTY', 'BLACK', 'ISH') )
         ] ),
     describe_object( 'Vertex', attributes = [   # @todo restrict parent tag
         # @todo makes x,y a composite attribute

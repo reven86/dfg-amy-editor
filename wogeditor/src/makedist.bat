@@ -1,4 +1,4 @@
-SET VERSION=0.3.0
+SET VERSION=0.3.1
 SET SEVENZIPPATH=c:\wut\files\7-Zip\7z.exe
 
 @echo "Build zip package distribution"
@@ -23,6 +23,7 @@ python setup.py --quiet py2exe
 
 ren dist wogeditor-%VERSION%
 copy ..\COPYING wogeditor-%VERSION%
+copy ..\NEWS wogeditor-%VERSION%
 copy ..\KNOWNBUGS.txt wogeditor-%VERSION%
 copy ..\README.txt wogeditor-%VERSION%
 call %SEVENZIPPATH% a -tzip wogeditor-%VERSION%-bin.zip wogeditor-%VERSION%
