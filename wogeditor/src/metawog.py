@@ -353,7 +353,8 @@ LEVEL_SCENE_FILE.add_objects( [
             real_attribute( 'depth' ),
             argb_attribute( 'color' ),
             bool_attribute( 'enabled' ),
-            bool_attribute( 'geomonly' )
+            bool_attribute( 'geomonly' ),
+            bool_attribute( 'water', default = 'false' )
             ] ),
         describe_object( 'radialforcefield', attributes = [
             string_attribute( 'id', mandatory = True ),

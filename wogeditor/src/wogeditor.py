@@ -1485,8 +1485,11 @@ class MainWindow(QtGui.QMainWindow):
         else: # Update the property list using the model
             self._resetPropertyListModel()
             scope_key = self.getCurrentLevelModel()
+            missing_attributes = set( element.keys() )
             for attribute_desc in object_desc.attributes_order:
                 attribute_name = attribute_desc.name
+                if attribute_name in missing_attributes:
+                    missing_attributes.remove( attribute_name )
                 attribute_value = element.get( attribute_name )
                 item_name = QtGui.QStandardItem( attribute_name )
                 item_name.setEditable( False )
@@ -1502,6 +1505,8 @@ class MainWindow(QtGui.QMainWindow):
                 item_value.setData( QtCore.QVariant( (scope_key, object_file, object_desc, element, attribute_name) ),
                                     QtCore.Qt.UserRole )
                 self.propertiesListModel.appendRow( [ item_name, item_value ] )
+            if missing_attributes:
+                print 'Warning: The following attributes of "%s" are missing in metaworld:' % element.tag, ', '.join( missing_attributes )
 
     def editLevel( self ):
         if self._game_model:
