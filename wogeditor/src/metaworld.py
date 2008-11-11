@@ -540,6 +540,48 @@ class Universe(WorldsOwner):
     def _warning( self, message, **kwargs ):
         print message % kwargs
 
+    def make_unattached_tree_from_xml( self, file_desc, xml_data ):
+        """Makes a tree from the provided xml data for the specified kind of tree.
+           The tree is NOT attached to any world. Use World.add_tree to do so.
+           Returns the created tree if successful (root was successfully parsed),
+           otherwise raise the exception WorldException.
+           Warning may be raised at the universe level.
+           file_desc: description of the kind of tree to load. Used to associated xml tag to element description.
+           xml_data: raw XML data.
+        """
+        xml_tree = xml.etree.ElementTree.fromstring( xml_data )
+        if file_desc.root_object_desc.tag != xml_tree.tag:
+            raise WorldException( u'Expected root tag "%(root)s", but got "%(actual)s" instead.' % {
+                'root': file_desc.root_object_desc.tag, 'actual': xml_tree.tag } )
+        def _make_element_tree_from_xml( object_desc, xml_tree ):
+            # Map element attributes
+            known_attributes = {}
+            missing_attributes = set( xml_tree.keys() )
+            for attribute_desc in object_desc.attributes_by_name.itervalues():
+                attribute_value = xml_tree.get( attribute_desc.name )
+                if attribute_value is not None:
+                    # @todo Warning if attribute already in dict
+                    known_attributes[ attribute_desc.name ] = attribute_value
+                    missing_attributes.remove( attribute_desc.name )
+            if missing_attributes:
+                self._warning( u'Element %(tag)s, the following attributes are missing in the object description: %(attributes)s.',
+                               tag = xml_tree.tag,
+                               attributes = ', '.join( sorted( missing_attributes ) ) )
+            # Map element children
+            children = []
+            for xml_tree_child in xml_tree:
+                child_object_desc = object_desc.find_immediate_child_by_tag( xml_tree_child.tag )
+                if child_object_desc:
+                    children.append( _make_element_tree_from_xml( child_object_desc, xml_tree_child ) )
+                else:
+                    self._warning( u'Element %(tag)s, the following child tag missing in the object description: %(child)s.',
+                                   tag = xml_tree.tag,
+                                   child = xml_tree_child.tag )
+            return Element( object_desc, attributes = known_attributes, children = children )
+        root_element = _make_element_tree_from_xml( file_desc.root_object_desc, xml_tree )
+        return Tree( self, file_desc, root_element = root_element )
+
+
 class WorldException(Exception):
     pass
 
@@ -588,53 +630,23 @@ class World(WorldsOwner):
            file_desc: description of the kind of tree to load. Used to associated xml tag to element description.
            xml_data: raw XML data.
         """
-        xml_tree = xml.etree.ElementTree.fromstring( xml_data )
-        if file_desc.root_object_desc.tag != xml_tree.tag:
-            raise WorldException( u'Expected root tag "%(root)s", but got "%(actual)s" instead.' % {
-                'root': file_desc.root_object_desc.tag, 'actual': xml_tree.tag } )
-        def _make_element_tree_from_xml( object_desc, xml_tree ):
-            # Map element attributes
-            known_attributes = {}
-            missing_attributes = set( xml_tree.keys() )
-            for attribute_desc in object_desc.attributes_by_name.itervalues():
-                attribute_value = xml_tree.get( attribute_desc.name )
-                if attribute_value is not None:
-                    # @todo Warning if attribute already in dict
-                    known_attributes[ attribute_desc.name ] = attribute_value
-                    missing_attributes.remove( attribute_desc.name )
-            if missing_attributes:
-                self._warning( u'Element %(tag)s, the following attributes are missing in the object description: %(attributes)s.',
-                               tag = xml_tree.tag,
-                               attributes = ', '.join( sorted( missing_attributes ) ) )
-            # Map element children
-            children = []
-            for xml_tree_child in xml_tree:
-                child_object_desc = object_desc.find_immediate_child_by_tag( xml_tree_child.tag )
-                if child_object_desc:
-                    children.append( _make_element_tree_from_xml( child_object_desc, xml_tree_child ) )
-                else:
-                    self._warning( u'Element %(tag)s, the following child tag missing in the object description: %(child)s.',
-                                   tag = xml_tree.tag,
-                                   child = xml_tree_child.tag )
-            return Element( object_desc, attributes = known_attributes, children = children )
-        root_element = _make_element_tree_from_xml( file_desc.root_object_desc, xml_tree )
-        tree = Tree( self._universe, file_desc, root_element = root_element, world = self )
+        tree = self.universe.make_unattached_tree_from_xml( file_desc, xml_data )
         self.add_tree( tree )
         return tree
 
     def find_tree( self, file_desc ):
         return self._trees.get( file_desc )
 
-    def add_tree( self, tree ):
-        self._trees[ tree._file_desc ] = tree
+    def add_tree( self, *trees ):
+        for tree in trees:
+            assert tree._world is None
+            tree._world = self
+            self._trees[ tree._file_desc ] = tree
 
-    def remove_tree( self, tree ):
-        del self._trees[ tree._file_desc ]
-
-    def to_xml( self, encoding = None ):
-        assert self.root_element is not None
-        encoding = encoding or 'utf-8'
-        xml_data = xml.etree.ElementTree.tostring( self.root_element )
+    def remove_tree( self, *trees ):
+        for tree in trees:
+            del self._trees[ tree._file_desc ]
+            tree._world = None
 
     def _warning( self, message, **kwargs ):
         self._universe._warning( message, **kwargs )
@@ -674,6 +686,21 @@ class Tree:
     def meta( self ):
         return self._file_desc
 
+    def to_xml( self, encoding = None ):
+        """Outputs a XML string representing the tree.
+           The XML is encoded using the specified encoding, or UTF-8 if none is specified.
+        """
+        assert self.root is not None
+        encoding = encoding or 'utf-8'
+        return xml.etree.ElementTree.tostring( self.root )
+
+    def clone( self ):
+        """Makes a deep clone of the tree root element.
+           The returned tree is not attached to a world.
+        """
+        cloned_root = self.root and self.root.clone() or None
+        return Tree( self, self.meta, cloned_root )
+
 
 # Provides support for attributes dict, children list and path look-up
 _ElementBase = xml.etree.ElementTree._ElementInterface
@@ -690,6 +717,7 @@ class Element(_ElementBase):
            children: an iterable (list) of child elements not attached to any tree to be attached as child of this element.
         """
         _ElementBase.__init__( self, object_desc.tag, attributes and attributes.copy() or {} )
+        assert object_desc is not None
         self._object_desc = object_desc
         self._parent = None
         self._tree = None # only set for the root element
@@ -811,6 +839,7 @@ class Element(_ElementBase):
            @param value The attribute value.
            @exception KeyError if the element has no attribute with the specified name in its description.
         """
+        # @todo check that value is string-like
         if key not in self._object_desc.attributes_by_name:
             raise KeyError( 'element %(tag)s has no attribute %(name)s' % {
                 'tag': self.meta.tag,
@@ -821,6 +850,15 @@ class Element(_ElementBase):
         assert isinstance(element, Element)
         assert element._parent is None
         element._parent = self
+
+    def clone( self ):
+        """Makes a deep clone of the element.
+           The returned element is not attached to a tree or parented.
+        """
+        element = Element( self.meta, attributes = self.attrib.copy() )
+        for child in self:
+            element.append( child.clone() )
+        return element
 
 
 if __name__ == "__main__":
@@ -1138,7 +1176,7 @@ if __name__ == "__main__":
             except KeyError:
                 pass
 
-        def test_from_xml( self ):
+        def test_from_to_xml_clone( self ):
             xml_data = """<inline>
 <text id ="TEXT_HI" fr="Salut" />
 <text id ="TEXT_HO" fr="Oh" />
@@ -1147,24 +1185,39 @@ if __name__ == "__main__":
 </sign>
 </inline>
 """
+            def check( xml_data ):
+                level_tree = self.world_level1.make_tree_from_xml( TEST_LEVEL_FILE, xml_data )
+                self.assertEqual( TEST_LEVEL_FILE, level_tree.meta )
+                self.assertEqual( self.universe, level_tree.universe )
+                self.assertEqual( self.world_level1, level_tree.world )
+                self.assertEqual( level_tree, self.world_level1.find_tree( TEST_LEVEL_FILE ) )
+                # content            
+                inline = level_tree.root
+                self.assertEqual( LEVEL_INLINE, inline.meta )
+                self.assertEqual( 3, len(inline) )
+                self.assertEqual( LEVEL_TEXT, inline[0].meta )
+                self.assertEqual( LEVEL_TEXT, inline[1].meta )
+                self.assertEqual( LEVEL_SIGN, inline[2].meta )
+                self.assertEqual( LEVEL_TEXT, inline[2][0].meta )
+                self.assertEqual( 1, len(inline[2]) )
+                self.assertEqual( sorted( [('fr','Salut'),('id','TEXT_HI')] ), sorted(inline[0].items()) )
+                self.assertEqual( sorted( [('fr','Oh'),('id','TEXT_HO')] ), sorted(inline[1].items()) )
+                self.assertEqual( sorted( [('alt_text','TEXT_HO'),('text','TEXT_HI')] ), sorted(inline[2].items()) )
+                self.assertEqual( sorted( [('fr','Enfant'),('id','TEXT_CHILD')] ), sorted(inline[2][0].items()) )
+                return level_tree
 
-            level_tree = self.world_level1.make_tree_from_xml( TEST_LEVEL_FILE, xml_data )
-            self.assertEqual( TEST_LEVEL_FILE, level_tree.meta )
-            self.assertEqual( self.universe, level_tree.universe )
-            self.assertEqual( self.world_level1, level_tree.world )
-            self.assertEqual( level_tree, self.world_level1.find_tree( TEST_LEVEL_FILE ) )
-            # content            
-            inline = level_tree.root
-            self.assertEqual( LEVEL_INLINE, inline.meta )
-            self.assertEqual( 3, len(inline) )
-            self.assertEqual( LEVEL_TEXT, inline[0].meta )
-            self.assertEqual( LEVEL_TEXT, inline[1].meta )
-            self.assertEqual( LEVEL_SIGN, inline[2].meta )
-            self.assertEqual( LEVEL_TEXT, inline[2][0].meta )
-            self.assertEqual( 1, len(inline[2]) )
-            self.assertEqual( sorted( [('fr','Salut'),('id','TEXT_HI')] ), sorted(inline[0].items()) )
-            self.assertEqual( sorted( [('fr','Oh'),('id','TEXT_HO')] ), sorted(inline[1].items()) )
-            self.assertEqual( sorted( [('alt_text','TEXT_HO'),('text','TEXT_HI')] ), sorted(inline[2].items()) )
-            self.assertEqual( sorted( [('fr','Enfant'),('id','TEXT_CHILD')] ), sorted(inline[2][0].items()) )
+            level_tree = check( xml_data )
+            xml_data = level_tree.to_xml()
+            check( xml_data )
+            level_tree = check( xml_data )
+            xml_data = level_tree.to_xml()
+            check( xml_data )
+            # clone
+            cloned_tree = level_tree.clone()
+            xml_data = cloned_tree.to_xml()
+            check( xml_data )
+            
+
+# to test:
 
     unittest.main()

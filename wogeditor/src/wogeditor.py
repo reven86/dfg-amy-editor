@@ -139,7 +139,6 @@ class GameModel(QtCore.QObject):
         self._resources_tree = self._loadTree( self.global_world, metawog.GLOBAL_RESOURCE_FILE,
                                                properties_dir, 'resources.xml.bin' )
         self._readonly_resources = set()    # resources in resources.xml that have expanded defaults idprefix & path
-##        self._texts = self._loadPackedData( properties_dir, 'text.xml.bin' )
         self._texts_tree = self._loadTree( self.global_world, metawog.GLOBAL_TEXT_FILE,
                                            properties_dir, 'text.xml.bin' )
         self._levels = self._loadDirList( os.path.join( self._res_dir, 'levels' ), filter = '%s.scene.bin' )
@@ -263,13 +262,17 @@ class GameModel(QtCore.QObject):
     def selectLevel( self, level_name ):
         if level_name not in self.level_models_by_name:
             level_dir = os.path.join( self._res_dir, 'levels', level_name )
-            level_tree = self._loadPackedData( level_dir, level_name + '.level.bin' )
-            scene_tree = self._loadPackedData( level_dir, level_name + '.scene.bin' )
-            resource_tree = self._loadPackedData( level_dir, level_name + '.resrc.bin' )
-            self.level_models_by_name[level_name] = LevelModel( self, level_name,
-                                                                level_tree,
-                                                                scene_tree,
-                                                                resource_tree )
+
+            level_world = self.global_world.make_world( metawog.LEVEL_SCOPE, level_name, LevelModel, self )
+            level_tree = self._loadTree( level_world, metawog.LEVEL_GAME_FILE,
+                                         level_dir, level_name + '.level.bin' )
+            scene_tree = self._loadTree( level_world, metawog.LEVEL_SCENE_FILE,
+                                         level_dir, level_name + '.scene.bin' )
+            resource_tree = self._loadTree( level_world, metawog.LEVEL_RESOURCE_FILE,
+                                            level_dir, level_name + '.resrc.bin' )
+            level_world.initializeLevelReferencesAndCache()
+            
+            self.level_models_by_name[level_name] = level_world
         level_model = self.level_models_by_name[level_name]
         
         old_model = level_model
@@ -326,20 +329,22 @@ class GameModel(QtCore.QObject):
         """Creates a new blank level with the specified name.
            May fails with an IOError."""
         return self._addNewLevel( level_name,
-                                  xml.etree.ElementTree.fromstring( metawog.LEVEL_GAME_TEMPLATE ),
-                                  xml.etree.ElementTree.fromstring( metawog.LEVEL_SCENE_TEMPLATE ),
-                                  xml.etree.ElementTree.fromstring( metawog.LEVEL_RESOURCE_TEMPLATE ) )
+            self._universe.make_unattached_tree_from_xml( metawog.LEVEL_GAME_FILE,
+                                                          metawog.LEVEL_GAME_TEMPLATE ),
+            self._universe.make_unattached_tree_from_xml( metawog.LEVEL_SCENE_FILE,
+                                                          metawog.LEVEL_SCENE_TEMPLATE ),
+            self._universe.make_unattached_tree_from_xml( metawog.LEVEL_RESOURCE_FILE,
+                                                          metawog.LEVEL_RESOURCE_TEMPLATE ) )
 
     def cloneLevel( self, cloned_level_name, new_level_name ):
         """Clone an existing level and its resources."""
         level_model = self.getLevelModel( cloned_level_name )
-        def clone_element_tree( element_tree ):
-            xml_data = xml.etree.ElementTree.tostring( element_tree )
-            return xml.etree.ElementTree.fromstring( xml_data )
+        def clone_level_tree( object_type ):
+            return level_model.find_tree( object_type ).clone()
         return self._addNewLevel( new_level_name,
-                                  clone_element_tree( level_model.level_tree ),
-                                  clone_element_tree( level_model.scene_tree ),
-                                  clone_element_tree( level_model.resource_tree ) )
+                                  clone_level_tree( metawog.LEVEL_GAME_FILE ),
+                                  clone_level_tree( metawog.LEVEL_SCENE_FILE ),
+                                  clone_level_tree( metawog.LEVEL_RESOURCE_FILE ) )
 
     def _addNewLevel( self, level_name, level_tree, scene_tree, resource_tree ):
         """Adds a new level using the specified level, scene and resource tree.
@@ -349,11 +354,14 @@ class GameModel(QtCore.QObject):
         if not os.path.isdir( level_dir_path ):
             os.mkdir( level_dir_path )
         # Fix the hard-coded level name in resource tree: <Resources id="scene_NewTemplate" >
-        for resource_element in resource_tree.findall( './/Resources' ):
+        for resource_element in resource_tree.root.findall( './/Resources' ):
             resource_element.set( 'id', 'scene_%s' % level_name )
         # Creates and register the new level
-        self.level_models_by_name[level_name] = LevelModel(
-            self, level_name, level_tree, scene_tree, resource_tree, is_dirty = True )
+        level_world = self.global_world.make_world( metawog.LEVEL_SCOPE, level_name,
+                                                    LevelModel, self, is_dirty = True )
+        level_world.add_tree( level_tree, scene_tree, resource_tree )
+        level_world.initializeLevelReferencesAndCache()
+        self.level_models_by_name[level_name] = level_world
         self._levels.append( level_name )
         self._levels.sort()
         self.is_dirty = True
@@ -363,14 +371,10 @@ class BallModel(metaworld.World):
         metaworld.World.__init__( self, universe, scope_desc, ball_name )
         self.game_model = game_model
 
-class LevelModel(object):
-    def __init__( self, game_model, level_name, level_tree, scene_tree, resource_tree, is_dirty = False ):
+class LevelModel(metaworld.World):
+    def __init__( self, universe, scope_desc, level_name, game_model, is_dirty = False ):
+        metaworld.World.__init__( self, universe, scope_desc, level_name )
         self.game_model = game_model
-        self.level_name = level_name
-        self.level_tree = level_tree
-        self.scene_tree = scene_tree
-        self.resource_tree = resource_tree
-        self._initializeLevelReferences()
         self.dirty_object_types = set()
         if is_dirty:
             self.dirty_object_types |= set( (metawog.LEVEL_GAME_FILE,
@@ -378,8 +382,22 @@ class LevelModel(object):
                                              metawog.LEVEL_SCENE_FILE) )
 
         self.images_by_id = {}
-        for image_element in self.resource_tree.findall( './/Image' ):
-            self._loadImageFromElement( image_element )
+
+    @property
+    def level_name( self ):
+        return self.key
+
+    @property
+    def level_tree( self ):
+        return self.find_tree( metawog.LEVEL_GAME_FILE ).root
+
+    @property
+    def scene_tree( self ):
+        return self.find_tree( metawog.LEVEL_SCENE_FILE ).root
+
+    @property
+    def resource_tree( self ):
+        return self.find_tree( metawog.LEVEL_RESOURCE_FILE ).root
 
     @property
     def tracker( self ):
@@ -390,6 +408,20 @@ class LevelModel(object):
 
     def isReadOnlyLevel( self ):
         return self.level_name.lower() in 'ab3 beautyandthetentacle beautyschool blusteryday bulletinboardsystem burningman chain deliverance drool economicdivide fistyreachesout flyawaylittleones flyingmachine geneticsortingmachine goingup gracefulfailure grapevinevirus graphicprocessingunit hanglow helloworld htinnovationcommittee immigrationnaturalizationunit impalesticky incinerationdestination infestytheworm ivytower leaphole mapworldview mistyslongbonyroad mom observatoryobservationstation odetobridgebuilder productlauncher redcarpet regurgitationpumpingstation roadblocks secondhandsmoke superfusechallengetime theserver thirdwheel thrustertest towerofgoo tumbler uppershaft volcanicpercolatordayspa waterlock weathervane whistler youhavetoexplodethehead'.split()
+
+    def initializeLevelReferencesAndCache( self ):
+        level_scope = self
+        parent_scope = self.game_model
+        self.tracker.scope_added( level_scope, metawog.LEVEL_SCOPE, parent_scope )
+        self.tracker.element_object_added( level_scope, self.level_tree,
+                                           metawog.LEVEL_GAME_FILE.root_object_desc )
+        self.tracker.element_object_added( level_scope, self.scene_tree,
+                                           metawog.LEVEL_SCENE_FILE.root_object_desc )
+        self.tracker.element_object_added( level_scope, self.resource_tree,
+                                           metawog.LEVEL_RESOURCE_FILE.root_object_desc )
+        # cache
+        for image_element in self.resource_tree.findall( './/Image' ):
+            self._loadImageFromElement( image_element )
 
     def _loadImageFromElement( self, image_element ):
         id, path = image_element.get('id'), image_element.get('path')
@@ -403,17 +435,6 @@ class LevelModel(object):
                 print 'Failed to load image:', path
         else:
             print 'Invalid image path for "%s": "%s"' % (id,path)
-
-    def _initializeLevelReferences( self ):
-        level_scope = self
-        parent_scope = self.game_model
-        self.tracker.scope_added( level_scope, metawog.LEVEL_SCOPE, parent_scope )
-        self.tracker.element_object_added( level_scope, self.level_tree,
-                                           metawog.LEVEL_GAME_FILE.root_object_desc )
-        self.tracker.element_object_added( level_scope, self.scene_tree,
-                                           metawog.LEVEL_SCENE_FILE.root_object_desc )
-        self.tracker.element_object_added( level_scope, self.resource_tree,
-                                           metawog.LEVEL_RESOURCE_FILE.root_object_desc )
 
     def saveModifiedElements( self ):
         """Save the modified scene, level, resource tree."""
@@ -529,8 +550,9 @@ class LevelModel(object):
                     existing_path = os.path.split( existing_path )[1]
                     id = id_prefix + ''.join( c for c in existing_path if c.upper() in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789' )
                     resource_path = 'res/levels/%s/%s' % (self.level_name,existing_path)
-                    new_resource = xml.etree.ElementTree.Element( tag, {'id':id.upper(),
-                                                                        'path':resource_path} )
+                    meta_element = metawog.LEVEL_RESOURCE_FILE.find_object_desc_by_tag( tag )
+                    new_resource = metaworld.Element( meta_element, {'id':id.upper(),
+                                                                     'path':resource_path} )
                     self.addElement( metawog.LEVEL_RESOURCE_FILE, resource_element, new_resource )
                     added_elements.append( new_resource )
         return added_elements
@@ -1598,35 +1620,35 @@ class MainWindow(QtGui.QMainWindow):
                 menu.addSeparator()
                 if index.parent() is None:
                     remove_action.setEnable( False )
-                tag_by_actions = {}
+                child_object_desc_by_actions = {}
                 object_desc = object_file.find_object_desc_by_tag(element.tag)
                 for tag in sorted(object_desc.objects_by_tag.iterkeys()):
-                    if not object_desc.find_immediate_child_by_tag(tag).read_only:
+                    child_object_desc = object_desc.find_immediate_child_by_tag(tag)
+                    if not child_object_desc.read_only:
                         action = menu.addAction( self.tr("Add child %1").arg(tag) )
-                        tag_by_actions[action] = tag
+                        child_object_desc_by_actions[action] = child_object_desc
                 selected_action = menu.exec_( tree_view.viewport().mapToGlobal(menu_pos) )
-                selected_tag = tag_by_actions.get( selected_action )
-                if selected_tag:
-                    self._appendChildTag( tree_view, object_file, index, selected_tag )
+                selected_object_desc = child_object_desc_by_actions.get( selected_action )
+                if selected_object_desc:
+                    self._appendChildTag( tree_view, object_file, index, selected_object_desc )
                 elif selected_action is remove_action:
                     element_to_remove = tree_view.model().itemFromIndex( index ).data( QtCore.Qt.UserRole ).toPyObject()
                     self.getCurrentLevelModel().removeElement( object_file, element_to_remove )
 
-    def _appendChildTag( self, tree_view, object_file, parent_element_index, new_tag ):
+    def _appendChildTag( self, tree_view, object_file, parent_element_index, new_object_desc ):
         """Adds the specified child tag to the specified element and update the tree view."""
         parent_element = parent_element_index.data( QtCore.Qt.UserRole ).toPyObject()
         if parent_element is not None:
             # build the list of attributes with their initial values.
-            object_desc = object_file.find_object_desc_by_tag(new_tag)
             mandatory_attributes = {}
-            for attribute_name, attribute_desc in object_desc.attributes_by_name.iteritems():
+            for attribute_name, attribute_desc in new_object_desc.attributes_by_name.iteritems():
                 if attribute_desc.mandatory:
                     init_value = attribute_desc.init
                     if init_value is None:
                         init_value = ''
                     mandatory_attributes[attribute_name] = init_value
             # Creates and append to parent the new child element
-            child_element = xml.etree.ElementTree.Element( new_tag, mandatory_attributes )
+            child_element = metaworld.Element( new_object_desc, mandatory_attributes )
             # Notes: when the element is added, the objectAdded() signal will cause the
             # corresponding item to be inserted into the tree.
             self.getCurrentLevelModel().addElement( object_file, parent_element, child_element )

@@ -78,6 +78,8 @@ LEVEL_GAME_FILE.add_objects( [
             real_attribute( 'x', init = 0, mandatory = True ),
             real_attribute( 'y', init = 0, mandatory = True ),
             angle_degrees_attribute( 'rotation', init = 0, mandatory = True ),
+            reference_attribute( 'image', reference_familly = 'image', reference_scope = LEVEL_SCOPE,
+                                 init = '', mandatory = True ),
             # @todo makes scalex,scaley a composite attribute
             real_attribute( 'scalex', init = 1, min_value = 0.0000001, mandatory = True ),
             real_attribute( 'scaley', init = 1, min_value = 0.0000001, mandatory = True ),
@@ -288,7 +290,8 @@ LEVEL_SCENE_FILE.add_objects( [
             real_attribute( 'scalex', default='1'),
             real_attribute( 'scaley', default='1'),
             bool_attribute( 'tilex', default='false'),
-            bool_attribute( 'tiley', default='false')
+            bool_attribute( 'tiley', default='false'),
+            rgb_attribute( 'colorize', init = '255,255,255'),
             ] ),
         _BUTTON_OBJECT,
         describe_object( 'buttongroup', attributes = [
