@@ -1,4 +1,24 @@
-"""Describes the structure and constraints of objects used in data file of WOG."""
+"""Provides a way to describe a graph of objects, that may be linked together.
+
+Objects live in a given scope. Scopes are organized as a hierarchy: scope children may see their parent objects,
+but the parent scope can not see the child objects.
+
+Typically, their is a global scope with resources common to all levels, and each level has its own scope.
+This allows each level to define objects with identifiers that would conflict with object defined in other
+levels if scope were not used.
+
+While objects live in a scope, they are attached to a given "file" in that scope. A scope can contain multiple
+files, but each file can only have one root object.
+
+The structure of the graph of objects is defined statically:
+- structure of the scope kind hieararchy
+- kind of file attached to each kind of scope
+- root object description attached to each file
+- for each object description, its possible child object description, and its attribute description.
+
+Object description can define constraint such as the minimum or maximum number of occurrences of the object in its parent.
+Attribute description can indicate if the attribute is mandatory, its value domain, typical initial value, type...
+"""
 import xml.etree.ElementTree
 
 
@@ -23,7 +43,9 @@ class AttributeDesc(object):
     def __init__( self, name, type, init = None, default = None, allow_empty = False, mandatory = False ):
         self.name = name
         self.type = type
-        self.init = str(init)
+        if init is not None:
+            init = str(init)
+        self.init = init
         self.default = default
         self.allow_empty = allow_empty
         self.mandatory = mandatory
@@ -458,6 +480,336 @@ def print_object_desc_tree( object, indent ):
     for child_object in object.objects_by_tag.itervalues():
         print_object_desc_tree( child_object, indent + '    ' )
 
+class WorldsOwner:
+    def __init__( self ):
+        self._worlds = {} # dict(desc: dict(key: world) )
+        
+    def make_world( self, scope_desc, world_key = None ):
+        world = World( self.universe, scope_desc, key = world_key )
+        if scope_desc not in self._worlds:
+            self._worlds[scope_desc] = {}
+        assert world.key not in self._worlds[scope_desc]
+        self._worlds[scope_desc][world.key] = world
+        self._attach_world( world )
+        return world
+
+    def find_world( self, scope_desc, world_key ):
+        worlds_by_key = self._worlds.get( scope_desc, {} )
+        return worlds_by_key.get( world_key )
+
+    def list_worlds_of_type( self, scope_desc ):
+        worlds_by_key = self._worlds.get( scope_desc, {} )
+        return worlds_by_key.values()
+
+    def list_world_keys( self, scope_desc ):
+        worlds_by_key = self._worlds.get( scope_desc, {} )
+        return worlds_by_key.keys()
+
+    def _attach_world( self, world ):
+        """Called when a world is attached to the owner."""
+        raise NotImplemented()
+
+class Universe(WorldsOwner):
+    """Represents the universe where all elements, worlds and trees live in.
+    """
+    def __init__( self ):
+        WorldsOwner.__init__( self )
+
+    @property
+    def universe( self ):
+        return self
+
+    def _attach_world( self, world ):
+        """Called when a root world is attached to the universe."""
+        pass
+    
+    def _warning( self, message, **kwargs ):
+        print message % kwargs
+
+class WorldException(Exception):
+    pass
+
+class World(WorldsOwner):
+    """Represents a part of the universe unknown to other worlds, described by a ScopeDesc.
+
+       The elements attached to a world are unknown to other World.    
+    """
+    def __init__( self, universe, scope_desc, key = None ):
+        WorldsOwner.__init__( self )
+        self._universe = universe
+        self._scope_desc = scope_desc
+        self._trees = {}
+        self._key = key
+        self._parent_world = None
+
+    @property
+    def key( self ):
+        return self._key 
+
+    @property
+    def parent_world( self ):
+        return self._parent_world
+
+    @property
+    def universe( self ):
+        return self._universe
+
+    @property
+    def meta( self ):
+        return self._scope_desc
+
+    def _attach_world( self, world ):
+        """Called when a sub-world is attached to the world."""
+        world._parent_world = self
+
+    def make_tree( self, file_desc, root_element = None ):
+        return Tree( self.universe, file_desc, root_element = root_element, world = self )
+
+    def make_tree_from_xml( self, file_desc, xml_data, encoding = None ):
+        """Makes a tree from the provided xml data for the specified kind of tree.
+           The tree is automatically attached to the world.
+           Returns the created tree if successful (root was successfully parsed),
+           otherwise raise the exception WorldException.
+           Warning may be raised at the universe level.
+           file_desc: description of the kind of tree to load. Used to associated xml tag to element description.
+           xml_data: raw XML data.
+        """
+        encoding = encoding or 'utf-8'
+        xml_data = xml_data.decode( encoding )
+        xml_tree = xml.etree.ElementTree.fromstring( xml_data )
+        if file_desc.root_object_desc.tag != xml_tree.tag:
+            raise WorldException( u'Expected root tag "%(root)s", but got "%(actual)s" instead.' % {
+                'root': file_desc.root_object_desc.tag, 'actual': xml_tree.tag } )
+        def _make_element_tree_from_xml( object_desc, xml_tree ):
+            # Map element attributes
+            known_attributes = {}
+            missing_attributes = set( xml_tree.keys() )
+            for attribute_desc in object_desc.attributes_by_name:
+                attribute_value = xml_tree.get( attribute_desc.name )
+                if attribute_value is not None:
+                    # @todo Warning if attribute already in dict
+                    known_attributes[ attribute_desc.name ] = attribute_value
+                    missing_attributes.remove( attribute_desc.name )
+            if missing_attributes:
+                self._warning( u'Element %(tag)s, the following attributes are missing in the object description: %(attributes)s.',
+                               tag = xml_tree.tag,
+                               attributes = ', '.join( sorted( missing_attributes ) ) )
+            # Map element children
+            children = []
+            for xml_tree_child in xml_tree:
+                child_object_desc = object_desc.find_immediate_child_by_tag( xml_tree_child.tag )
+                if child_object_desc:
+                    children.append( _make_element_tree_from_xml( child_object_desc, xml_tree_child ) )
+                else:
+                    self._warning( u'Element %(tag)s, the following child tag missing in the object description: %(child)s.',
+                                   tag = xml_tree.tag,
+                                   child = xml_tree_child.tag )
+            return Element( self._universe, object_desc, attributes = known_attributes, children = children )
+        root_element = _make_element_tree_from_xml( file_desc.root_object_desc, xml_tree )
+        tree = Tree( self._universe, file_desc, root_element = root_element, world = self )
+        self.add_tree( tree )
+        return tree
+
+    def find_tree( self, file_desc ):
+        return self._trees.get( file_desc )
+
+    def add_tree( self, tree ):
+        self._trees[ tree._file_desc ] = tree
+
+    def remove_tree( self, tree ):
+        del self._trees[ tree._file_desc ]
+
+    def to_xml( self, encoding = None ):
+        assert self.root_element is not None
+        encoding = encoding or 'utf-8'
+        xml_data = xml.etree.ElementTree.tostring( self.root_element )
+
+    def _warning( self, message, **kwargs ):
+        self._universe._warning( message, **kwargs )
+        
+
+class Tree:
+    """Represents a part of the world elements live in, described by a FileDesc.
+    """
+    def __init__( self, universe, file_desc, root_element = None, world = None ):
+        self._universe = universe
+        self._file_desc = file_desc
+        self._root_element = root_element
+        self._world = world
+        self.set_root( root_element )
+
+    def set_root( self, root_element ):
+        assert root_element is None or isinstance(root_element, Element), type(root_element)
+        if self._root_element:  # detach old root
+            self._root_element._tree = None
+        if root_element: # attach new root
+            root_element._tree = self
+        self._root_element = root_element
+
+    @property
+    def universe( self ):
+        return self._universe
+
+    @property
+    def world( self ):
+        return self._world
+
+    @property
+    def root( self ):
+        return self._root_element
+
+    @property
+    def meta( self ):
+        return self._file_desc
+
+
+# Provides support for attributes dict, children list and path look-up
+_ElementBase = xml.etree.ElementTree._ElementInterface
+
+class Element(_ElementBase):
+    """Represents a tree that live in a World on a given Tree, described by an ObjectDesc.
+       The Element's description associates it with a given kind of Tree and restricts
+       the kind of parent and child elements it may have.
+    """
+    def __init__( self, object_desc, attributes = None, children = None ):
+        """Initializes the element of type object_descwith the specified attributes.
+           object_desc: an ObjectDesc instance
+           attributes: a dictionnary of (name, value) of attributes values
+           children: an iterable (list) of child elements not attached to any tree to be attached as child of this element.
+        """
+        _ElementBase.__init__( self, object_desc.tag, attributes and attributes.copy() or {} )
+        self._object_desc = object_desc
+        self._parent = None
+        self._tree = None # only set for the root element
+        for child in children or ():
+            self.append( child )
+
+    def is_root( self ):
+        return self._parent is None
+
+    def unset( self, attribute_name ):
+        """Removes the specified attribute from the element.
+        """
+        del self.attrib[attribute_name] # is it okay to access attrib directly ?
+
+    @property
+    def universe( self ):
+        world = self.world
+        return world and world.universe or None
+
+    @property
+    def world( self ):
+        tree = self.tree
+        return tree and tree.world or None
+
+    @property
+    def tree( self ):
+        if self._parent:
+            return  self._parent.tree
+        return self._tree
+
+    @property
+    def parent( self ):
+        """Returns the parent element. None if the element is a root."""
+        return self._parent
+
+    @property
+    def meta( self ):
+        return self._object_desc
+
+    def append( self, element ):
+        """Adds a subelement to the end of this element.
+           @param element The element to add.
+           @exception AssertionError If a sequence member is not a valid object.
+        """
+        _ElementBase.append( self, element )
+        self._parent_element( element )
+
+    def insert( self, index, element ):
+        """Inserts a subelement at the given position in this element.
+           @param index Where to insert the new subelement.
+           @exception AssertionError If the element is not a valid object.
+        """
+        _ElementBase.insert( self, index, element )
+        self._parent_element( element )
+
+    def __setitem__( self, index, element ):
+        """Replaces the given subelement.
+           @param index What subelement to replace.
+           @param element The new element value.
+           @exception IndexError If the given element does not exist.
+           @exception AssertionError If element is not a valid object.
+        """
+        self[index]._parent = None
+        _ElementBase.__setitem__( self, index, element )
+        self._parent_element( element )
+
+    def __delitem__( self, index ):
+        """Deletes the given subelement.
+           @param index What subelement to delete.
+           @exception IndexError If the given element does not exist.
+        """
+        self._children[index]._parent = None
+        _ElementBase.__delitem__( self, index )
+
+    def __setslice__( self, start, stop, elements ):
+        """Replaces a number of subelements with elements from a sequence.
+           @param start The first subelement to replace.
+           @param stop The first subelement that shouldn't be replaced.
+           @param elements A sequence object with zero or more elements.
+           @exception AssertionError If a sequence member is not a valid object.
+        """
+        for element in self[start:stop]:
+            element._parent = None
+        _ElementBase.__setslice__( self, start, stop, elements )
+        for element in elements:
+            self._parent_element( element )
+
+    def __delslice__( self, start, stop ):
+        """Deletes a number of subelements.
+           @param start The first subelement to delete.
+           @param stop The first subelement to leave in there.
+        """
+        for element in self[start:stop]:
+            element._parent = None
+        _ElementBase.__delslice__( self, start, stop )
+
+    def remove( self, element ):
+        """Removes a matching subelement.  Unlike the <b>find</b> methods,
+           this method compares elements based on identity, not on tag
+           value or contents.
+           @param element What element to remove.
+           @exception ValueError If a matching element could not be found.
+           @exception AssertionError If the element is not a valid object.
+        """
+        _ElementBase.remove( self, element )
+        element._parent = None
+
+    def clear( self ):
+        """Resets an element.  This function removes all subelements, clears
+           all attributes, and sets the text and tail attributes to None.
+        """
+        for element in self:
+            element._parent = None
+        _ElementBase.clear( self )
+
+    def set(self, key, value):
+        """Sets an element attribute.
+           @param key What attribute to set.
+           @param value The attribute value.
+           @exception KeyError if the element has no attribute with the specified name in its description.
+        """
+        if key not in self._object_desc.attributes_by_name:
+            raise KeyError( 'element %(tag)s has no attribute %(name)s' % {
+                'tag': self.meta.tag,
+                'name': key } )
+        self.attrib[key] = value
+
+    def _parent_element( self, element ):
+        assert isinstance(element, Element)
+        assert element._parent is None
+        element._parent = self
+
 
 if __name__ == "__main__":
     import unittest
@@ -467,9 +819,11 @@ if __name__ == "__main__":
         describe_object( 'inline' )
         ] )
 
-    TEST_GLOBAL_SCOPE = describe_scope( 'testscope', files_desc = [TEST_GLOBAL_FILE] )
-
     TEST_LEVEL_SCOPE = describe_scope( 'testscope.level', files_desc = [TEST_LEVEL_FILE] )
+
+    TEST_GLOBAL_SCOPE = describe_scope( 'testscope',
+                                        files_desc = [TEST_GLOBAL_FILE],
+                                        child_scopes = [TEST_LEVEL_SCOPE] )
 
     GLOBAL_TEXT = describe_object( 'text', attributes = [
         identifier_attribute( 'id', mandatory = True, reference_familly = 'text',
@@ -531,7 +885,7 @@ if __name__ == "__main__":
             return 'TestScope<%s>' % self.name
 
 
-    class Test(unittest.TestCase):
+    class MetaTest(unittest.TestCase):
 
         def test_identifiers(self):
             tracker = ReferenceTracker()
@@ -645,5 +999,142 @@ if __name__ == "__main__":
                     self.assert_( object in file.objects_by_tag.values() )
                     self.assert_( object.tag in file.objects_by_tag )
                     self.assert_( object.tag in file.scope.objects_by_tag )
+
+    class UniverseTest(unittest.TestCase):
+
+
+        def setUp( self ):
+            self.universe = Universe()
+            self.world = self.universe.make_world( TEST_GLOBAL_SCOPE, 'global' )
+            self.world_level1 = self.world.make_world( TEST_LEVEL_SCOPE, 'level1' )
+            self.level1 = self.world_level1.make_tree( TEST_LEVEL_FILE )
+            self.world_level2 = self.world.make_world( TEST_LEVEL_SCOPE, 'level2' )
+            self.level2 = self.world_level1.make_tree( TEST_LEVEL_FILE )
+
+##    def find_world( self, scope_desc, world_key ):
+##        worlds_by_key = self._worlds.get( scope_desc, {} )
+##        return worlds_by_key.get( world_key )
+##
+##    def list_worlds_of_type( self, scope_desc ):
+##        worlds_by_key = self._worlds.get( scope_desc, {} )
+##        return worlds_by_key.values()
+##
+##    def list_world_keys( self, scope_desc ):
+##        worlds_by_key = self._worlds.get( scope_desc, {} )
+##        return worlds_by_key.keys()
+
+        def _makeElement(self, object_desc ):
+            return Element( object_desc )
+
+        def test_world( self ):
+            self.assertEqual( self.universe, self.universe.universe )
+            self.assertEqual( self.universe, self.world.universe )
+            self.assertEqual( self.universe, self.world_level1.universe )
+            self.assertEqual( self.universe, self.level1.universe )
+            # Global
+            self.assertEqual( sorted( ['global'] ),
+                              sorted( self.universe.list_world_keys( TEST_GLOBAL_SCOPE ) ) )
+            self.assertEqual( sorted( [self.world] ),
+                              sorted( self.universe.list_worlds_of_type( TEST_GLOBAL_SCOPE ) ) )
+            self.assertEqual( self.world, self.universe.find_world( TEST_GLOBAL_SCOPE, 'global' ) )
+            # Levels
+            self.assertEqual( sorted( ['level1', 'level2'] ),
+                              sorted( self.world.list_world_keys( TEST_LEVEL_SCOPE ) ) )
+            self.assertEqual( sorted( [self.world_level1, self.world_level2] ),
+                              sorted( self.world.list_worlds_of_type( TEST_LEVEL_SCOPE ) ) )
+            self.assertEqual( self.world_level1, self.world.find_world( TEST_LEVEL_SCOPE, 'level1' ) )
+            # Missing
+            self.assertEqual( sorted( [] ),
+                              sorted( self.world.list_world_keys( TEST_GLOBAL_SCOPE ) ) )
+            self.assertEqual( sorted( [] ),
+                              sorted( self.world.list_worlds_of_type( TEST_GLOBAL_SCOPE ) ) )
+            self.assertEqual( None, self.world.find_world( TEST_LEVEL_SCOPE, 'level_unknown' ) )
+            self.assertEqual( None, self.world.find_world( TEST_GLOBAL_SCOPE, 'level_unknown' ) )
+    
+        def test_element(self):
+            s1 = self._makeElement( LEVEL_SIGN )
+            t1 = self._makeElement( LEVEL_TEXT )
+            t2 = self._makeElement( LEVEL_TEXT )
+            t3 = self._makeElement( LEVEL_TEXT )
+            t4 = self._makeElement( LEVEL_TEXT )
+            t5 = self._makeElement( LEVEL_TEXT )
+            # Test: append() & insert()
+            s1.append( t3 )    # t3
+            s1.insert( 0, t1 ) # t1, t3
+            s1.insert( 1, t2 ) # t1, t2, t3
+            s1.append( t4 )    # t1, t2, t3, t4
+            s1.insert( 4, t5 ) # t1, t2, t3, t4, t5
+            # Checks that child are in s1 and correctly parent
+            self.assertEqual( 5, len(s1) )
+            self.assertEqual( LEVEL_SIGN, s1.meta  )
+            self.assertEqual( LEVEL_TEXT, t2.meta  )
+            self.assertEqual( None, t3.universe )
+            self.assertEqual( None, s1.parent )
+            self.assertEqual( s1, t2.parent )
+            self.assertEqual( s1, t3.parent )
+            self.assertEqual( None, s1.tree )
+            self.assertEqual( None, s1.world )
+            self.assertEqual( None, s1.universe )
+            self.assertEqual( None, t2.tree )
+            self.assertEqual( None, t2.world )
+            self.assertEqual( None, t2.universe )
+            # Attach s1 to a root
+            self.level1.set_root( s1 )
+            # Checks that universe... is correctly propagated to all children
+            self.assertEqual( self.level1, s1.tree )
+            self.assertEqual( self.level1, t2.tree )
+            self.assertEqual( self.world_level1, s1.world )
+            self.assertEqual( self.world_level1, t2.world )
+            self.assertEqual( self.universe, s1.universe )
+            self.assertEqual( self.universe, t2.universe )
+            # setitem
+            t6 = self._makeElement( LEVEL_TEXT )
+            s1[0] = t6
+            self.assertEqual( t6, s1[0] )
+            self.assertEqual( s1, t6.parent )
+            self.assertEqual( None, t1.parent )
+            # delitem
+            del s1[0]
+            self.assertEqual( t2, s1[0] )
+            self.assertEqual( None, t6.parent )
+            # setslice
+            s1[0:0] = [t1]
+            self.assertEqual( t1, s1[0] )
+            s1[1:3] = []
+            self.assertEqual( None, t2.parent )
+            self.assertEqual( None, t3.parent )
+            self.assertEqual( 5-2, len(s1) )
+            s1[1:1] = [t2,t3]
+            self.assertEqual( s1, t2.parent )
+            self.assertEqual( s1, t3.parent )
+            self.assertEqual( 5, len(s1) )
+            # delslice
+            del s1[1:3]
+            self.assertEqual( None, t2.parent )
+            self.assertEqual( None, t3.parent )
+            self.assertEqual( 5-2, len(s1) )
+            s1[1:1] = [t2,t3]
+            self.assertEqual( s1, t2.parent )
+            self.assertEqual( s1, t3.parent )
+            # remove
+            s1.remove(t2)
+            self.assertEqual( None, t2.parent )
+            self.assertEqual( 5-1, len(s1) )
+            s1[1:1] = [t2]
+            # clear
+            s1.clear()
+            self.assertEqual( 0, len(s1) )
+            self.assertEqual( None, t1.parent )
+            self.assertEqual( None, t2.parent )
+            self.assertEqual( None, t3.parent )
+            self.assertEqual( None, t4.parent )
+            self.assertEqual( None, t5.parent )
+            self.assertEqual( 0, len(s1.keys()) )
+            t1.set( 'id', 'TEXT_HI' )
+            try:
+                t1.set( '_bad_attribute', 'dummy')
+                self.fail()
+            except KeyError:
+                pass
 
     unittest.main()
