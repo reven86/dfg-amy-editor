@@ -100,7 +100,8 @@ LEVEL_GAME_FILE.add_objects( [
         describe_object( 'BallInstance', attributes = [
             identifier_attribute( 'id', mandatory = True, reference_familly = 'BallInstance',
                                   reference_scope = LEVEL_SCOPE, init ='1' ),
-            string_attribute( 'type', mandatory = True, init = 'common' ),  # @todo makes this a reference
+            reference_attribute( 'type', mandatory = True,
+                                 reference_familly = 'ball', reference_scope = GLOBAL_SCOPE ),
             # @todo makes x,y a composite attribute
             real_attribute( 'x', init = 0, mandatory = True ),
             real_attribute( 'y', init = 0, mandatory = True ),

@@ -1,3 +1,8 @@
+* Fixed bug of missing water attribute on linearforcefield.
+* Add child now only propose child that are valid to add to the selected item.
+* Completion is provided for ball type
+* Completion list is now sorted in non case-sensitive order
+
 - Version 0.3.1:
 * Fixed bug that prevented adding/editing a new pipe in a level
 

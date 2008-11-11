@@ -130,14 +130,20 @@ class GameModel(QtCore.QObject):
         self._wog_dir = os.path.split( wog_path )[0]
         properties_dir = os.path.join( self._wog_dir, u'properties' )
         self._res_dir = os.path.join( self._wog_dir, u'res' )
-        self._effects = self._loadPackedData( properties_dir, 'fx.xml.bin' )
-        self._materials = self._loadPackedData( properties_dir, 'materials.xml.bin' )
-        self._resources = self._loadPackedData( properties_dir, 'resources.xml.bin' )
+        self._universe = metaworld.Universe()
+        self.global_world = self._universe.make_world( metawog.GLOBAL_SCOPE )
+        self._effects_tree = self._loadTree( self.global_world, metawog.GLOBAL_FX_FILE,
+                                             properties_dir, 'fx.xml.bin' )
+        self._materials_tree = self._loadTree( self.global_world, metawog.GLOBAL_MATERIALS_FILE,
+                                               properties_dir, 'materials.xml.bin' )
+        self._resources_tree = self._loadTree( self.global_world, metawog.GLOBAL_RESOURCE_FILE,
+                                               properties_dir, 'resources.xml.bin' )
         self._readonly_resources = set()    # resources in resources.xml that have expanded defaults idprefix & path
-        self._texts = self._loadPackedData( properties_dir, 'text.xml.bin' )
+##        self._texts = self._loadPackedData( properties_dir, 'text.xml.bin' )
+        self._texts_tree = self._loadTree( self.global_world, metawog.GLOBAL_TEXT_FILE,
+                                           properties_dir, 'text.xml.bin' )
         self._levels = self._loadDirList( os.path.join( self._res_dir, 'levels' ), filter = '%s.scene.bin' )
         self.level_models_by_name = {}
-        self._balls_by_name = {}
         self.current_model = None
         self.is_dirty = False
         self.tracker = ElementReferenceTracker()
@@ -146,6 +152,14 @@ class GameModel(QtCore.QObject):
 
     def getResourcePath( self, game_dir_relative_path ):
         return os.path.join( self._wog_dir, game_dir_relative_path )
+
+    def _loadTree( self, world, meta_tree, dir, file_name ):
+        path = os.path.join( dir, file_name )
+        if not os.path.isfile( path ):
+            raise GameModelException( tr( 'LoadData',
+                'File "%1" does not exist. You likely provided an incorrect WOG directory.' ).arg( path ) )
+        xml_data = wogfile.decrypt_file_data( path )
+        return world.make_tree_from_xml( meta_tree, xml_data )
 
     def _loadPackedData( self, dir, file_name ):
         path = os.path.join( dir, file_name )
@@ -186,30 +200,36 @@ class GameModel(QtCore.QObject):
                                         filter = 'balls.xml.bin' )
         ball_dir = os.path.join( self._res_dir, 'balls' )
         for ball_name in ball_names:
-            ball_tree = self._loadPackedData( os.path.join(ball_dir, ball_name), 'balls.xml.bin' )
-            resource_tree = self._loadPackedData( os.path.join(ball_dir, ball_name), 'resources.xml.bin' )
-            ball_model = BallModel( self, ball_name, ball_tree, resource_tree )
-            self._balls_by_name[ball_model.ball_name] = ball_model
+            ball_world = self.global_world.make_world( metawog.BALL_SCOPE, ball_name, BallModel, self )
+            ball_tree = self._loadTree( ball_world, metawog.BALL_MAIN_FILE,
+                                        os.path.join(ball_dir, ball_name), 'balls.xml.bin' )
+            resource_tree = self._loadTree( ball_world, metawog.BALL_RESOURCE_FILE,
+                                            os.path.join(ball_dir, ball_name), 'resources.xml.bin' )
+            self.tracker.scope_added( ball_world, ball_world.meta, self )
+            self.tracker.element_object_added( ball_world, ball_tree.root,
+                                               metawog.BALL_MAIN_FILE.root_object_desc )
+            self.tracker.element_object_added( ball_world, resource_tree.root,
+                                               metawog.BALL_RESOURCE_FILE.root_object_desc )
 
     def _initializeGlobalReferences( self ):
         """Initialize global effects, materials, resources and texts references."""
         global_scope = self
         self.tracker.scope_added( self, metawog.GLOBAL_SCOPE, None )
-        self.tracker.element_object_added( global_scope, self._effects,
+        self.tracker.element_object_added( global_scope, self._effects_tree.root,
                                            metawog.GLOBAL_FX_FILE.root_object_desc )
-        self.tracker.element_object_added( global_scope, self._materials,
+        self.tracker.element_object_added( global_scope, self._materials_tree.root,
                                            metawog.GLOBAL_MATERIALS_FILE.root_object_desc )
-        self.tracker.element_object_added( global_scope, self._texts,
+        self.tracker.element_object_added( global_scope, self._texts_tree.root,
                                            metawog.GLOBAL_TEXT_FILE.root_object_desc )
         self._expandResourceDefaultsIdPrefixAndPath()
-        self.tracker.element_object_added( global_scope, self._resources,
+        self.tracker.element_object_added( global_scope, self._resources_tree.root,
                                            metawog.GLOBAL_RESOURCE_FILE.root_object_desc )
 
     def _expandResourceDefaultsIdPrefixAndPath( self ):
         """Expands the default idprefix and path that are used as short-cut in the XML file."""
         # Notes: there is an invalid global resource:
         # IMAGE_GLOBAL_ISLAND_6_ICON res/images/islandicon_6
-        resource_manifest = self._resources
+        resource_manifest = self._resources_tree.root
         default_idprefix = ''
         default_path = ''
         for resources in resource_manifest:
@@ -338,26 +358,10 @@ class GameModel(QtCore.QObject):
         self._levels.sort()
         self.is_dirty = True
 
-class BallModel(object):
-    def __init__( self, game_model, ball_name, ball_tree, resource_tree ):
+class BallModel(metaworld.World):
+    def __init__( self, universe, scope_desc, ball_name, game_model ):
+        metaworld.World.__init__( self, universe, scope_desc, ball_name )
         self.game_model = game_model
-        self.ball_name = ball_name
-        self.ball_tree = ball_tree
-        self.resource_tree = resource_tree
-        self._initializeBallReferences()
-
-    @property
-    def tracker( self ):
-        return self.game_model.tracker
-
-    def _initializeBallReferences( self ):
-        ball_scope = self
-        parent_scope = self.game_model
-        self.tracker.scope_added( ball_scope, metawog.BALL_SCOPE, parent_scope )
-        self.tracker.element_object_added( ball_scope, self.ball_tree,
-                                           metawog.BALL_MAIN_FILE.root_object_desc )
-        self.tracker.element_object_added( ball_scope, self.resource_tree,
-                                           metawog.BALL_RESOURCE_FILE.root_object_desc )
 
 class LevelModel(object):
     def __init__( self, game_model, level_name, level_tree, scene_tree, resource_tree, is_dirty = False ):
@@ -1239,7 +1243,9 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
             editor.setValidator( validator )
         if handler_data and handler_data.get('completer'):
             word_list = QtCore.QStringList()
-            for word in sorted(handler_data.get('completer')( scope_key, attribute_desc )):
+            sorted_word_list = handler_data.get('completer')( scope_key, attribute_desc )
+            sorted_word_list.sort( lambda x,y: cmp(x.lower(), y.lower()) )
+            for word in sorted_word_list:
                 word_list.append( word )
             completer = QtGui.QCompleter( word_list, editor )
             completer.setCaseSensitivity( QtCore.Qt.CaseInsensitive )

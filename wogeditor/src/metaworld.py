@@ -271,8 +271,10 @@ class FileDesc(ObjectsDescOwner):
     def __init__( self, conceptual_file_name, objects = None ):
         ObjectsDescOwner.__init__( self, objects_desc = objects or [] )
         self.name = conceptual_file_name
+        assert len(self.objects_by_tag) <= 1
 
     def _object_added( self, object_desc ):
+        assert len(self.objects_by_tag) <= 1
         object_desc._set_file( self )
 
     @property
@@ -357,6 +359,9 @@ class ReferenceTracker(object):
     def _register_object_identifier( self, scope_key, object_key, identifier_desc, identifier_value ):
 ##        print '=> registering "%s" with identifier: "%s"' % (object_key, repr(identifier_value))
         if identifier_value is not None:
+            # walk parents scopes until we find the right one.
+            while self.scopes_by_key[scope_key][0] != identifier_desc.reference_scope:
+                scope_key = self.scopes_by_key[scope_key][1]
             references = self.ref_by_scope_and_familly.get( (scope_key,identifier_desc.reference_familly) )
             if references is None:
                 references = {}
@@ -484,8 +489,17 @@ class WorldsOwner:
     def __init__( self ):
         self._worlds = {} # dict(desc: dict(key: world) )
         
-    def make_world( self, scope_desc, world_key = None ):
-        world = World( self.universe, scope_desc, key = world_key )
+    def make_world( self, scope_desc, world_key = None, factory = None, *args, **kwargs ):
+        """Creates a child World using the specified scoped_desc description and associating it with world_key.
+           scope_desc: description of the world to instantiate.
+           workd_key: a unique identifier for the world within the scope for worlds of the same kind.
+           factory: Type to instantiate. Must be a subclass of World. Default is World.
+                    Factory parameters are: (universe, scope_desc, key)
+                    It will also be passed any extra parameters provided to the function.
+        """
+        #@todo check that scope_desc is an allowed child scope
+        factory = factory or World
+        world = factory( self.universe, scope_desc, world_key, *args, **kwargs )
         if scope_desc not in self._worlds:
             self._worlds[scope_desc] = {}
         assert world.key not in self._worlds[scope_desc]
@@ -565,7 +579,7 @@ class World(WorldsOwner):
     def make_tree( self, file_desc, root_element = None ):
         return Tree( self.universe, file_desc, root_element = root_element, world = self )
 
-    def make_tree_from_xml( self, file_desc, xml_data, encoding = None ):
+    def make_tree_from_xml( self, file_desc, xml_data ):
         """Makes a tree from the provided xml data for the specified kind of tree.
            The tree is automatically attached to the world.
            Returns the created tree if successful (root was successfully parsed),
@@ -574,8 +588,6 @@ class World(WorldsOwner):
            file_desc: description of the kind of tree to load. Used to associated xml tag to element description.
            xml_data: raw XML data.
         """
-        encoding = encoding or 'utf-8'
-        xml_data = xml_data.decode( encoding )
         xml_tree = xml.etree.ElementTree.fromstring( xml_data )
         if file_desc.root_object_desc.tag != xml_tree.tag:
             raise WorldException( u'Expected root tag "%(root)s", but got "%(actual)s" instead.' % {
@@ -584,7 +596,7 @@ class World(WorldsOwner):
             # Map element attributes
             known_attributes = {}
             missing_attributes = set( xml_tree.keys() )
-            for attribute_desc in object_desc.attributes_by_name:
+            for attribute_desc in object_desc.attributes_by_name.itervalues():
                 attribute_value = xml_tree.get( attribute_desc.name )
                 if attribute_value is not None:
                     # @todo Warning if attribute already in dict
@@ -604,7 +616,7 @@ class World(WorldsOwner):
                     self._warning( u'Element %(tag)s, the following child tag missing in the object description: %(child)s.',
                                    tag = xml_tree.tag,
                                    child = xml_tree_child.tag )
-            return Element( self._universe, object_desc, attributes = known_attributes, children = children )
+            return Element( object_desc, attributes = known_attributes, children = children )
         root_element = _make_element_tree_from_xml( file_desc.root_object_desc, xml_tree )
         tree = Tree( self._universe, file_desc, root_element = root_element, world = self )
         self.add_tree( tree )
@@ -815,9 +827,7 @@ if __name__ == "__main__":
     import unittest
 
     TEST_GLOBAL_FILE = describe_file( 'testglobal' )
-    TEST_LEVEL_FILE = describe_file( 'testlevel', objects = [
-        describe_object( 'inline' )
-        ] )
+    TEST_LEVEL_FILE = describe_file( 'testlevel' )
 
     TEST_LEVEL_SCOPE = describe_scope( 'testscope.level', files_desc = [TEST_LEVEL_FILE] )
 
@@ -847,7 +857,9 @@ if __name__ == "__main__":
                              reference_scope = TEST_LEVEL_SCOPE )
         ], objects = [ LEVEL_TEXT ] )
 
-    TEST_LEVEL_FILE.add_objects( [ LEVEL_TEXT, LEVEL_SIGN ] )
+    LEVEL_INLINE = describe_object( 'inline', objects= [ LEVEL_SIGN, LEVEL_TEXT ] )
+
+    TEST_LEVEL_FILE.add_objects( [ LEVEL_INLINE ] )
 
     class TestScope(object):
         data = {}
@@ -991,13 +1003,13 @@ if __name__ == "__main__":
                     self.assertEqual( scope, object_desc.scope )
                 for file_desc in scope.files_desc_by_name.itervalues():
                     self.assertEqual( scope, object_desc.scope )
-            self.assertEqual( sorted([LEVEL_SIGN]), sorted(LEVEL_TEXT.parent_objects) )
+            self.assertEqual( sorted([LEVEL_SIGN, LEVEL_INLINE]), sorted(LEVEL_TEXT.parent_objects) )
             for file, objects in { TEST_GLOBAL_FILE: [GLOBAL_TEXT],
                                    TEST_LEVEL_FILE: [LEVEL_TEXT, LEVEL_SIGN] }.iteritems():
                 for object in objects:
                     self.assertEqual( file, object.file )
-                    self.assert_( object in file.objects_by_tag.values() )
-                    self.assert_( object.tag in file.objects_by_tag )
+                    self.assert_( object in file.all_descendant_object_descs().values() )
+                    self.assert_( object.tag in file.all_descendant_object_descs() )
                     self.assert_( object.tag in file.scope.objects_by_tag )
 
     class UniverseTest(unittest.TestCase):
@@ -1010,18 +1022,6 @@ if __name__ == "__main__":
             self.level1 = self.world_level1.make_tree( TEST_LEVEL_FILE )
             self.world_level2 = self.world.make_world( TEST_LEVEL_SCOPE, 'level2' )
             self.level2 = self.world_level1.make_tree( TEST_LEVEL_FILE )
-
-##    def find_world( self, scope_desc, world_key ):
-##        worlds_by_key = self._worlds.get( scope_desc, {} )
-##        return worlds_by_key.get( world_key )
-##
-##    def list_worlds_of_type( self, scope_desc ):
-##        worlds_by_key = self._worlds.get( scope_desc, {} )
-##        return worlds_by_key.values()
-##
-##    def list_world_keys( self, scope_desc ):
-##        worlds_by_key = self._worlds.get( scope_desc, {} )
-##        return worlds_by_key.keys()
 
         def _makeElement(self, object_desc ):
             return Element( object_desc )
@@ -1043,6 +1043,7 @@ if __name__ == "__main__":
             self.assertEqual( sorted( [self.world_level1, self.world_level2] ),
                               sorted( self.world.list_worlds_of_type( TEST_LEVEL_SCOPE ) ) )
             self.assertEqual( self.world_level1, self.world.find_world( TEST_LEVEL_SCOPE, 'level1' ) )
+            self.assertEqual( self.world, self.world_level1.parent_world )
             # Missing
             self.assertEqual( sorted( [] ),
                               sorted( self.world.list_world_keys( TEST_GLOBAL_SCOPE ) ) )
@@ -1136,5 +1137,34 @@ if __name__ == "__main__":
                 self.fail()
             except KeyError:
                 pass
+
+        def test_from_xml( self ):
+            xml_data = """<inline>
+<text id ="TEXT_HI" fr="Salut" />
+<text id ="TEXT_HO" fr="Oh" />
+<sign text="TEXT_HI" alt_text="TEXT_HO">
+  <text id="TEXT_CHILD" fr="Enfant" />
+</sign>
+</inline>
+"""
+
+            level_tree = self.world_level1.make_tree_from_xml( TEST_LEVEL_FILE, xml_data )
+            self.assertEqual( TEST_LEVEL_FILE, level_tree.meta )
+            self.assertEqual( self.universe, level_tree.universe )
+            self.assertEqual( self.world_level1, level_tree.world )
+            self.assertEqual( level_tree, self.world_level1.find_tree( TEST_LEVEL_FILE ) )
+            # content            
+            inline = level_tree.root
+            self.assertEqual( LEVEL_INLINE, inline.meta )
+            self.assertEqual( 3, len(inline) )
+            self.assertEqual( LEVEL_TEXT, inline[0].meta )
+            self.assertEqual( LEVEL_TEXT, inline[1].meta )
+            self.assertEqual( LEVEL_SIGN, inline[2].meta )
+            self.assertEqual( LEVEL_TEXT, inline[2][0].meta )
+            self.assertEqual( 1, len(inline[2]) )
+            self.assertEqual( sorted( [('fr','Salut'),('id','TEXT_HI')] ), sorted(inline[0].items()) )
+            self.assertEqual( sorted( [('fr','Oh'),('id','TEXT_HO')] ), sorted(inline[1].items()) )
+            self.assertEqual( sorted( [('alt_text','TEXT_HO'),('text','TEXT_HI')] ), sorted(inline[2].items()) )
+            self.assertEqual( sorted( [('fr','Enfant'),('id','TEXT_CHILD')] ), sorted(inline[2][0].items()) )
 
     unittest.main()
