@@ -124,7 +124,7 @@ def identifier_attribute( name, reference_familly, reference_scope, **kwargs ):
 def path_attribute( name, **kwargs ):
     return PathAttributeDesc( name, **kwargs )
 
-
+unknown_attribute = string_attribute # to help with generated model
 
 class ObjectsDescOwner:
     def __init__( self, objects_desc = None ):
@@ -150,6 +150,31 @@ class ObjectsDescOwner:
             object_desc._set_scope( self.__scope )
             self._object_added( object_desc )
 
+    def find_object_desc_by_tag( self, tag ):
+        """Returns the ObjectDesc corresponding to the specified tag if found in the owner or its descendant.
+           None if not found.
+        """
+        found_object_desc = self.objects_by_tag.get( tag )
+        if not found_object_desc:
+            for object_desc in self.objects_by_tag.itervalues():
+                found_object_desc = object_desc.find_object_desc_by_tag( tag )
+                if found_object_desc:
+                    break
+        return found_object_desc
+
+    def find_immediate_child_by_tag( self, tag ):
+        """Returns the ObjectDesc corresponding to the specified tag if found, otherwise returns None.
+           Notes: only direct child are inspected. Grand-children will not be examined.
+        """
+        return self.objects_by_tag.get( tag )
+
+    def all_descendant_object_descs( self ):
+        """Returns a dict of all object desc found in the owner and all its descendant keyed by tag."""
+        object_descs_by_tag = self.objects_by_tag.copy()
+        for object_desc in self.objects_by_tag.itervalues():
+            object_descs_by_tag.update( object_desc.all_descendant_object_descs() )
+        return object_descs_by_tag
+
     def _object_added( self, object_desc ):
         raise NotImplemented()
 
@@ -162,7 +187,9 @@ class ObjectDesc(ObjectsDescOwner):
        - a minimum number of occurrences when it occurs in a parent object
        - a conceptual file it may appears in
     """
-    def __init__( self, tag, objects_desc = None, attributes = None, min_occurrence = None ):
+    def __init__( self, tag, objects_desc = None, attributes = None,
+                  min_occurrence = None, max_occurrence = None,
+                  read_only = False ):
         ObjectsDescOwner.__init__( self, objects_desc = objects_desc or [] )
         self.tag = tag
         attributes = attributes or []
@@ -174,6 +201,9 @@ class ObjectDesc(ObjectsDescOwner):
         self.file = None # initialized when object or parent object is added to a file
         self.child_objects_by_tag = {}
         self.min_occurrence = min_occurrence or 0
+        self.max_occurrence = max_occurrence or 2**32
+        assert self.min_occurrence <= self.max_occurrence
+        self.read_only = read_only
         self.add_attributes( attributes )
 
     def add_attributes( self, attributes ):
@@ -205,8 +235,15 @@ class ObjectDesc(ObjectsDescOwner):
             self.__class__.__name__, self.tag, ','.join([a.name for a in self.attributes_order]),
             ','.join(self.objects_by_tag.keys()))
 
-def describe_object( tag, attributes = None, objects = None, min_occurrence = None ):
-    return ObjectDesc( tag, attributes = attributes, objects_desc = objects, min_occurrence = min_occurrence )
+def describe_object( tag, attributes = None, objects = None,
+                     min_occurrence = None, max_occurrence = None, exact_occurrence = None,
+                     read_only = False ):
+    if exact_occurrence is not None:
+        min_occurrence = exact_occurrence
+        max_occurrence = exact_occurrence
+    return ObjectDesc( tag, attributes = attributes, objects_desc = objects,
+                       min_occurrence = min_occurrence, max_occurrence = max_occurrence,
+                       read_only = read_only )
 
 class FileDesc(ObjectsDescOwner):
     def __init__( self, conceptual_file_name, objects = None ):
@@ -215,6 +252,12 @@ class FileDesc(ObjectsDescOwner):
 
     def _object_added( self, object_desc ):
         object_desc._set_file( self )
+
+    @property
+    def root_object_desc( self ):
+        """Returns the root object description of the file."""
+        assert len(self.objects_by_tag) == 1
+        return self.objects_by_tag.values()[0]
 
     def __repr__( self ):
         return '%s(name=%s, objects=[%s])' % (self.__class__.__name__, self.name, ','.join(self.objects_by_tag.keys()))
@@ -238,7 +281,7 @@ class ScopeDesc(object):
         if self.__objects_by_tag is None:
             self.__objects_by_tag = {}
             for file_desc in self.files_desc_by_name.itervalues():
-                self.__objects_by_tag.update( file_desc.objects_by_tag )
+                self.__objects_by_tag.update( file_desc.all_descendant_object_descs() )
         return self.__objects_by_tag
 
     def add_child_scopes( self, child_scopes ):
@@ -372,6 +415,48 @@ class ReferenceTracker(object):
         return list( self.back_references.get( (familly, identifier), [] ) )
         
 
+def print_scope( scope ):
+    """Diagnostic function that print the full content of a Scope, including its files and objects."""
+    print '* Scope:', scope.scope_name
+    for child_scope in scope.child_scopes:
+        print '  has child scope:', child_scope.scope_name
+    for file in scope.files_desc_by_name:
+        print '  contained file:', file
+    print '  contains object:', ', '.join( sorted(scope.objects_by_tag) )
+    for child_scope in scope.child_scopes:
+        print_scope( child_scope )
+        print
+    for file_desc in scope.files_desc_by_name.itervalues():
+        print_file_desc( file_desc )
+        print
+
+def print_file_desc( file_desc ):
+    """Diagnostic function that print the full content of a FileDesc, including its objects."""
+    print '* File:', file_desc.name
+    print '  belong to scope:', file_desc.scope.scope_name
+    print '  root object:', file_desc.root_object_desc.tag
+    print '  contains object:', ', '.join( sorted(file_desc.all_descendant_object_descs()) )
+    print '  object tree:'
+    print_object_desc_tree( file_desc.root_object_desc, '        ' )
+
+def print_object_desc_tree( object, indent ):
+    """Diagnostic function that print the hierarchy of an ObjectDesc and its children."""
+    suffix = ''
+    if object.min_occurrence == object.max_occurrence:
+        if object.min_occurrence > 1:
+            suffix = '{%d}' % object.min_occurrence
+    elif object.min_occurrence == 0:
+        if object.max_occurrence == 1:
+            suffix = '?'
+        else:
+            suffix = '*'
+    elif object.min_occurrence == 1:
+        suffix = '+'
+    else:
+        suffix = '{%d-%d}' % (object.min_occurrence, object.max_occurrence)
+    print indent + object.tag + suffix
+    for child_object in object.objects_by_tag.itervalues():
+        print_object_desc_tree( child_object, indent + '    ' )
 
 
 if __name__ == "__main__":

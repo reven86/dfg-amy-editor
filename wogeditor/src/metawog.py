@@ -3,16 +3,19 @@ from metaworld import *
 
 # Declares all file types
 
-GLOBAL_RESOURCE_FILE = describe_file( 'global.resources' )
 GLOBAL_FX_FILE = describe_file( 'global.fx' )
 GLOBAL_MATERIALS_FILE = describe_file( 'global.materials' )
+GLOBAL_RESOURCE_FILE = describe_file( 'global.resources' )
 GLOBAL_TEXT_FILE = describe_file( 'global.text' )
 
 ISLAND_FILE = describe_file( 'island' )
 
+BALL_MAIN_FILE = describe_file( 'ball.main' )
+BALL_RESOURCE_FILE = describe_file( 'ball.resource' )
+
 LEVEL_GAME_FILE = describe_file( 'level.game' )
-LEVEL_RESOURCE_FILE = describe_file( 'level.resource' )
 LEVEL_SCENE_FILE = describe_file( 'level.scene' )
+LEVEL_RESOURCE_FILE = describe_file( 'level.resource' )
 
 # Declares the scope hierarchy
 LEVEL_SCOPE = describe_scope( 'global.level', files_desc = [
@@ -23,8 +26,12 @@ LEVEL_SCOPE = describe_scope( 'global.level', files_desc = [
 ISLAND_SCOPE = describe_scope( 'global.island', files_desc = [
     ISLAND_FILE
     ] )
+BALL_SCOPE = describe_scope( 'global.ball', files_desc = [
+    BALL_MAIN_FILE,
+    BALL_RESOURCE_FILE
+    ] )
 GLOBAL_SCOPE = describe_scope( 'global',
-                               child_scopes = [ ISLAND_SCOPE, LEVEL_SCOPE ],
+                               child_scopes = [ ISLAND_SCOPE, LEVEL_SCOPE, BALL_SCOPE ],
                                files_desc = [
     GLOBAL_RESOURCE_FILE,
     GLOBAL_FX_FILE,
@@ -32,8 +39,9 @@ GLOBAL_SCOPE = describe_scope( 'global',
     GLOBAL_TEXT_FILE
     ] )
 
+
 LEVEL_GAME_FILE.add_objects( [
-    describe_object( 'level', attributes = [
+    describe_object( 'level', exact_occurrence = 1, attributes = [
         int_attribute( 'ballsrequired', default = 0, allow_empty = True, mandatory = True, min_value = 0 ),
         bool_attribute( 'letterboxed', init = False, mandatory = True ),
         bool_attribute( 'visualdebug', init = False, mandatory = True ),
@@ -47,149 +55,144 @@ LEVEL_GAME_FILE.add_objects( [
         rgb_attribute( 'cursor2color', default = (255,255,255) ),
         rgb_attribute( 'cursor3color', default = (255,255,255) ),
         rgb_attribute( 'cursor4color', default = (255,255,255) ),
-        ] ),
-    describe_object( 'camera', attributes = [
-        enum_attribute( 'aspect', values = ('widescreen', 'normal'), default = 'normal' ),
-        xy_attribute( 'endpos' ),
-        real_attribute( 'endzoom', min_value = 0.00001 ),
-        ] ),
-    describe_object( 'poi', attributes = [
-        real_attribute( 'pause', min_value = 0, init = 0 ),
-        xy_attribute( 'pos', init = (0,0) ),
-        real_attribute( 'traveltime', min_value = 0, init = 0 ),
-        real_attribute( 'zoom', min_value = 0.00001, init = 0.408 )
-        ] ),
-    describe_object( 'signpost', attributes = [
-        real_attribute( 'alpha', min_value = 0, max_value = 1, init = 1, mandatory = True ),
-        rgb_attribute( 'colorize', init = (255,255,255), mandatory = True ),
-        real_attribute( 'depth', init = 0, mandatory = True ),
-        string_attribute( 'name', init = 'SIGN_POST_', mandatory = 'True' ),
-        # @todo makes x,y a composite attribute
-        real_attribute( 'x', init = 0, mandatory = True ),
-        real_attribute( 'y', init = 0, mandatory = True ),
-        angle_degrees_attribute( 'rotation', init = 0, mandatory = True ),
-        # @todo makes scalex,scaley a composite attribute
-        real_attribute( 'scalex', init = 1, min_value = 0.0000001, mandatory = True ),
-        real_attribute( 'scaley', init = 1, min_value = 0.0000001, mandatory = True ),
-        reference_attribute( 'text', reference_familly = 'text', reference_scope = LEVEL_SCOPE, init = '', mandatory = True ),
-        reference_attribute( 'particles', reference_familly = 'effect', reference_scope = GLOBAL_SCOPE )
-        ] ),
-    describe_object( 'pipe', attributes = [
-        identifier_attribute( 'id', mandatory = True, reference_familly = 'pipe',
-                              reference_scope = LEVEL_SCOPE, init ='exitPipe' ),
-        real_attribute( 'depth', init = 0, mandatory = True ),
-        enum_attribute( 'type', values = ('BEAUTY', 'BLACK', 'ISH') )
-        ] ),
-    describe_object( 'Vertex', attributes = [   # @todo restrict parent tag
-        # @todo makes x,y a composite attribute
-        real_attribute( 'x', init = 0, mandatory = True ),
-        real_attribute( 'y', init = 0, mandatory = True ),
-        ] ),
-    describe_object( 'BallInstance', attributes = [
-        identifier_attribute( 'id', mandatory = True, reference_familly = 'BallInstance',
-                              reference_scope = LEVEL_SCOPE, init ='1' ),
-        string_attribute( 'type', mandatory = True, init = 'common' ),  # @todo makes this a reference
-        # @todo makes x,y a composite attribute
-        real_attribute( 'x', init = 0, mandatory = True ),
-        real_attribute( 'y', init = 0, mandatory = True ),
-        angle_degrees_attribute( 'angle', init = 0, mandatory = True ),
-        real_attribute( 'depth', init = 0, mandatory = True ),
-        bool_attribute( 'discovered', init = 'true', mandatory = True )
-        ] ),
-    describe_object( 'Strand', attributes = [
-        reference_attribute( 'gb1', reference_familly = 'BallInstance', reference_scope = LEVEL_SCOPE,
-                             init = '', mandatory = True ),
-        reference_attribute( 'gb2', reference_familly = 'BallInstance', reference_scope = LEVEL_SCOPE,
-                             init = '', mandatory = True )
-        ] ),
-    describe_object( 'music', attributes = [
-        reference_attribute( 'id', reference_familly = 'sound', reference_scope = LEVEL_SCOPE, mandatory = True )
-        ] ),
-    describe_object( 'loopsound', attributes = [
-        reference_attribute( 'id', reference_familly = 'sound', reference_scope = LEVEL_SCOPE, mandatory = True )
-        ] ),
-    describe_object( 'levelexit', attributes = [
-        string_attribute( 'id', mandatory = True, init = 'theExit' ),
-        string_attribute( 'filter', mandatory = True, init = '' ),  # @todo revisit 0..1 occ of enum occurrence
-        xy_attribute( 'pos', mandatory = True, init = '0,0' ),
-        real_attribute( 'radius', mandatory = True, init = '75' )
-        ] ),
-    describe_object( 'endoncollision', attributes = [
-        reference_attribute( 'id1', reference_familly = 'geometry', reference_scope = LEVEL_SCOPE, mandatory = True ),
-        reference_attribute( 'id2', reference_familly = 'geometry', reference_scope = LEVEL_SCOPE, mandatory = True ),
-        real_attribute( 'delay', mandatory = True, init = '1' )
-        ] ),
-    describe_object( 'endonmessage', attributes = [
-        string_attribute( 'id', mandatory = True )  # values seems to be hard-coded
-        ] ),
-    describe_object( 'fire', attributes = [
-        real_attribute( 'x', mandatory = True, init = '0' ),
-        real_attribute( 'y', mandatory = True, init = '0' ),
-        real_attribute( 'radius', mandatory = True, init = '50' ),
-        real_attribute( 'depth', mandatory = True, init = '0' ),
-        reference_attribute( 'particles', reference_familly = 'effect',
-                             reference_scope = GLOBAL_SCOPE, mandatory = True )
-        ] ),
-    describe_object( 'targetheight', attributes = [
-        real_attribute( 'y', mandatory = True, init = '300' )
+        ],
+        objects = [
+        describe_object( 'camera', exact_occurrence = 2, attributes = [
+            enum_attribute( 'aspect', values = ('widescreen', 'normal'), default = 'normal' ),
+            xy_attribute( 'endpos' ),
+            real_attribute( 'endzoom', min_value = 0.00001 ),
+            ], objects = [
+            describe_object( 'poi', min_occurrence = 1, attributes = [
+                real_attribute( 'pause', min_value = 0, init = 0 ),
+                xy_attribute( 'pos', init = (0,0) ),
+                real_attribute( 'traveltime', min_value = 0, init = 0 ),
+                real_attribute( 'zoom', min_value = 0.00001, init = 0.408 )
+                ] )
+            ] ),
+        describe_object( 'signpost', attributes = [
+            real_attribute( 'alpha', min_value = 0, max_value = 1, init = 1, mandatory = True ),
+            rgb_attribute( 'colorize', init = (255,255,255), mandatory = True ),
+            real_attribute( 'depth', init = 0, mandatory = True ),
+            string_attribute( 'name', init = 'SIGN_POST_', mandatory = 'True' ),
+            # @todo makes x,y a composite attribute
+            real_attribute( 'x', init = 0, mandatory = True ),
+            real_attribute( 'y', init = 0, mandatory = True ),
+            angle_degrees_attribute( 'rotation', init = 0, mandatory = True ),
+            # @todo makes scalex,scaley a composite attribute
+            real_attribute( 'scalex', init = 1, min_value = 0.0000001, mandatory = True ),
+            real_attribute( 'scaley', init = 1, min_value = 0.0000001, mandatory = True ),
+            reference_attribute( 'text', reference_familly = 'text', reference_scope = LEVEL_SCOPE, init = '', mandatory = True ),
+            reference_attribute( 'particles', reference_familly = 'effect', reference_scope = GLOBAL_SCOPE )
+            ] ),
+        describe_object( 'pipe', attributes = [
+            identifier_attribute( 'id', mandatory = True, reference_familly = 'pipe',
+                                  reference_scope = LEVEL_SCOPE, init ='exitPipe' ),
+            real_attribute( 'depth', init = 0, mandatory = True ),
+            enum_attribute( 'type', values = ('BEAUTY', 'BLACK', 'ISH') )
+            ],
+            objects = [
+            describe_object( 'Vertex', min_occurrence = 2, attributes = [
+                # @todo makes x,y a composite attribute
+                real_attribute( 'x', init = 0, mandatory = True ),
+                real_attribute( 'y', init = 0, mandatory = True ),
+                ] ),
+            ] ),
+        describe_object( 'BallInstance', attributes = [
+            identifier_attribute( 'id', mandatory = True, reference_familly = 'BallInstance',
+                                  reference_scope = LEVEL_SCOPE, init ='1' ),
+            string_attribute( 'type', mandatory = True, init = 'common' ),  # @todo makes this a reference
+            # @todo makes x,y a composite attribute
+            real_attribute( 'x', init = 0, mandatory = True ),
+            real_attribute( 'y', init = 0, mandatory = True ),
+            angle_degrees_attribute( 'angle', init = 0, mandatory = True ),
+            real_attribute( 'depth', init = 0, mandatory = True ),
+            bool_attribute( 'discovered', init = 'true', mandatory = True )
+            ] ),
+        describe_object( 'Strand', attributes = [
+            reference_attribute( 'gb1', reference_familly = 'BallInstance', reference_scope = LEVEL_SCOPE,
+                                 init = '', mandatory = True ),
+            reference_attribute( 'gb2', reference_familly = 'BallInstance', reference_scope = LEVEL_SCOPE,
+                                 init = '', mandatory = True )
+            ] ),
+        describe_object( 'music', attributes = [
+            reference_attribute( 'id', reference_familly = 'sound', reference_scope = LEVEL_SCOPE, mandatory = True )
+            ] ),
+        describe_object( 'loopsound', attributes = [
+            reference_attribute( 'id', reference_familly = 'sound', reference_scope = LEVEL_SCOPE, mandatory = True )
+            ] ),
+        describe_object( 'levelexit', attributes = [
+            string_attribute( 'id', mandatory = True, init = 'theExit' ),
+            string_attribute( 'filter', mandatory = True, init = '' ),  # @todo revisit 0..1 occ of enum occurrence
+            xy_attribute( 'pos', mandatory = True, init = '0,0' ),
+            real_attribute( 'radius', mandatory = True, init = '75' )
+            ] ),
+        describe_object( 'endoncollision', attributes = [
+            reference_attribute( 'id1', reference_familly = 'geometry', reference_scope = LEVEL_SCOPE, mandatory = True ),
+            reference_attribute( 'id2', reference_familly = 'geometry', reference_scope = LEVEL_SCOPE, mandatory = True ),
+            real_attribute( 'delay', mandatory = True, init = '1' )
+            ] ),
+        describe_object( 'endonmessage', attributes = [
+            string_attribute( 'id', mandatory = True )  # values seems to be hard-coded
+            ] ),
+        describe_object( 'fire', attributes = [
+            real_attribute( 'x', mandatory = True, init = '0' ),
+            real_attribute( 'y', mandatory = True, init = '0' ),
+            real_attribute( 'radius', mandatory = True, init = '50' ),
+            real_attribute( 'depth', mandatory = True, init = '0' ),
+            reference_attribute( 'particles', reference_familly = 'effect',
+                                 reference_scope = GLOBAL_SCOPE, mandatory = True )
+            ] ),
+        describe_object( 'targetheight', attributes = [
+            real_attribute( 'y', mandatory = True, init = '300' )
+            ] )
         ] )
     ] )
 
-
-
-LEVEL_RESOURCE_FILE.add_objects( [
-    # DUPLICATED FROM GLOBAL SCOPE => makes FACTORY function ?
-    describe_object( 'ResourceManifest', attributes = [] ), 
-    describe_object( 'Resources', attributes = [
-            identifier_attribute( 'id', mandatory = True, reference_familly = 'resources',
-                                  reference_scope = LEVEL_SCOPE ),
-            ] ),
-    describe_object( 'Image', attributes = [
+def _describe_resource_file( file_desc, resource_scope, is_global = False ):
+    if is_global:
+        resources_object = describe_object( 'Resources', min_occurrence = 1 )
+    else:
+        resources_object = describe_object( 'Resources', exact_occurrence = 1 )
+    resources_object.add_attributes( [
+        identifier_attribute( 'id', mandatory = True, reference_familly = 'resources',
+                              reference_scope = resource_scope ),
+        ] )
+    resources_object.add_objects( [
+        describe_object( 'Image', attributes = [
             identifier_attribute( 'id', mandatory = True, reference_familly = 'image',
-                                  reference_scope = LEVEL_SCOPE ),
+                                  reference_scope = resource_scope ),
             path_attribute( 'path', strip_extension = '.png', mandatory = True )
             ] ),
-    describe_object( 'Sound', attributes = [
+        describe_object( 'Sound', attributes = [
             identifier_attribute( 'id', mandatory = True, reference_familly = 'sound',
-                                  reference_scope = LEVEL_SCOPE ),
+                                  reference_scope = resource_scope ),
             path_attribute( 'path', strip_extension = '.ogg', mandatory = True )
             ] ),
-    describe_object( 'font', attributes = [
-            identifier_attribute( 'id', mandatory = True, reference_familly = 'sound',
-                                  reference_scope = LEVEL_SCOPE ),
-            path_attribute( 'path', strip_extension = '.png', mandatory = True ) # @todo also check existence of .txt
+        describe_object( 'SetDefaults', read_only = True, attributes = [
+            string_attribute( 'path', mandatory = True ),
+            string_attribute( 'idprefix', mandatory = True )
             ] )
-    ] )
+        ] )
+    if is_global:
+        resources_object.add_objects( [
+            describe_object( 'font', attributes = [
+                identifier_attribute( 'id', mandatory = True, reference_familly = 'font',
+                                      reference_scope = resource_scope ),
+                path_attribute( 'path', strip_extension = '.png', mandatory = True ) # @todo also check existence of .txt
+                ] )
+        ] )
+    
+    file_desc.add_objects( [
+        # DUPLICATED FROM GLOBAL SCOPE => makes FACTORY function ?
+        describe_object( 'ResourceManifest', exact_occurrence = 1, attributes = [], objects = [
+            resources_object
+            ] )
+        ] )
+
+_describe_resource_file( LEVEL_RESOURCE_FILE, LEVEL_SCOPE )
 
 
-
-LEVEL_SCENE_FILE.add_objects( [
-    describe_object( 'scene', attributes = [
-        rgb_attribute( 'backgroundcolor', mandatory = True, init = '0,0,0' ),
-        real_attribute( 'minx', init='-500' ),
-        real_attribute( 'miny', init='-500' ),
-        real_attribute( 'maxx', init='500' ),
-        real_attribute( 'maxy', init='500' )
-        ] ),
-    describe_object( 'SceneLayer', attributes = [
-        real_attribute( 'x', mandatory = True, init='0' ),
-        real_attribute( 'y', mandatory = True, init='0' ),
-        real_attribute( 'depth', mandatory = True, init='0' ),
-        reference_attribute( 'image', reference_familly = 'image', reference_scope = LEVEL_SCOPE,
-                             init = '', mandatory = True ),
-        real_attribute( 'alpha', min_value = 0, max_value = 1, default = '1' ),
-        string_attribute( 'anim' ),     # @todo where is that defined ???
-        real_attribute( 'animdelay', min_value = 0.0001, default = '1' ),
-        real_attribute( 'animspeed' ),
-        angle_degrees_attribute( 'rotation', default = '0' ),
-        string_attribute( 'name' ),
-        enum_attribute( 'context', ('screen',) ),
-        real_attribute( 'scalex', default='1'),
-        real_attribute( 'scaley', default='1'),
-        bool_attribute( 'tilex', default='false'),
-        bool_attribute( 'tiley', default='false')
-        ] ),
-    describe_object( 'button', attributes = [
+_BUTTON_OBJECT = describe_object( 'button', attributes = [
         string_attribute( 'id', mandatory = True ),
         real_attribute( 'x', mandatory = True, init = '0' ),
         real_attribute( 'y', mandatory = True, init = '0' ),
@@ -215,138 +218,180 @@ LEVEL_SCENE_FILE.add_objects( [
         argb_attribute( 'textcolorup' ),
         argb_attribute( 'textcolorupover' ),
         reference_attribute( 'tooltip', reference_familly = 'text', reference_scope = GLOBAL_SCOPE )
-        ] ),
-    describe_object( 'buttongroup', attributes = [
-        string_attribute( 'id', mandatory = True ),
-        xy_attribute( 'osx', mandatory = True )
-        ] ),
-    describe_object( 'label', attributes = [
-        string_attribute( 'id', mandatory = True ),
-        real_attribute( 'x', mandatory = True, init = '0' ),
-        real_attribute( 'y', mandatory = True, init = '0' ),
-        reference_attribute( 'text', reference_familly = 'text', reference_scope = GLOBAL_SCOPE ),
-        angle_radians_attribute( 'rotation', mandatory = True, init = '0' ),
-        real_attribute( 'scale', mandatory = True, init = '1' ),
-        string_attribute( 'font', mandatory = True ),
-        enum_attribute( 'align', ('right', 'center', 'left'), mandatory = True, init = 'center' ),
-        real_attribute( 'depth', mandatory = True, init = '10' ),
-        bool_attribute( 'overlay', mandatory = True, init = 'false' ),
-        bool_attribute( 'screenspace', mandatory = True, init = 'false' )
-        ] ),
-    describe_object( 'rectangle', attributes = [
-        identifier_attribute( 'id', mandatory = True, reference_familly = 'geometry', reference_scope = LEVEL_SCOPE ),
-        real_attribute( 'x', mandatory = True, init = '0' ),
-        real_attribute( 'y', mandatory = True, init = '0' ),
-        angle_radians_attribute( 'rotation', mandatory = True, init = '0' ),
-        real_attribute( 'width', mandatory = True, init = '100' ),
-        real_attribute( 'height', mandatory = True, init = '100' ),
-        bool_attribute( 'contacts' ),
-        reference_attribute( 'image', reference_familly = 'image', reference_scope = LEVEL_SCOPE,
-                             init = '' ),
-        xy_attribute( 'imagepos' ),
-        angle_radians_attribute( 'imagerot' ),
-        xy_attribute( 'imagescale' ),
-        real_attribute( 'rotspeed' ),
-        bool_attribute( 'static', default = 'false', init = 'true' ), # Notes: if static = false, then mass is required.
-        real_attribute( 'mass' ),
-        reference_attribute( 'material', reference_familly = 'material', reference_scope = GLOBAL_SCOPE,
-                             init = '' ),
-        string_attribute( 'tag' )
-        ] ),
-    describe_object( 'circle', attributes = [
-        identifier_attribute( 'id', mandatory = True, reference_familly = 'geometry', reference_scope = LEVEL_SCOPE ),
-        real_attribute( 'x', mandatory = True, init = '0' ),
-        real_attribute( 'y', mandatory = True, init = '0' ),
-        real_attribute( 'radius', mandatory = True, init = '75' ),
-        reference_attribute( 'image', reference_familly = 'image', reference_scope = LEVEL_SCOPE,
-                             init = '' ),
-        xy_attribute( 'imagepos' ),
-        angle_radians_attribute( 'imagerot' ),
-        xy_attribute( 'imagescale' ),
-        real_attribute( 'rotspeed' ),
-        bool_attribute( 'static', default = 'false', init = 'true' ), # Notes: if static = false, then mass is required.
-        string_attribute( 'tag' ),
-        bool_attribute( 'contacts' ),
-        real_attribute( 'mass' ),
-        reference_attribute( 'material', reference_familly = 'material', reference_scope = GLOBAL_SCOPE,
-                             init = '' ),
-        bool_attribute( 'nogeomcollisions' )
-        ] ),
-    describe_object( 'compositegeom', attributes = [
-        identifier_attribute( 'id', mandatory = True, reference_familly = 'geometry', reference_scope = LEVEL_SCOPE ),
-        real_attribute( 'x', mandatory = True, init = '0' ),
-        real_attribute( 'y', mandatory = True, init = '0' ),
-        angle_radians_attribute( 'rotation', mandatory = True, init = '0' ),
-        reference_attribute( 'material', reference_familly = 'material', reference_scope = GLOBAL_SCOPE,
-                             init = '', mandatory = True ),
-        bool_attribute( 'static', mandatory = True, init = 'true' ),
-        string_attribute( 'tag' ),
-        reference_attribute( 'image', reference_familly = 'image', reference_scope = LEVEL_SCOPE ),
-        xy_attribute( 'imagepos', default = '0,0' ),
-        angle_radians_attribute( 'imagerot' ),
-        xy_attribute( 'imagescale' ),
-        real_attribute( 'rotspeed' ),
-        bool_attribute( 'nogeomcollisions' )
-        ] ),
-    describe_object( 'line', attributes = [
-        string_attribute( 'id', mandatory = True ),
-        xy_attribute( 'anchor', mandatory = True, init = '0,0' ),
-        xy_attribute( 'normal', mandatory = True, init = '10,0' ),
-        reference_attribute( 'material', reference_familly = 'material', reference_scope = GLOBAL_SCOPE,
-                             init = '', mandatory = True ),
-        bool_attribute( 'static', init = 'true', mandatory = True ),
-        string_attribute( 'tag' )
-        ] ),
-    describe_object( 'linearforcefield', attributes = [
-        string_attribute( 'id', mandatory = True ),
-        xy_attribute( 'force', mandatory = True, init = '0,-10' ),
-        real_attribute( 'dampeningfactor', mandatory = True, init = '0' ),
-        bool_attribute( 'antigrav', mandatory = True, init = 'false' ),
-        enum_attribute( 'type', ('force', 'gravity'), init = 'gravity', mandatory = True ),
-        xy_attribute( 'center', init = '0,0' ),
-        real_attribute( 'width' ),
-        real_attribute( 'height' ),
-        real_attribute( 'depth' ),
-        argb_attribute( 'color' ),
-        bool_attribute( 'enabled' ),
-        bool_attribute( 'geomonly' )
-        ] ),
-    describe_object( 'radialforcefield', attributes = [
-        string_attribute( 'id', mandatory = True ),
-        real_attribute( 'forceatcenter', mandatory = True, init = '10,0' ),
-        real_attribute( 'forceatedge', mandatory = True, init = '0,0' ),
-        real_attribute( 'dampeningfactor', mandatory = True, init = '0' ),
-        bool_attribute( 'antigrav', mandatory = True, init = 'false' ),
-        enum_attribute( 'type', ('force', 'gravity'), init = 'gravity', mandatory = True ), # @todo in game, only gravity
-        xy_attribute( 'center', mandatory = True, init = '0,0' ),
-        real_attribute( 'radius', mandatory = True, init = '100' ),
-        real_attribute( 'depth' ),
-        bool_attribute( 'enabled' ),
-        bool_attribute( 'geomonly' )
-        ] ),
-    describe_object( 'hinge', attributes = [
-        xy_attribute( 'anchor', mandatory = True ),
-        reference_attribute( 'body1', reference_familly = 'geometry', reference_scope = LEVEL_SCOPE, mandatory = True ),
-        reference_attribute( 'body2', reference_familly = 'geometry', reference_scope = LEVEL_SCOPE, mandatory = True ),
-        real_attribute( 'bounce' )
-        ] ),
-    describe_object( 'motor', attributes = [
-        reference_attribute( 'body', reference_familly = 'geometry', reference_scope = LEVEL_SCOPE, mandatory = True ),
-        real_attribute( 'maxforce', mandatory = True, init = '20' ),
-        real_attribute( 'speed', mandatory = True, init = '-0.01' )
-        ] ),
-    describe_object( 'particles', attributes = [
-        real_attribute( 'depth', mandatory = True, init = '-20' ),
-        reference_attribute( 'effect', reference_familly = 'effect', reference_scope = GLOBAL_SCOPE, mandatory = True ),
-        xy_attribute( 'pos' ),
-        real_attribute( 'pretick', default = '0' )
+        ] )
+
+_RECTANGLE_OBJECT = describe_object( 'rectangle', attributes = [
+    identifier_attribute( 'id', mandatory = True, reference_familly = 'geometry', reference_scope = LEVEL_SCOPE ),
+    real_attribute( 'x', mandatory = True, init = '0' ),
+    real_attribute( 'y', mandatory = True, init = '0' ),
+    angle_radians_attribute( 'rotation', mandatory = True, init = '0' ),
+    real_attribute( 'width', mandatory = True, init = '100' ),
+    real_attribute( 'height', mandatory = True, init = '100' ),
+    bool_attribute( 'contacts' ),
+    reference_attribute( 'image', reference_familly = 'image', reference_scope = LEVEL_SCOPE,
+                         init = '' ),
+    xy_attribute( 'imagepos' ),
+    angle_radians_attribute( 'imagerot' ),
+    xy_attribute( 'imagescale' ),
+    real_attribute( 'rotspeed' ),
+    bool_attribute( 'static', default = 'false', init = 'true' ), # Notes: if static = false, then mass is required.
+    real_attribute( 'mass' ),
+    reference_attribute( 'material', reference_familly = 'material', reference_scope = GLOBAL_SCOPE,
+                         init = '' ),
+    string_attribute( 'tag' )
+    ] )
+
+_CIRCLE_OBJECT = describe_object( 'circle', attributes = [
+    identifier_attribute( 'id', mandatory = True, reference_familly = 'geometry', reference_scope = LEVEL_SCOPE ),
+    real_attribute( 'x', mandatory = True, init = '0' ),
+    real_attribute( 'y', mandatory = True, init = '0' ),
+    real_attribute( 'radius', mandatory = True, init = '75' ),
+    reference_attribute( 'image', reference_familly = 'image', reference_scope = LEVEL_SCOPE,
+                         init = '' ),
+    xy_attribute( 'imagepos' ),
+    angle_radians_attribute( 'imagerot' ),
+    xy_attribute( 'imagescale' ),
+    real_attribute( 'rotspeed' ),
+    bool_attribute( 'static', default = 'false', init = 'true' ), # Notes: if static = false, then mass is required.
+    string_attribute( 'tag' ),
+    bool_attribute( 'contacts' ),
+    real_attribute( 'mass' ),
+    reference_attribute( 'material', reference_familly = 'material', reference_scope = GLOBAL_SCOPE,
+                         init = '' ),
+    bool_attribute( 'nogeomcollisions' )
+    ] )
+
+
+LEVEL_SCENE_FILE.add_objects( [
+    describe_object( 'scene', exact_occurrence = 1, attributes = [
+        rgb_attribute( 'backgroundcolor', mandatory = True, init = '0,0,0' ),
+        real_attribute( 'minx', init='-500' ),
+        real_attribute( 'miny', init='-500' ),
+        real_attribute( 'maxx', init='500' ),
+        real_attribute( 'maxy', init='500' )
+        ],
+        objects = [
+        describe_object( 'SceneLayer', attributes = [
+            real_attribute( 'x', mandatory = True, init='0' ),
+            real_attribute( 'y', mandatory = True, init='0' ),
+            real_attribute( 'depth', mandatory = True, init='0' ),
+            reference_attribute( 'image', reference_familly = 'image', reference_scope = LEVEL_SCOPE,
+                                 init = '', mandatory = True ),
+            real_attribute( 'alpha', min_value = 0, max_value = 1, default = '1' ),
+            string_attribute( 'anim' ),     # @todo where is that defined ???
+            real_attribute( 'animdelay', min_value = 0.0001, default = '1' ),
+            real_attribute( 'animspeed' ),
+            angle_degrees_attribute( 'rotation', default = '0' ),
+            string_attribute( 'name' ),
+            enum_attribute( 'context', ('screen',) ),
+            real_attribute( 'scalex', default='1'),
+            real_attribute( 'scaley', default='1'),
+            bool_attribute( 'tilex', default='false'),
+            bool_attribute( 'tiley', default='false')
+            ] ),
+        _BUTTON_OBJECT,
+        describe_object( 'buttongroup', attributes = [
+            string_attribute( 'id', mandatory = True ),
+            xy_attribute( 'osx', mandatory = True )
+            ],
+            objects = [
+                _BUTTON_OBJECT
+            ] ),
+        describe_object( 'label', attributes = [
+            string_attribute( 'id', mandatory = True ),
+            real_attribute( 'x', mandatory = True, init = '0' ),
+            real_attribute( 'y', mandatory = True, init = '0' ),
+            reference_attribute( 'text', reference_familly = 'text', reference_scope = GLOBAL_SCOPE ),
+            angle_radians_attribute( 'rotation', mandatory = True, init = '0' ),
+            real_attribute( 'scale', mandatory = True, init = '1' ),
+            string_attribute( 'font', mandatory = True ),
+            enum_attribute( 'align', ('right', 'center', 'left'), mandatory = True, init = 'center' ),
+            real_attribute( 'depth', mandatory = True, init = '10' ),
+            bool_attribute( 'overlay', mandatory = True, init = 'false' ),
+            bool_attribute( 'screenspace', mandatory = True, init = 'false' )
+            ] ),
+        _RECTANGLE_OBJECT,
+        _CIRCLE_OBJECT,
+        describe_object( 'compositegeom', attributes = [
+            identifier_attribute( 'id', mandatory = True, reference_familly = 'geometry', reference_scope = LEVEL_SCOPE ),
+            real_attribute( 'x', mandatory = True, init = '0' ),
+            real_attribute( 'y', mandatory = True, init = '0' ),
+            angle_radians_attribute( 'rotation', mandatory = True, init = '0' ),
+            reference_attribute( 'material', reference_familly = 'material', reference_scope = GLOBAL_SCOPE,
+                                 init = '', mandatory = True ),
+            bool_attribute( 'static', mandatory = True, init = 'true' ),
+            string_attribute( 'tag' ),
+            reference_attribute( 'image', reference_familly = 'image', reference_scope = LEVEL_SCOPE ),
+            xy_attribute( 'imagepos', default = '0,0' ),
+            angle_radians_attribute( 'imagerot' ),
+            xy_attribute( 'imagescale' ),
+            real_attribute( 'rotspeed' ),
+            bool_attribute( 'nogeomcollisions' )
+            ],
+            objects = [
+                _RECTANGLE_OBJECT,
+                _CIRCLE_OBJECT
+            ] ),
+        describe_object( 'line', attributes = [
+            string_attribute( 'id', mandatory = True ),
+            xy_attribute( 'anchor', mandatory = True, init = '0,0' ),
+            xy_attribute( 'normal', mandatory = True, init = '10,0' ),
+            reference_attribute( 'material', reference_familly = 'material', reference_scope = GLOBAL_SCOPE,
+                                 init = '', mandatory = True ),
+            bool_attribute( 'static', init = 'true', mandatory = True ),
+            string_attribute( 'tag' )
+            ] ),
+        describe_object( 'linearforcefield', attributes = [
+            string_attribute( 'id', mandatory = True ),
+            xy_attribute( 'force', mandatory = True, init = '0,-10' ),
+            real_attribute( 'dampeningfactor', mandatory = True, init = '0' ),
+            bool_attribute( 'antigrav', mandatory = True, init = 'false' ),
+            enum_attribute( 'type', ('force', 'gravity'), init = 'gravity', mandatory = True ),
+            xy_attribute( 'center', init = '0,0' ),
+            real_attribute( 'width' ),
+            real_attribute( 'height' ),
+            real_attribute( 'depth' ),
+            argb_attribute( 'color' ),
+            bool_attribute( 'enabled' ),
+            bool_attribute( 'geomonly' )
+            ] ),
+        describe_object( 'radialforcefield', attributes = [
+            string_attribute( 'id', mandatory = True ),
+            real_attribute( 'forceatcenter', mandatory = True, init = '10,0' ),
+            real_attribute( 'forceatedge', mandatory = True, init = '0,0' ),
+            real_attribute( 'dampeningfactor', mandatory = True, init = '0' ),
+            bool_attribute( 'antigrav', mandatory = True, init = 'false' ),
+            enum_attribute( 'type', ('force', 'gravity'), init = 'gravity', mandatory = True ), # @todo in game, only gravity
+            xy_attribute( 'center', mandatory = True, init = '0,0' ),
+            real_attribute( 'radius', mandatory = True, init = '100' ),
+            real_attribute( 'depth' ),
+            bool_attribute( 'enabled' ),
+            bool_attribute( 'geomonly' )
+            ] ),
+        describe_object( 'hinge', attributes = [
+            xy_attribute( 'anchor', mandatory = True ),
+            reference_attribute( 'body1', reference_familly = 'geometry', reference_scope = LEVEL_SCOPE, mandatory = True ),
+            reference_attribute( 'body2', reference_familly = 'geometry', reference_scope = LEVEL_SCOPE, mandatory = True ),
+            real_attribute( 'bounce' )
+            ] ),
+        describe_object( 'motor', attributes = [
+            reference_attribute( 'body', reference_familly = 'geometry', reference_scope = LEVEL_SCOPE, mandatory = True ),
+            real_attribute( 'maxforce', mandatory = True, init = '20' ),
+            real_attribute( 'speed', mandatory = True, init = '-0.01' )
+            ] ),
+        describe_object( 'particles', attributes = [
+            real_attribute( 'depth', mandatory = True, init = '-20' ),
+            reference_attribute( 'effect', reference_familly = 'effect', reference_scope = GLOBAL_SCOPE, mandatory = True ),
+            xy_attribute( 'pos' ),
+            real_attribute( 'pretick', default = '0' )
+            ] )
         ] )
     ] )
 
 
 GLOBAL_TEXT_FILE.add_objects( [
-    describe_object( 'strings', attributes = [] ),
-    describe_object( 'string', attributes = [
+    describe_object( 'strings', exact_occurrence = 1, attributes = [], objects = [
+        describe_object( 'string', min_occurrence = 1, attributes = [
             identifier_attribute( 'id', mandatory = True, reference_familly = 'text',
                                   reference_scope = GLOBAL_SCOPE ),
             string_attribute( 'text', mandatory = True ),  
@@ -357,83 +402,247 @@ GLOBAL_TEXT_FILE.add_objects( [
             string_attribute( 'nl' ),  
             string_attribute( 'pt' )
             ] )
+        ] )
     ] )
 
 
 
-GLOBAL_RESOURCE_FILE.add_objects( [
-    describe_object( 'ResourceManifest', attributes = [] ),
-    describe_object( 'Resources', attributes = [
-            identifier_attribute( 'id', mandatory = True, reference_familly = 'resources',
-                                  reference_scope = GLOBAL_SCOPE ),
-            ] ),
-    describe_object( 'Image', attributes = [
-            identifier_attribute( 'id', mandatory = True, reference_familly = 'image',
-                                  reference_scope = GLOBAL_SCOPE ),
-            path_attribute( 'path', strip_extension = '.png', mandatory = True )
-            ] ),
-        # hide object SetDefaults, this is not usable by automated tools
-    describe_object( 'Sound', attributes = [
-            identifier_attribute( 'id', mandatory = True, reference_familly = 'sound',
-                                  reference_scope = GLOBAL_SCOPE ),
-            path_attribute( 'path', strip_extension = '.ogg', mandatory = True )
-            ] ),
-    describe_object( 'font', attributes = [
-            identifier_attribute( 'id', mandatory = True, reference_familly = 'font',
-                                  reference_scope = GLOBAL_SCOPE ),
-            path_attribute( 'path', strip_extension = '.png', mandatory = True ) # @todo also check existence of .txt
-            ] )
+_describe_resource_file( GLOBAL_RESOURCE_FILE, GLOBAL_SCOPE, is_global = True )
+
+_PARTICLE_OBJECT = describe_object( 'particle', min_occurrence = 1, attributes = [
+    xy_attribute( 'acceleration', mandatory = True, init = '0,0.1' ),
+    bool_attribute( 'directed', mandatory = True, init = 'false' ),
+    reference_attribute( 'image', reference_familly = 'image', reference_scope = GLOBAL_SCOPE,
+                         mandatory = True ),
+    angle_degrees_attribute( 'movedir', mandatory = True, init = '0' ),
+    angle_degrees_attribute( 'movedirvar', mandatory = True, init = '0' ), # ?
+    xy_attribute( 'scale', mandatory = True, init = '1,1' ), # @todo scale attribute ?  
+    xy_attribute( 'speed', mandatory = True, init = '1,1' ), # @todo direction attribute ?  
+    bool_attribute( 'additive' ),
+    real_attribute( 'dampening', min_value = 0, max_value = '1' ),
+    bool_attribute( 'fade' ),
+    real_attribute( 'finalscale', min_value = 0 ),
+    xy_attribute( 'lifespan' ), # @todo TYPE OPTIONAL INTERVAL (e.g. 1 or 1,2 are ok)?
+    xy_attribute( 'rotation' ), # @todo TYPE OPTIONAL INTERVAL (e.g. 1 or 1,2 are ok)?
+    xy_attribute( 'rotspeed' ) # @todo TYPE OPTIONAL INTERVAL (e.g. 1 or 1,2 are ok)?
+    ],
+    objects = [
+        describe_object( 'axialsinoffset', min_occurrence = 1, max_occurrence = 2, attributes = [
+            xy_attribute( 'amp', mandatory = True, init = '5,10' ), # @todo just 2 reals (interval)
+            enum_attribute( 'axis', ('x','y'), mandatory = True, init = 'x' ),
+            xy_attribute( 'freq', mandatory = True, init = '5,10' ),# @todo just 2 reals (interval)
+            xy_attribute( 'phaseshift', mandatory = True, init = '0.2,0.4' ),# @todo just 2 reals (interval)
+        ] )
     ] )
-
-
     
 GLOBAL_FX_FILE.add_objects( [
-    describe_object( 'effects', attributes = [] ),
-    describe_object( 'ambientparticleeffect', attributes = [
+    describe_object( 'effects', exact_occurrence = 1, attributes = [], objects = [
+        describe_object( 'ambientparticleeffect', attributes = [
             identifier_attribute( 'name', mandatory = True, reference_familly = 'effect',
                                   reference_scope = GLOBAL_SCOPE ),
             int_attribute( 'maxparticles', min_value = 1, mandatory = True, init = '1' ),
             int_attribute( 'margin' ) # ???
+            ],
+            objects = [
+                _PARTICLE_OBJECT
             ] ),
-    describe_object( 'particleeffect', attributes = [
+        describe_object( 'particleeffect', attributes = [
             identifier_attribute( 'name', mandatory = True, reference_familly = 'effect',
                                   reference_scope = GLOBAL_SCOPE ),
             int_attribute( 'maxparticles', min_value = 1, mandatory = True, init = '1' ),
             real_attribute( 'rate', min_value = 0.00001 ),
             int_attribute( 'margin' ) # ???
-            ] ),
-    describe_object( 'particle', attributes = [
-        xy_attribute( 'acceleration', mandatory = True, init = '0,0.1' ),
-        bool_attribute( 'directed', mandatory = True, init = 'false' ),
-        reference_attribute( 'image', reference_familly = 'image', reference_scope = GLOBAL_SCOPE,
-                             mandatory = True ),
-        angle_degrees_attribute( 'movedir', mandatory = True, init = '0' ),
-        angle_degrees_attribute( 'movedirvar', mandatory = True, init = '0' ), # ?
-        xy_attribute( 'scale', mandatory = True, init = '1,1' ), # @todo scale attribute ?  
-        xy_attribute( 'speed', mandatory = True, init = '1,1' ), # @todo direction attribute ?  
-        bool_attribute( 'additive' ),
-        real_attribute( 'dampening', min_value = 0, max_value = '1' ),
-        bool_attribute( 'fade' ),
-        real_attribute( 'finalscale', min_value = 0 ),
-        xy_attribute( 'lifespan' ), # @todo TYPE OPTIONAL INTERVAL (e.g. 1 or 1,2 are ok)?
-        xy_attribute( 'rotation' ), # @todo TYPE OPTIONAL INTERVAL (e.g. 1 or 1,2 are ok)?
-        xy_attribute( 'rotspeed' ) # @todo TYPE OPTIONAL INTERVAL (e.g. 1 or 1,2 are ok)?
-        ] )
+            ],
+            objects = [
+                _PARTICLE_OBJECT
+            ] )
+        ])
     ] )
 
 
 
 GLOBAL_MATERIALS_FILE.add_objects( [
-    describe_object( 'materials', attributes = [] ),
-    describe_object( 'material', attributes = [
-        identifier_attribute( 'id', mandatory = True, reference_familly = 'material',
-                              reference_scope = GLOBAL_SCOPE ),
-        real_attribute( 'bounce', min_value = 0, mandatory = True, init = '0' ),
-        real_attribute( 'friction', min_value = 0, mandatory = True, init = '0' ),
-        real_attribute( 'minbouncevel', min_value = 0, mandatory = True, init = '100' ),
-        real_attribute( 'stickiness', min_value = 0 )
+    describe_object( 'materials', exact_occurrence = 1, attributes = [], objects = [
+        describe_object( 'material', attributes = [
+            identifier_attribute( 'id', mandatory = True, reference_familly = 'material',
+                                  reference_scope = GLOBAL_SCOPE ),
+            real_attribute( 'bounce', min_value = 0, mandatory = True, init = '0' ),
+            real_attribute( 'friction', min_value = 0, mandatory = True, init = '0' ),
+            real_attribute( 'minbouncevel', min_value = 0, mandatory = True, init = '100' ),
+            real_attribute( 'stickiness', min_value = 0 )
+            ] )
         ] )
     ] )
+
+
+_describe_resource_file( BALL_RESOURCE_FILE, BALL_SCOPE )
+
+# NOTES: this has been generated from scanxmlfile with -w options. Need a lot of clean up.
+BALL_MAIN_FILE.add_objects( [
+        describe_object( 'ball', min_occurrence=1, max_occurrence=1, attributes = [
+            identifier_attribute( 'name', mandatory = True, reference_familly = 'ball',
+                                  reference_scope = GLOBAL_SCOPE ),
+            int_attribute( 'mass', min_value=0.00001, mandatory = True, init = '20'),  # [8-600] Median:20 Samples: 20 | 30 | 10 | 60 | 600
+            unknown_attribute( 'shape', mandatory = True, init = 'circle,30'),  # Samples: circle,30 | circle,30,0.25 | circle,24,0.1 | circle,50,0 | rectangle,50,50
+            real_attribute( 'speedvariance', min_value=0, mandatory = True, init = '0.2'),  # [0.0-0.3] Median:0.2 Samples: 0.2 | 0 | 0.3 | 0.0
+            int_attribute( 'strands', min_value=0, mandatory = True, init = '0'),  # [0-4] Median:1 Samples: 0 | 2 | 1 | 4 | 3
+            real_attribute( 'walkspeed', min_value=0, mandatory = True, init = '0'),  # [0.0-0.15] Median:0.1 Samples: 0 | 0.1 | 0.0 | 0.05 | 0.15
+            real_attribute( 'climbspeed', min_value=0, init = '0'),  # [0.0-2.8] Median:1.0 Samples: 0 | 2.0 | 0.0 | 1.8 | 0.9
+            real_attribute( 'towermass', min_value=0, init = '5'),  # [0.0-200.0] Median:5.0 Samples: 5 | 3.0 | 10 | 200 | 20
+            unknown_attribute( 'jump', init = '0.0,0.0'),  # Samples: 0.0,0.0 | 0,0 | 0.0,0.3 | 0.4,1.2 | 0.0,0.4
+            bool_attribute( 'detachable', init = 'false'),
+            bool_attribute( 'draggable', init = 'false'),
+            bool_attribute( 'grumpy', init = 'true'),
+            bool_attribute( 'invulnerable', init = 'true'),
+            unknown_attribute( 'blinkcolor', init = '0,0,0'),  # Samples: 0,0,0 | 0,255,0
+            bool_attribute( 'suckable', init = 'false'),
+            int_attribute( 'walkforce', min_value=0, init = '0'),  # [0-3000] Median:0 Samples: 0 | 500 | 3000
+            bool_attribute( 'autoboundsunattached', init = 'true'),
+            bool_attribute( 'hideeyes', init = 'false'),
+            real_attribute( 'burntime', min_value=0.00001, init = '2.0'),  # [0.1-7.0] Median:2.0 Samples: 2.0 | 3.0 | 5 | 0.1 | 7.0
+            bool_attribute( 'collidewithattached', init = 'true'),
+            real_attribute( 'detonateforce', min_value=0, init = '500'),  # [0.0-1000.0] Median:300.0 Samples: 500 | 300 | 0.01 | 0 | 2
+            int_attribute( 'detonateradius', min_value=0, init = '100'),  # [0-500] Median:100 Samples: 100 | 200 | 0 | 350 | 10
+            bool_attribute( 'climber', init = 'false'),
+            bool_attribute( 'collideattached', init = 'true'),
+            bool_attribute( 'alwayslookatmouse', init = 'true'),
+            unknown_attribute( 'material', init = 'BlockBall'),  # Samples: BlockBall | rock | BoneBall | UglyBall | BeautyBall
+            bool_attribute( 'stuckattachment', init = 'false'),
+            int_attribute( 'wakedist', min_value=0.00001, init = '30'),  # [30-600] Median:30 Samples: 30 | 200 | 60 | 600
+            bool_attribute( 'autobounds', init = 'false'),
+            unknown_attribute( 'attenuationdeselect', init = '0, 1'),  # Samples: 0, 1 | 0.05, 1.2, 1.0 | 0.1, 1.1, 1.0
+            unknown_attribute( 'attenuationdrag', init = '0, 1'),  # Samples: 0, 1 | 0.05, 1.2, 1.0 | 0.1, 1.1, 1.0
+            unknown_attribute( 'attenuationdrop', init = '0, 1'),  # Samples: 0, 1 | 0.05, 1.2, 1.0 | 0.1, 1.1, 1.0
+            unknown_attribute( 'attenuationselect', init = '0, 1'),  # Samples: 0, 1 | 0.05, 1.0, 1.2 | 0.1, 1.0, 1.1
+            unknown_attribute( 'contains', init = '10,UtilGooGlobber'),  # Samples: 10,UtilGooGlobber | 42,ZBomb | 1,Pilot | 80,UndeletePillFizz | 4,Spam
+            real_attribute( 'popduration', min_value=0.00001, init = '0.25'),  # [0.1-4.0] Median:0.25 Samples: 0.25 | 1.0 | 0.1 | 4
+            unknown_attribute( 'popparticles', init = 'beautypop'),  # Samples: beautypop | OOS_gooGlobs | ISH_undeleteFizz | ish_bitPop
+            unknown_attribute( 'popsound', init = 'SOUND_BALL_BIT_POP1'),  # Samples: SOUND_BALL_BIT_POP1 | SOUND_BALL_ZBOMBMOM_POP | SOUND_BALL_UNDELETEPILLFIZZ_POP4 | SOUND_BALL_UNDELETEPILL_POP | SOUND_BALL_UTILGOOGLOBBERMOM_POP
+            unknown_attribute( 'statescales', init = 'tank,0.12'),  # Samples: tank,0.12 | attached,1.25 | attached,1.65, detaching,1.3 | attached,1.75, detaching,1.3, tank,1.0
+            real_attribute( 'antigrav', min_value=0.00001, init = '1.0'),  # [0.5-14.0] Median:1.0 Samples: 1.0 | 4.5 | 14 | 0.5 | 3
+            unknown_attribute( 'explosionparticles', init = 'BallExplode_ISH'),  # Samples: BallExplode_ISH | BallExplode_Bomb | BallExplode_Fuse
+            bool_attribute( 'static', init = 'true'),
+            bool_attribute( 'sticky', init = 'false'),
+            bool_attribute( 'isbehindstrands', init = 'false'),
+            bool_attribute( 'stacking', init = 'true'),
+            real_attribute( 'dampening', min_value=0.00001, init = '0.1'),  # [0.005-0.115] Median:0.1 Samples: 0.1 | 0.005 | 0.115
+            bool_attribute( 'hingedrag', init = 'true'),
+            bool_attribute( 'jumponwakeup', init = 'true'),
+            int_attribute( 'maxattachspeed', min_value=0.00001, init = '1000'),  # [1000-1000] Median:1000 Samples: 1000
+            bool_attribute( 'staticwhensleeping', init = 'true'),
+            bool_attribute( 'autodisable', init = 'true'),
+            int_attribute( 'dragmass', min_value=0.00001, init = '100'),  # [40-100] Median:40 Samples: 100 | 40
+            bool_attribute( 'isantigravunattached', init = 'true'),
+            bool_attribute( 'stickyattached', init = 'true'),
+            bool_attribute( 'stickyunattached', init = 'false'),
+            unknown_attribute( 'fling', init = '200,2.5'),  # Samples: 200,2.5
+            unknown_attribute( 'popdelay', init = '2,12'),  # Samples: 2,12 | 2,2
+            unknown_attribute( 'spawn', init = 'WindowRect'),  # Samples: WindowRect | WindowSquare
+            bool_attribute( 'autoattach', init = 'true'),
+            bool_attribute( 'distantsounds', init = 'false'),
+            bool_attribute( 'fallingattachment', init = 'false'),
+            bool_attribute( 'flammable', init = 'false'),
+        ], objects = [
+            describe_object( 'detachstrand', min_occurrence=0, max_occurrence=1, attributes = [
+                int_attribute( 'maxlen', min_value=0.00001, mandatory = True, init = '60'),  # [60-160] Median:60 Samples: 60 | 160 | 70
+                unknown_attribute( 'image', init = 'IMAGE_BALL_BALLOON_SPLAT1'),  # Samples: IMAGE_BALL_BALLOON_SPLAT1 | IMAGE_BALL_COMMON_BLACK_DSTRAND | IMAGE_BALL_WATER_DSTRAND | IMAGE_BALL_POKEY_DSTRAND | IMAGE_BALL_PILOT_ARROW
+            ] ),
+            describe_object( 'marker', min_occurrence=0, max_occurrence=1, attributes = [
+                unknown_attribute( 'detach', mandatory = True, init = 'IMAGE_BALL_POKEY_DETACHMARKER_P1'),  # Samples: IMAGE_BALL_POKEY_DETACHMARKER_P1 | IMAGE_BALL_COMMON_DRAGMARKER_P1 | IMAGE_BALL_IVY_DETACHMARKER_P1 | IMAGE_BALL_UTILATTACHWALKABLE_DRAGMARKER_P1 | IMAGE_BALL_RECTHEAD_DRAGMARKER
+                unknown_attribute( 'drag', mandatory = True, init = 'IMAGE_BALL_COMMON_DRAGMARKER_P1'),  # Samples: IMAGE_BALL_COMMON_DRAGMARKER_P1 | IMAGE_BALL_UTILATTACHWALKABLE_DRAGMARKER_P1 | IMAGE_BALL_DRAINED_DRAGMARKER_P1 | IMAGE_BALL_BOMBSTICKY_DRAGMARKER | IMAGE_BALL_RECTHEAD_DRAGMARKER
+                int_attribute( 'rotspeed', mandatory = True, init = '2'),  # [-2-2] Median:2 Samples: 2 | -2 | 0
+            ] ),
+            describe_object( 'part', min_occurrence=0, max_occurrence=10, attributes = [
+                unknown_attribute( 'image', mandatory = True, init = 'IMAGE_BALL_GENERIC_EYE_GLASS_1,IMAGE_BALL_GENERIC_EYE_GLASS_2,IMAGE_BALL_GENERIC_EYE_GLASS_3'),  # Samples: IMAGE_BALL_GENERIC_EYE_GLASS_1,IMAGE_BALL_GENERIC_EYE_GLASS_2,IMAGE_BALL_GENERIC_EYE_GLASS_3 | IMAGE_BALL_GENERIC_EYE_GLASS_1,IMAGE_BALL_GENERIC_EYE_GLASS_2 | IMAGE_BALL_GENERIC_EYE_GLASS_1 | IMAGE_BALL_GENERIC_HILITE2 | IMAGE_BALL_GENERIC_HILITE1
+                int_attribute( 'layer', min_value=0, mandatory = True, init = '2'),  # [0-4] Median:1 Samples: 2 | 1 | 0 | 3 | 4
+                unknown_attribute( 'name', mandatory = True, init = 'body'),  # Samples: body | lefteye | righteye | lips | hilite1
+                real_attribute( 'scale', min_value=0.00001, mandatory = True, init = '0.5'),  # [0.25-1.45] Median:0.71875 Samples: 0.5 | 1 | 0.6 | 0.5390625 | 0.75
+                unknown_attribute( 'x', mandatory = True, init = '0'),  # Samples: 0 | -12,-8 | 8,12 | -10,-6 | -5,0
+                unknown_attribute( 'y', mandatory = True, init = '0'),  # Samples: 0 | 0,0 | -5,5 | 0,7 | 6,10
+                bool_attribute( 'rotate', init = 'true'),
+                unknown_attribute( 'state', init = 'attached'),  # Samples: attached | climbing,walking,falling,dragging,detaching,standing,tank | climbing,walking,falling,attached,dragging,detaching,standing,tank,stuck,stuck_attached,stuck_detaching | climbing,walking,falling,dragging,detaching,standing,tank,sleeping,stuck,stuck_attached,stuck_detaching | climbing,walking,falling,dragging,detaching,standing,tank,sleeping,stuck,stuck_attached,stuck_detaching,pipe
+                unknown_attribute( 'stretch', init = '16,2,0.5'),  # Samples: 16,2,0.5 | 24,1.2,0.9 | 32,2,0.5 | 24,1.75,0.65 | 12,2,0.5
+                bool_attribute( 'eye', init = 'true'),
+                unknown_attribute( 'pupil', init = 'IMAGE_BALL_GENERIC_PUPIL1'),  # Samples: IMAGE_BALL_GENERIC_PUPIL1 | IMAGE_BALL_BEAUTY_PUPIL | IMAGE_BALL_UGLY_PUPIL | IMAGE_BALL_BIT_PUPIL | IMAGE_BALL_BEAUTYPRODUCTEYE_PUPIL
+                int_attribute( 'pupilinset', min_value=0.00001, init = '13'),  # [10-116] Median:13 Samples: 13 | 12 | 10 | 14 | 50
+                unknown_attribute( 'xrange', init = '-18,0'),  # Samples: -18,0 | 0,18 | -20,-10 | 10,20 | -90,-70,
+                unknown_attribute( 'yrange', init = '-12,12'),  # Samples: -12,12 | 20,40 | -6,6 | -8,8 | -115,-35
+            ] ),
+            describe_object( 'particles', min_occurrence=0, max_occurrence=3, attributes = [
+                unknown_attribute( 'id', mandatory = True, init = 'sleepyZzz'),  # Samples: sleepyZzz | ish_smallfire | ish_sleepyZzz | poisonBallBurn | fireRobotHead
+                bool_attribute( 'overball', mandatory = True, init = 'true'),
+                unknown_attribute( 'states', mandatory = True, init = 'sleeping'),  # Samples: sleeping | onfire | falling
+            ] ),
+            describe_object( 'shadow', min_occurrence=0, max_occurrence=1, attributes = [
+                unknown_attribute( 'image', mandatory = True, init = 'IMAGE_BALL_GENERIC_SHADOW0'),  # Samples: IMAGE_BALL_GENERIC_SHADOW0 | IMAGE_BALL_GENERIC_SHADOW1 | IMAGE_BALL_BEAUTY_SHADOW | IMAGE_BALL_COMMON_ALBINO_SHADOWGLOW | IMAGE_BALL_UGLY_SHADOW
+                bool_attribute( 'additive', init = 'true'),
+            ] ),
+            describe_object( 'sinvariance', min_occurrence=0, max_occurrence=7, attributes = [
+                real_attribute( 'amp', min_value=0, mandatory = True, init = '0.1'),  # [0.0-1.0] Median:0.1 Samples: 0.1 | 0.02 | 0.03 | 0.5 | 0.05
+                real_attribute( 'freq', min_value=0, mandatory = True, init = '1.2'),  # [0.0-2.0] Median:0.8 Samples: 1.2 | 0.3 | 1.5 | 0.4 | 0.8
+                real_attribute( 'shift', min_value=0, mandatory = True, init = '0.0'),  # [0.0-0.8] Median:0.0 Samples: 0.0 | 0 | 0.5 | 0.8
+            ], objects = [
+                describe_object( 'sinanim', min_occurrence=1, max_occurrence=8, attributes = [
+                    real_attribute( 'amp', mandatory = True, init = '0.1'),  # [-3.0-12.0] Median:0.1 Samples: 0.1 | 2 | 0.5 | 0.2 | 0.06
+                    unknown_attribute( 'axis', mandatory = True, init = 'y'),  # Samples: y | x
+                    real_attribute( 'freq', min_value=0.00001, mandatory = True, init = '2.0'),  # [0.2-22.0] Median:2.0 Samples: 2.0 | 1.0 | 0.25 | .20 | 1.2
+                    unknown_attribute( 'part', mandatory = True, init = 'body'),  # Samples: body | lefteye | righteye | lefteye,righteye | body,shine
+                    real_attribute( 'shift', min_value=0, mandatory = True, init = '0'),  # [0.0-0.8] Median:0.0 Samples: 0 | 0.5 | 0.33 | 0.1 | 0.66
+                    unknown_attribute( 'state', mandatory = True, init = 'walking'),  # Samples: walking | climbing | falling | dragging | attached
+                    unknown_attribute( 'type', mandatory = True, init = 'scale'),  # Samples: scale | translate
+                ] ),
+            ] ),
+            describe_object( 'sound', min_occurrence=0, max_occurrence=28, attributes = [
+                unknown_attribute( 'event', mandatory = True, init = 'death'),  # Samples: death | land | bounce | pickup | marker
+                unknown_attribute( 'id', mandatory = True, allow_empty = True, init = 'SOUND_BALL_GENERIC_STICK1,SOUND_BALL_GENERIC_STICK2,SOUND_BALL_GENERIC_STICK3,SOUND_BALL_GENERIC_STICK4,SOUND_BALL_GENERIC_STICK5,SOUND_BALL_GENERIC_STICK6'),  # Samples: SOUND_BALL_GENERIC_STICK1,SOUND_BALL_GENERIC_STICK2,SOUND_BALL_GENERIC_STICK3,SOUND_BALL_GENERIC_STICK4,SOUND_BALL_GENERIC_STICK5,SOUND_BALL_GENERIC_STICK6 | SOUND_BALL_GENERIC_MUMBLE1,SOUND_BALL_GENERIC_MUMBLE2,SOUND_BALL_GENERIC_MUMBLE3,SOUND_BALL_GENERIC_MUMBLE4,SOUND_BALL_GENERIC_MUMBLE5,SOUND_BALL_GENERIC_MUMBLE6,SOUND_BALL_GENERIC_MUMBLE7 | SOUND_BALL_GENERIC_BOUNCE1,SOUND_BALL_GENERIC_BOUNCE2,SOUND_BALL_GENERIC_BOUNCE3,SOUND_BALL_GENERIC_BOUNCE4 | SOUND_BALL_GENERIC_DEATH1,SOUND_BALL_GENERIC_DEATH2,SOUND_BALL_GENERIC_DEATH3,SOUND_BALL_GENERIC_DEATH4,SOUND_BALL_GENERIC_DEATH5 | SOUND_BALL_GENERIC_DETACHED1
+            ] ),
+            describe_object( 'splat', min_occurrence=0, max_occurrence=1, attributes = [
+                unknown_attribute( 'image', mandatory = True, init = 'IMAGE_FX_SMOKEBLACK'),  # Samples: IMAGE_FX_SMOKEBLACK | IMAGE_BALL_WATER_SPLAT1,IMAGE_BALL_WATER_SPLAT2 | IMAGE_BALL_TIMEBUG_SPLAT1,IMAGE_BALL_TIMEBUG_SPLAT2 | IMAGE_BALL_FISH_SPLAT1,IMAGE_BALL_FISH_SPLAT2 | IMAGE_BALL_PILOT_SPLAT1,IMAGE_BALL_PILOT_SPLAT2
+            ] ),
+            describe_object( 'strand', min_occurrence=0, max_occurrence=1, attributes = [
+                real_attribute( 'dampfac', min_value=0.00001, mandatory = True, init = '0.9'),  # [0.002-1.9] Median:0.9 Samples: 0.9 | 0.002 | 1.9 | 0.1 | 0.2
+                unknown_attribute( 'image', mandatory = True, init = 'IMAGE_BALL_FUSE_STRAND'),  # Samples: IMAGE_BALL_FUSE_STRAND | IMAGE_BALL_UTILGOOGLOBBERMOM_STRAND | IMAGE_BALL_DRAINEDISH_STRAND | IMAGE_BALL_FISH_STRING3 | IMAGE_BALL_WATER_STRAND
+                unknown_attribute( 'inactiveimage', mandatory = True, init = 'IMAGE_BALL_GENERIC_ARM_INACTIVE'),  # Samples: IMAGE_BALL_GENERIC_ARM_INACTIVE | IMAGE_BALL_BALLOON_INACTIVE | IMAGE_BALL_GOOPRODUCT_STRAND | IMAGE_BALL_UTILNOATTACHUNWALKABLE_STRAND | IMAGE_BALL_BOMBSHAFT_STRAND
+                int_attribute( 'maxforce', min_value=0.00001, mandatory = True, init = '600'),  # [200-2000] Median:600 Samples: 600 | 800 | 1000 | 200 | 300
+                int_attribute( 'maxlen2', min_value=0.00001, mandatory = True, init = '140'),  # [50-380] Median:140 Samples: 140 | 50 | 380 | 300 | 120
+                int_attribute( 'minlen', min_value=0.00001, mandatory = True, init = '100'),  # [10-150] Median:100 Samples: 100 | 130 | 10 | 150 | 40
+                int_attribute( 'springconstmax', min_value=0.00001, mandatory = True, init = '9'),  # [1-10] Median:9 Samples: 9 | 10 | 1 | 2 | 6
+                int_attribute( 'springconstmin', min_value=0.00001, mandatory = True, init = '9'),  # [1-10] Median:9 Samples: 9 | 10 | 2 | 1 | 6
+                unknown_attribute( 'type', mandatory = True, init = 'spring'),  # Samples: spring | rope
+                int_attribute( 'maxlen1', min_value=0.00001, init = '200'),  # [80-500] Median:200 Samples: 200 | 300 | 80 | 180 | 130
+                bool_attribute( 'walkable', init = 'false'),
+                int_attribute( 'shrinklen', min_value=0.00001, init = '90'),  # [80-160] Median:90 Samples: 90 | 100 | 120 | 130 | 160
+                int_attribute( 'burnspeed', min_value=0.00001, init = '3'),  # [2-3] Median:3 Samples: 3 | 2
+                unknown_attribute( 'burntimage', init = 'IMAGE_BALL_BOMBMINI_STRAND_BURNT'),  # Samples: IMAGE_BALL_BOMBMINI_STRAND_BURNT | IMAGE_BALL_PIXEL_ARM | IMAGE_BALL_BOMBSTICKY_STRAND_BURNT | IMAGE_BALL_PIXELPRODUCT_ARM | IMAGE_BALL_FUSE_STRAND_BURNT
+                unknown_attribute( 'fireparticles', init = 'fireArmBurn'),  # Samples: fireArmBurn | ish_smallfire | poisonArmBurn
+                int_attribute( 'ignitedelay', min_value=0, init = '0'),  # [0-0] Median:0 Samples: 0
+                int_attribute( 'thickness', min_value=0.00001, init = '40'),  # [10-40] Median:20 Samples: 40 | 10 | 20
+                bool_attribute( 'rope', init = 'true'),
+                bool_attribute( 'geom', init = 'false'),
+            ] )
+        ] )
+    ] )
+
+ISLAND_FILE.add_objects( [
+        describe_object( 'island', exact_occurrence = 1, attributes = [
+            reference_attribute( 'icon', reference_familly = 'image', reference_scope = GLOBAL_SCOPE, mandatory = True ),
+            string_attribute( 'map', mandatory = True, init = 'island5'),
+            string_attribute( 'name', mandatory = True, init = 'Cog in the Machine'),  # Samples: Cog in the Machine | The Goo Filled Hills | Information Superhighay | Little Miss World of Goo | End of the World
+        ], objects = [
+            describe_object( 'level', min_occurrence=1, attributes = [
+                identifier_attribute( 'id', mandatory = True, reference_familly = 'level',
+                                      reference_scope = ISLAND_SCOPE ),
+                reference_attribute( 'name', reference_familly = 'text', reference_scope = ISLAND_SCOPE, init = '', mandatory = True ),
+                reference_attribute( 'text', reference_familly = 'text', reference_scope = ISLAND_SCOPE, init = '', mandatory = True ),
+                reference_attribute( 'depends', reference_familly = 'level', reference_scope = ISLAND_SCOPE),
+                string_attribute( 'ocd', init = 'balls,10'),
+                string_attribute( 'cutscene'),  # Samples: levelFadeOut,Chapter5End,gooTransition_out | x,whistleUnlock,gooTransition_out | levelFadeOut,Chapter4End,gooTransition_out | x,Chapter2Mid,gooTransition_out | levelFadeOut,Chapter1End,gooTransition_out
+                string_attribute( 'oncomplete'),  # Samples: expandchapter4 | unlockwogcorp | unlockwhistle
+                bool_attribute( 'skipeolsequence', init = 'true')
+            ] )
+        ] )
+    ] )
+
 
 LEVEL_GAME_TEMPLATE = """\
 <level ballsrequired="1" letterboxed="false" visualdebug="false" autobounds="true" textcolor="255,255,255" timebugprobability="0" strandgeom="false" allowskip="true" >
@@ -469,3 +678,8 @@ LEVEL_RESOURCE_TEMPLATE = """\
 	</Resources>
 </ResourceManifest>
 """
+
+
+if __name__ == "__main__":
+    print_scope( GLOBAL_SCOPE )
+

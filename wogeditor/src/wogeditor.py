@@ -72,9 +72,12 @@ class ElementReferenceTracker(metaworld.ReferenceTracker):
         metaworld.ReferenceTracker.object_added( self, scope_key, object, object_desc, self._retrieve_element_attribute )
         scope_desc = object_desc.scope
         for child_element in object:    # recurse to add all child elements
-            child_object_desc = scope_desc.objects_by_tag.get( child_element.tag )
+            child_object_desc = object_desc.find_immediate_child_by_tag( child_element.tag )
             if child_object_desc:
                 self.element_object_added( scope_key, child_element, child_object_desc )
+            else:
+                print 'Warning: unknown element "%s", child of "%s" in metaworld:' % (
+                    child_element.tag, object.tag)
 
     def element_object_about_to_be_removed( self, scope_key, element, object_desc ):
         """Unregisters the specified element and all its children that are declared in the scope description.
@@ -85,9 +88,12 @@ class ElementReferenceTracker(metaworld.ReferenceTracker):
                                                              self._retrieve_element_attribute )
         scope_desc = object_desc.scope
         for child_element in element:    # recurse to add all child elements
-            child_object_desc = scope_desc.objects_by_tag.get( child_element.tag )
+            child_object_desc = object_desc.find_immediate_child_by_tag( child_element.tag )
             if child_object_desc:
                 self.element_object_about_to_be_removed( scope_key, child_element, child_object_desc )
+            else:
+                print 'Warning: unknown element "%s", child of "%s" in metaworld:' % (
+                    child_element.tag, object.tag)
 
     def update_element_attribute( self, scope_key, scope_desc, element, attribute_name, new_value ):
         """Updates an element attribute value and automatically updates related identifier/back-references.
@@ -130,12 +136,13 @@ class GameModel(QtCore.QObject):
         self._readonly_resources = set()    # resources in resources.xml that have expanded defaults idprefix & path
         self._texts = self._loadPackedData( properties_dir, 'text.xml.bin' )
         self._levels = self._loadDirList( os.path.join( self._res_dir, 'levels' ), filter = '%s.scene.bin' )
-        self._balls = self._loadDirList( os.path.join( self._res_dir, 'balls' ), filter = 'balls.xml.bin' )
         self.level_models_by_name = {}
+        self._balls_by_name = {}
         self.current_model = None
         self.is_dirty = False
         self.tracker = ElementReferenceTracker()
         self._initializeGlobalReferences()
+        self._loadBalls()
 
     def getResourcePath( self, game_dir_relative_path ):
         return os.path.join( self._wog_dir, game_dir_relative_path )
@@ -173,16 +180,30 @@ class GameModel(QtCore.QObject):
         dirs.sort()
         return dirs
 
+    def _loadBalls( self ):
+        """Loads all ball models and initialize related identifiers/references."""
+        ball_names = self._loadDirList( os.path.join( self._res_dir, 'balls' ),
+                                        filter = 'balls.xml.bin' )
+        ball_dir = os.path.join( self._res_dir, 'balls' )
+        for ball_name in ball_names:
+            ball_tree = self._loadPackedData( os.path.join(ball_dir, ball_name), 'balls.xml.bin' )
+            resource_tree = self._loadPackedData( os.path.join(ball_dir, ball_name), 'resources.xml.bin' )
+            ball_model = BallModel( self, ball_name, ball_tree, resource_tree )
+            self._balls_by_name[ball_model.ball_name] = ball_model
+
     def _initializeGlobalReferences( self ):
         """Initialize global effects, materials, resources and texts references."""
         global_scope = self
-        global_objects_desc = metawog.GLOBAL_SCOPE.objects_by_tag
         self.tracker.scope_added( self, metawog.GLOBAL_SCOPE, None )
-        self.tracker.element_object_added( global_scope, self._effects, global_objects_desc['effects'] )
-        self.tracker.element_object_added( global_scope, self._materials, global_objects_desc['materials'] )
-        self.tracker.element_object_added( global_scope, self._texts, global_objects_desc['strings'] )
+        self.tracker.element_object_added( global_scope, self._effects,
+                                           metawog.GLOBAL_FX_FILE.root_object_desc )
+        self.tracker.element_object_added( global_scope, self._materials,
+                                           metawog.GLOBAL_MATERIALS_FILE.root_object_desc )
+        self.tracker.element_object_added( global_scope, self._texts,
+                                           metawog.GLOBAL_TEXT_FILE.root_object_desc )
         self._expandResourceDefaultsIdPrefixAndPath()
-        self.tracker.element_object_added( global_scope, self._resources, global_objects_desc['ResourceManifest'] )
+        self.tracker.element_object_added( global_scope, self._resources,
+                                           metawog.GLOBAL_RESOURCE_FILE.root_object_desc )
 
     def _expandResourceDefaultsIdPrefixAndPath( self ):
         """Expands the default idprefix and path that are used as short-cut in the XML file."""
@@ -317,6 +338,27 @@ class GameModel(QtCore.QObject):
         self._levels.sort()
         self.is_dirty = True
 
+class BallModel(object):
+    def __init__( self, game_model, ball_name, ball_tree, resource_tree ):
+        self.game_model = game_model
+        self.ball_name = ball_name
+        self.ball_tree = ball_tree
+        self.resource_tree = resource_tree
+        self._initializeBallReferences()
+
+    @property
+    def tracker( self ):
+        return self.game_model.tracker
+
+    def _initializeBallReferences( self ):
+        ball_scope = self
+        parent_scope = self.game_model
+        self.tracker.scope_added( ball_scope, metawog.BALL_SCOPE, parent_scope )
+        self.tracker.element_object_added( ball_scope, self.ball_tree,
+                                           metawog.BALL_MAIN_FILE.root_object_desc )
+        self.tracker.element_object_added( ball_scope, self.resource_tree,
+                                           metawog.BALL_RESOURCE_FILE.root_object_desc )
+
 class LevelModel(object):
     def __init__( self, game_model, level_name, level_tree, scene_tree, resource_tree, is_dirty = False ):
         self.game_model = game_model
@@ -359,13 +401,15 @@ class LevelModel(object):
             print 'Invalid image path for "%s": "%s"' % (id,path)
 
     def _initializeLevelReferences( self ):
-        level_object_desc = metawog.LEVEL_SCOPE.objects_by_tag
         level_scope = self
         parent_scope = self.game_model
         self.tracker.scope_added( level_scope, metawog.LEVEL_SCOPE, parent_scope )
-        self.tracker.element_object_added( level_scope, self.level_tree, level_object_desc['level'] )
-        self.tracker.element_object_added( level_scope, self.scene_tree, level_object_desc['scene'] )
-        self.tracker.element_object_added( level_scope, self.resource_tree, level_object_desc['ResourceManifest'] )
+        self.tracker.element_object_added( level_scope, self.level_tree,
+                                           metawog.LEVEL_GAME_FILE.root_object_desc )
+        self.tracker.element_object_added( level_scope, self.scene_tree,
+                                           metawog.LEVEL_SCENE_FILE.root_object_desc )
+        self.tracker.element_object_added( level_scope, self.resource_tree,
+                                           metawog.LEVEL_RESOURCE_FILE.root_object_desc )
 
     def saveModifiedElements( self ):
         """Save the modified scene, level, resource tree."""
@@ -417,7 +461,7 @@ class LevelModel(object):
            The element is inserted with all its children.
            """
         # Update identifiers & reference related to element
-        self.tracker.element_object_added( self, element, metawog.LEVEL_SCOPE.objects_by_tag.get(element.tag) )
+        self.tracker.element_object_added( self, element, object_file.find_object_desc_by_tag(element.tag) )
         # Adds the element
         if index is None:
             index = len(parent_element)
@@ -435,7 +479,7 @@ class LevelModel(object):
             print 'Warning: attempted to remove root element, GUI should not allow that'
             return False # can not remove those elements
         # @todo makes tag look-up fails once model is complete
-        self.tracker.element_object_about_to_be_removed( self, element, metawog.LEVEL_SCOPE.objects_by_tag.get(element.tag) )
+        self.tracker.element_object_about_to_be_removed( self, element, object_file.find_object_desc_by_tag(element.tag) )
         found = find_element_in_tree( self.getObjectFileRootElement(object_file), element )
         if found is None:
             print 'Warning: inconsistency, element to remove in not in the specified object_file', element
@@ -1412,7 +1456,7 @@ class MainWindow(QtGui.QMainWindow):
 
     def _refreshPropertyListFromElement( self, object_file, element ):
         # Order the properties so that main attributes are at the beginning
-        object_desc = metawog.LEVEL_SCOPE.objects_by_tag.get(element.tag)
+        object_desc = object_file.find_object_desc_by_tag(element.tag)
         if object_desc is None:  # path for data without meta-model (to be removed)
             attribute_names = element.keys()
             attribute_order = ( 'id', 'name', 'x', 'y', 'depth', 'radius',
@@ -1434,7 +1478,7 @@ class MainWindow(QtGui.QMainWindow):
                 item_name.setEditable( False )
                 item_value = QtGui.QStandardItem( value )
                 # @todo object_desc & scope_key should be parameters...
-                object_desc = metawog.LEVEL_SCOPE.objects_by_tag.get( element.tag )
+                object_desc = object_file.find_object_desc_by_tag(element.tag)
                 scope_key = self.getCurrentLevelModel()
                 item_value.setData( QtCore.QVariant( (scope_key, object_file, object_desc, element, name) ), QtCore.Qt.UserRole )
                 self.propertiesListModel.appendRow( [ item_name, item_value ] )
@@ -1546,8 +1590,9 @@ class MainWindow(QtGui.QMainWindow):
                 tag_by_actions = {}
                 object_desc = object_file.find_object_desc_by_tag(element.tag)
                 for tag in sorted(object_desc.objects_by_tag.iterkeys()):
-                    action = menu.addAction( self.tr("Add child %1").arg(tag) )
-                    tag_by_actions[action] = tag
+                    if not object_desc.find_immediate_child_by_tag(tag).read_only:
+                        action = menu.addAction( self.tr("Add child %1").arg(tag) )
+                        tag_by_actions[action] = tag
                 selected_action = menu.exec_( tree_view.viewport().mapToGlobal(menu_pos) )
                 selected_tag = tag_by_actions.get( selected_action )
                 if selected_tag:
@@ -1561,7 +1606,7 @@ class MainWindow(QtGui.QMainWindow):
         parent_element = parent_element_index.data( QtCore.Qt.UserRole ).toPyObject()
         if parent_element is not None:
             # build the list of attributes with their initial values.
-            object_desc = metawog.LEVEL_SCOPE.objects_by_tag[new_tag]
+            object_desc = object_file.find_object_desc_by_tag(new_tag)
             mandatory_attributes = {}
             for attribute_name, attribute_desc in object_desc.attributes_by_name.iteritems():
                 if attribute_desc.mandatory:
