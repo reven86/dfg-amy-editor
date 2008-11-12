@@ -66,41 +66,49 @@ def flattened_element_children( element ):
 class ElementReferenceTracker(metaworld.ReferenceTracker):
     """Specialized version of the ReferenceTracker that provides helper for element tree based objects.
     """
-    def element_object_added( self, scope_key, object, object_desc ):
+    def element_object_added( self, object ):
         """Registers the specified element and all its children that are declared in the scope description.
         """
+        object_desc = object.meta
+        scope_key = object.world
+        assert scope_key is not None, object
         metaworld.ReferenceTracker.object_added( self, scope_key, object, object_desc, self._retrieve_element_attribute )
         scope_desc = object_desc.scope
         for child_element in object:    # recurse to add all child elements
             child_object_desc = object_desc.find_immediate_child_by_tag( child_element.tag )
             if child_object_desc:
-                self.element_object_added( scope_key, child_element, child_object_desc )
+                self.element_object_added( child_element )
             else:
                 print 'Warning: unknown element "%s", child of "%s" in metaworld:' % (
                     child_element.tag, object.tag)
 
-    def element_object_about_to_be_removed( self, scope_key, element, object_desc ):
+    def element_object_about_to_be_removed( self, element ):
         """Unregisters the specified element and all its children that are declared in the scope description.
         """
-        if object_desc is None:
-            return
+        scope_key = element.world
+        object_desc = element.meta
+        assert scope_key is not None, element
         metaworld.ReferenceTracker.object_about_to_be_removed( self, scope_key, element, object_desc,
                                                              self._retrieve_element_attribute )
         scope_desc = object_desc.scope
         for child_element in element:    # recurse to add all child elements
             child_object_desc = object_desc.find_immediate_child_by_tag( child_element.tag )
             if child_object_desc:
-                self.element_object_about_to_be_removed( scope_key, child_element, child_object_desc )
+                self.element_object_about_to_be_removed( child_element )
             else:
                 print 'Warning: unknown element "%s", child of "%s" in metaworld:' % (
                     child_element.tag, object.tag)
 
-    def update_element_attribute( self, scope_key, scope_desc, element, attribute_name, new_value ):
+    def update_element_attribute( self, element, attribute_name, new_value ):
         """Updates an element attribute value and automatically updates related identifier/back-references.
         """
+        scope_key = element.world
+        scope_desc = element.world.meta
+        object_desc = element.meta
+        assert scope_key is not None, element
+        
         old_value = element.get( attribute_name )
         element.set( attribute_name, new_value )
-        object_desc = scope_desc.objects_by_tag.get( element.tag )
         if object_desc:
             attribute_desc = object_desc.attributes_by_name.get( attribute_name )
             if attribute_desc:
@@ -131,7 +139,7 @@ class GameModel(QtCore.QObject):
         properties_dir = os.path.join( self._wog_dir, u'properties' )
         self._res_dir = os.path.join( self._wog_dir, u'res' )
         self._universe = metaworld.Universe()
-        self.global_world = self._universe.make_world( metawog.GLOBAL_SCOPE )
+        self.global_world = self._universe.make_world( metawog.GLOBAL_SCOPE, 'global' )
         self._effects_tree = self._loadTree( self.global_world, metawog.GLOBAL_FX_FILE,
                                              properties_dir, 'fx.xml.bin' )
         self._materials_tree = self._loadTree( self.global_world, metawog.GLOBAL_MATERIALS_FILE,
@@ -159,15 +167,6 @@ class GameModel(QtCore.QObject):
                 'File "%1" does not exist. You likely provided an incorrect WOG directory.' ).arg( path ) )
         xml_data = wogfile.decrypt_file_data( path )
         return world.make_tree_from_xml( meta_tree, xml_data )
-
-    def _loadPackedData( self, dir, file_name ):
-        path = os.path.join( dir, file_name )
-        if not os.path.isfile( path ):
-            raise GameModelException( tr( 'LoadData',
-                'File "%1" does not exist. You likely provided an incorrect WOG directory.' ).arg( path ) )
-        xml_data = wogfile.decrypt_file_data( path )
-        xml_tree = xml.etree.ElementTree.fromstring( xml_data )
-        return xml_tree
 
     def _savePackedData( self, dir, file_name, element_tree ):
         path = os.path.join( dir, file_name )
@@ -204,25 +203,20 @@ class GameModel(QtCore.QObject):
                                         os.path.join(ball_dir, ball_name), 'balls.xml.bin' )
             resource_tree = self._loadTree( ball_world, metawog.BALL_RESOURCE_FILE,
                                             os.path.join(ball_dir, ball_name), 'resources.xml.bin' )
-            self.tracker.scope_added( ball_world, ball_world.meta, self )
-            self.tracker.element_object_added( ball_world, ball_tree.root,
-                                               metawog.BALL_MAIN_FILE.root_object_desc )
-            self.tracker.element_object_added( ball_world, resource_tree.root,
-                                               metawog.BALL_RESOURCE_FILE.root_object_desc )
+            assert ball_tree.world == ball_world
+            assert ball_tree.root.world == ball_world, ball_tree.root.world
+            self.tracker.scope_added( ball_world, ball_world.meta, self.global_world )
+            self.tracker.element_object_added( ball_tree.root )
+            self.tracker.element_object_added( resource_tree.root )
 
     def _initializeGlobalReferences( self ):
         """Initialize global effects, materials, resources and texts references."""
-        global_scope = self
-        self.tracker.scope_added( self, metawog.GLOBAL_SCOPE, None )
-        self.tracker.element_object_added( global_scope, self._effects_tree.root,
-                                           metawog.GLOBAL_FX_FILE.root_object_desc )
-        self.tracker.element_object_added( global_scope, self._materials_tree.root,
-                                           metawog.GLOBAL_MATERIALS_FILE.root_object_desc )
-        self.tracker.element_object_added( global_scope, self._texts_tree.root,
-                                           metawog.GLOBAL_TEXT_FILE.root_object_desc )
+        self.tracker.scope_added( self.global_world, metawog.GLOBAL_SCOPE, None )
+        self.tracker.element_object_added( self._effects_tree.root )
+        self.tracker.element_object_added( self._materials_tree.root )
+        self.tracker.element_object_added( self._texts_tree.root )
         self._expandResourceDefaultsIdPrefixAndPath()
-        self.tracker.element_object_added( global_scope, self._resources_tree.root,
-                                           metawog.GLOBAL_RESOURCE_FILE.root_object_desc )
+        self.tracker.element_object_added( self._resources_tree.root )
 
     def _expandResourceDefaultsIdPrefixAndPath( self ):
         """Expands the default idprefix and path that are used as short-cut in the XML file."""
@@ -413,12 +407,9 @@ class LevelModel(metaworld.World):
         level_scope = self
         parent_scope = self.game_model
         self.tracker.scope_added( level_scope, metawog.LEVEL_SCOPE, parent_scope )
-        self.tracker.element_object_added( level_scope, self.level_tree,
-                                           metawog.LEVEL_GAME_FILE.root_object_desc )
-        self.tracker.element_object_added( level_scope, self.scene_tree,
-                                           metawog.LEVEL_SCENE_FILE.root_object_desc )
-        self.tracker.element_object_added( level_scope, self.resource_tree,
-                                           metawog.LEVEL_RESOURCE_FILE.root_object_desc )
+        self.tracker.element_object_added( self.level_tree )
+        self.tracker.element_object_added( self.scene_tree )
+        self.tracker.element_object_added( self.resource_tree )
         # cache
         for image_element in self.resource_tree.findall( './/Image' ):
             self._loadImageFromElement( image_element )
@@ -465,8 +456,7 @@ class LevelModel(metaworld.World):
                     self.images_by_id[new_value] = old_pixmap
                     del self.images_by_id[old_id]
                     reload_image = False
-        self.game_model.tracker.update_element_attribute( self, metawog.LEVEL_SCOPE, element,
-                                                          property_name, new_value )
+        self.game_model.tracker.update_element_attribute( element, property_name, new_value )
         if reload_image:
             self._loadImageFromElement( element )
         self.dirty_object_types.add( object_file )
@@ -485,12 +475,12 @@ class LevelModel(metaworld.World):
            If index is None, then the element is added after all the parent children.
            The element is inserted with all its children.
            """
-        # Update identifiers & reference related to element
-        self.tracker.element_object_added( self, element, object_file.find_object_desc_by_tag(element.tag) )
         # Adds the element
         if index is None:
             index = len(parent_element)
         parent_element.insert( index, element )
+        # Update identifiers & reference related to element
+        self.tracker.element_object_added( element )
         # Broadcast the insertion event
         self.dirty_object_types.add( object_file )
         if element.tag == 'Image':  # @todo dirty hack, need to be cleaner
@@ -504,7 +494,7 @@ class LevelModel(metaworld.World):
             print 'Warning: attempted to remove root element, GUI should not allow that'
             return False # can not remove those elements
         # @todo makes tag look-up fails once model is complete
-        self.tracker.element_object_about_to_be_removed( self, element, object_file.find_object_desc_by_tag(element.tag) )
+        self.tracker.element_object_about_to_be_removed( element )
         found = find_element_in_tree( self.getObjectFileRootElement(object_file), element )
         if found is None:
             print 'Warning: inconsistency, element to remove in not in the specified object_file', element

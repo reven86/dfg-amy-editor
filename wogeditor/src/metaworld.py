@@ -346,6 +346,8 @@ class ReferenceTracker(object):
     def object_added( self, scope_key, object_key, object_desc, attribute_retriever ):
         """Declares object identifier and track referenced objects."""
 ##        print 'REF: object_added', object_key
+        assert scope_key is not None
+        assert object_key is not None
         # Checks if the object has any identifier attribute
         identifier_desc = object_desc.identifier_attribute
         if identifier_desc:
@@ -358,6 +360,8 @@ class ReferenceTracker(object):
 
     def _register_object_identifier( self, scope_key, object_key, identifier_desc, identifier_value ):
 ##        print '=> registering "%s" with identifier: "%s"' % (object_key, repr(identifier_value))
+        assert scope_key is not None
+        assert object_key is not None
         if identifier_value is not None:
             # walk parents scopes until we find the right one.
             while self.scopes_by_key[scope_key][0] != identifier_desc.reference_scope:
@@ -598,6 +602,10 @@ class World(WorldsOwner):
         self._key = key
         self._parent_world = None
 
+    def __repr__( self ):
+        trees = ', '.join( tree.meta.name for tree in self._trees.values() )
+        return 'World(key="%s",meta="%s",trees=[%s])' % (self.key,self.meta,trees)
+
     @property
     def key( self ):
         return self._key 
@@ -664,11 +672,14 @@ class Tree:
 
     def set_root( self, root_element ):
         assert root_element is None or isinstance(root_element, Element), type(root_element)
-        if self._root_element:  # detach old root
+        if self._root_element is not None:  # detach old root
             self._root_element._tree = None
-        if root_element: # attach new root
+        if root_element is not None: # attach new root
             root_element._tree = self
         self._root_element = root_element
+
+    def __repr__( self ):
+        return 'Tree(meta="%s",id="%s",root="%s")' % (self.meta,id(self),self.root)
 
     @property
     def universe( self ):
@@ -735,18 +746,22 @@ class Element(_ElementBase):
     @property
     def universe( self ):
         world = self.world
-        return world and world.universe or None
+        if world is None:
+            return None
+        return world.universe
 
     @property
     def world( self ):
         tree = self.tree
-        return tree and tree.world or None
+        if tree is None:
+            return None
+        return tree.world
 
     @property
     def tree( self ):
-        if self._parent:
-            return  self._parent.tree
-        return self._tree
+        if self._parent is None:
+            return self._tree
+        return  self._parent.tree
 
     @property
     def parent( self ):
@@ -1191,6 +1206,7 @@ if __name__ == "__main__":
                 self.assertEqual( self.universe, level_tree.universe )
                 self.assertEqual( self.world_level1, level_tree.world )
                 self.assertEqual( level_tree, self.world_level1.find_tree( TEST_LEVEL_FILE ) )
+                self.assertEqual( self.world_level1, level_tree.root.world )
                 # content            
                 inline = level_tree.root
                 self.assertEqual( LEVEL_INLINE, inline.meta )
@@ -1216,8 +1232,15 @@ if __name__ == "__main__":
             cloned_tree = level_tree.clone()
             xml_data = cloned_tree.to_xml()
             check( xml_data )
+
+        def test_from_xml2( self ):
+            xml_data = """<inline></inline>"""
+            level_tree = self.world_level1.make_tree_from_xml( TEST_LEVEL_FILE, xml_data )
+            self.assertEqual( self.world_level1, level_tree.world )
+            self.assertEqual( self.world_level1, level_tree.root.world )
             
 
 # to test:
+# clone
 
     unittest.main()
