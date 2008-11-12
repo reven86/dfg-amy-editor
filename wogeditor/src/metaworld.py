@@ -54,6 +54,12 @@ class AttributeDesc(object):
     def attach_to_object_desc( self, object_desc ):
         self.object_desc = object_desc
 
+    def get( self, element ):
+       return element.get( self.name )
+
+    def set( self, element, value ):
+       return element.set( self.name, value )
+
     def __repr__( self ):
         return '%s(name=%s, type=%s, mandatory=%s)' % (self.__class__.__name__, self.name, self.type, self.mandatory)
 
@@ -331,32 +337,33 @@ class ReferenceTracker(object):
        It keeps track of all references on a given object familly/identifier (to easily rename for example).
     """
     def __init__( self ):
-        self.scopes_by_key = {} # (scope_desc, parent_scope_key) by scope_key
+        self.scopes_by_world = {} # (scope_desc, parent_scope_key) by scope_key
         self.ref_by_scope_and_familly = {} # dict( (scope_key,familly): dict(id: object_key) )
         self.back_references = {} # dict( (familly,identifier) : set(scope_key,object_key,attribute_desc)] )
 
     # Mutators
-    def scope_added( self, scope_key, scope_desc, parent_scope_key ):
-        assert scope_key not in self.scopes_by_key
-        self.scopes_by_key[scope_key] = (scope_desc, parent_scope_key)
+    def scope_added( self, world ):
+        assert world not in self.scopes_by_world
+        self.scopes_by_world[world] = (world.meta, world.parent_world)
     
-    def scope_about_to_be_removed( self, scope_key ):
-        del self.scopes_by_key[scope_key]
+    def scope_about_to_be_removed( self, world ):
+        del self.scopes_by_world[world]
 
-    def object_added( self, scope_key, object_key, object_desc, attribute_retriever ):
+    def object_added( self, element ):
         """Declares object identifier and track referenced objects."""
-##        print 'REF: object_added', object_key
-        assert scope_key is not None
-        assert object_key is not None
+##        print 'REF: object_added', element
+        world = element.world
+        assert world is not None
+        assert element is not None
         # Checks if the object has any identifier attribute
-        identifier_desc = object_desc.identifier_attribute
+        identifier_desc = element.meta.identifier_attribute
         if identifier_desc:
-            identifier_value = attribute_retriever( scope_key, object_key, identifier_desc )
-            self._register_object_identifier( scope_key, object_key, identifier_desc, identifier_value )
+            identifier_value = identifier_desc.get( element )
+            self._register_object_identifier( world, element, identifier_desc, identifier_value )
         # Checks object for all reference attributes
-        for attribute_desc in object_desc.reference_attributes:
-            reference_value = attribute_retriever( scope_key, object_key, attribute_desc )
-            self._register_object_reference( scope_key, object_key, attribute_desc, reference_value )
+        for attribute_desc in element.meta.reference_attributes:
+            reference_value = attribute_desc.get( element )
+            self._register_object_reference( world, element, attribute_desc, reference_value )
 
     def _register_object_identifier( self, scope_key, object_key, identifier_desc, identifier_value ):
 ##        print '=> registering "%s" with identifier: "%s"' % (object_key, repr(identifier_value))
@@ -364,8 +371,8 @@ class ReferenceTracker(object):
         assert object_key is not None
         if identifier_value is not None:
             # walk parents scopes until we find the right one.
-            while self.scopes_by_key[scope_key][0] != identifier_desc.reference_scope:
-                scope_key = self.scopes_by_key[scope_key][1]
+            while self.scopes_by_world[scope_key][0] != identifier_desc.reference_scope:
+                scope_key = self.scopes_by_world[scope_key][1]
             references = self.ref_by_scope_and_familly.get( (scope_key,identifier_desc.reference_familly) )
             if references is None:
                 references = {}
@@ -381,17 +388,20 @@ class ReferenceTracker(object):
                 self.back_references[back_reference_key] = back_references
             back_references.add( (scope_key, object_key, attribute_desc) )
 
-    def object_about_to_be_removed( self, scope_key, object_key, object_desc, attribute_retriever ):
-##        print 'REF: object_about_to_be_removed', object_key
+    def object_about_to_be_removed( self, element ):
+##        print 'REF: object_about_to_be_removed', element
+        scope_key = element.world
+        assert scope_key is not None
+        object_desc = element.meta
         # Checks if the object has any identifier attribute
         identifier_desc = object_desc.identifier_attribute
         if identifier_desc:
-            identifier_value = attribute_retriever( scope_key, object_key, identifier_desc )
-            self._unregister_object_identifier( scope_key, object_key, identifier_desc, identifier_value )
+            identifier_value = identifier_desc.get( element )
+            self._unregister_object_identifier( scope_key, element, identifier_desc, identifier_value )
         # Checks object for all reference attributes
         for attribute_desc in object_desc.reference_attributes:
-            reference_value = attribute_retriever( scope_key, object_key, attribute_desc )
-            self._unregister_object_reference( scope_key, object_key, attribute_desc, reference_value )
+            reference_value = attribute_desc.get( element )
+            self._unregister_object_reference( scope_key, element, attribute_desc, reference_value )
 
     def _unregister_object_identifier( self, scope_key, object_key, identifier_desc, identifier_value ):
 ##        print '=> unregistering "%s" with identifier: "%s"' % (object_key, repr(identifier_value))
@@ -410,7 +420,9 @@ class ReferenceTracker(object):
             if back_references:
                 back_references.remove( (scope_key, object_key, attribute_desc) )
 
-    def attribute_updated( self, scope_key, object_key, attribute_desc, old_value, new_value ):
+    def attribute_updated( self, object_key, attribute_desc, old_value, new_value ):
+        scope_key = object_key.world
+        assert scope_key is not None
         object_desc = attribute_desc.object_desc
         identifier_desc = object_desc.identifier_attribute
         if identifier_desc is attribute_desc:
@@ -424,7 +436,7 @@ class ReferenceTracker(object):
     def is_valid_reference( self, scope_key, attribute_desc, attribute_value ):
         references = self.ref_by_scope_and_familly.get( (scope_key,attribute_desc.reference_familly) )
         if references is None or attribute_value not in references:
-            scope_desc, parent_scope_key = self.scopes_by_key[scope_key]
+            scope_desc, parent_scope_key = self.scopes_by_world[scope_key]
             if parent_scope_key is not None:
                 return self.is_valid_reference( parent_scope_key, attribute_desc, attribute_value )
             return False
@@ -433,7 +445,7 @@ class ReferenceTracker(object):
     def list_identifiers( self, scope_key, familly ):
         """Returns a list all identifiers for the specified familly in the specified scope and its parent scopes."""
         identifiers = self.ref_by_scope_and_familly.get( (scope_key, familly), {} ).keys()
-        scope_desc, parent_scope_key = self.scopes_by_key[scope_key]
+        scope_desc, parent_scope_key = self.scopes_by_world[scope_key]
         if parent_scope_key is not None:
             identifiers.extend( self.list_identifiers( parent_scope_key, familly ) )
         return identifiers
@@ -771,6 +783,12 @@ class Element(_ElementBase):
     @property
     def meta( self ):
         return self._object_desc
+
+    def attribute_meta( self, attribute_name ):
+       """Returns the AttributeDesc for the specified attribute.
+          @exception KeyError if attribute not found.
+       """
+       return self._object_desc.attributes_by_name[attribute_name]
 
     def append( self, element ):
         """Adds a subelement to the end of this element.

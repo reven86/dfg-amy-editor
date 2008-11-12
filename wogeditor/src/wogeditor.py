@@ -72,7 +72,7 @@ class ElementReferenceTracker(metaworld.ReferenceTracker):
         object_desc = object.meta
         scope_key = object.world
         assert scope_key is not None, object
-        metaworld.ReferenceTracker.object_added( self, scope_key, object, object_desc, self._retrieve_element_attribute )
+        metaworld.ReferenceTracker.object_added( self, object )
         scope_desc = object_desc.scope
         for child_element in object:    # recurse to add all child elements
             child_object_desc = object_desc.find_immediate_child_by_tag( child_element.tag )
@@ -85,11 +85,8 @@ class ElementReferenceTracker(metaworld.ReferenceTracker):
     def element_object_about_to_be_removed( self, element ):
         """Unregisters the specified element and all its children that are declared in the scope description.
         """
-        scope_key = element.world
         object_desc = element.meta
-        assert scope_key is not None, element
-        metaworld.ReferenceTracker.object_about_to_be_removed( self, scope_key, element, object_desc,
-                                                             self._retrieve_element_attribute )
+        metaworld.ReferenceTracker.object_about_to_be_removed( self, element )
         scope_desc = object_desc.scope
         for child_element in element:    # recurse to add all child elements
             child_object_desc = object_desc.find_immediate_child_by_tag( child_element.tag )
@@ -102,20 +99,10 @@ class ElementReferenceTracker(metaworld.ReferenceTracker):
     def update_element_attribute( self, element, attribute_name, new_value ):
         """Updates an element attribute value and automatically updates related identifier/back-references.
         """
-        scope_key = element.world
-        scope_desc = element.world.meta
-        object_desc = element.meta
-        assert scope_key is not None, element
-        
         old_value = element.get( attribute_name )
         element.set( attribute_name, new_value )
-        if object_desc:
-            attribute_desc = object_desc.attributes_by_name.get( attribute_name )
-            if attribute_desc:
-                self.attribute_updated( scope_key, element, attribute_desc, old_value, new_value )
-
-    def _retrieve_element_attribute( self, scope_key, object_key, attribute_desc ):
-        return object_key.get( attribute_desc.name )
+        attribute_desc = element.attribute_meta( attribute_name )
+        self.attribute_updated( element, attribute_desc, old_value, new_value )
 
 class GameModelException(Exception):
     pass
@@ -205,13 +192,13 @@ class GameModel(QtCore.QObject):
                                             os.path.join(ball_dir, ball_name), 'resources.xml.bin' )
             assert ball_tree.world == ball_world
             assert ball_tree.root.world == ball_world, ball_tree.root.world
-            self.tracker.scope_added( ball_world, ball_world.meta, self.global_world )
+            self.tracker.scope_added( ball_world )
             self.tracker.element_object_added( ball_tree.root )
             self.tracker.element_object_added( resource_tree.root )
 
     def _initializeGlobalReferences( self ):
         """Initialize global effects, materials, resources and texts references."""
-        self.tracker.scope_added( self.global_world, metawog.GLOBAL_SCOPE, None )
+        self.tracker.scope_added( self.global_world )
         self.tracker.element_object_added( self._effects_tree.root )
         self.tracker.element_object_added( self._materials_tree.root )
         self.tracker.element_object_added( self._texts_tree.root )
@@ -406,7 +393,7 @@ class LevelModel(metaworld.World):
     def initializeLevelReferencesAndCache( self ):
         level_scope = self
         parent_scope = self.game_model
-        self.tracker.scope_added( level_scope, metawog.LEVEL_SCOPE, parent_scope )
+        self.tracker.scope_added( level_scope )
         self.tracker.element_object_added( self.level_tree )
         self.tracker.element_object_added( self.scene_tree )
         self.tracker.element_object_added( self.resource_tree )
