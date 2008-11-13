@@ -11,7 +11,7 @@ While objects live in a scope, they are attached to a given "file" in that scope
 files, but each file can only have one root object.
 
 The structure of the graph of objects is defined statically:
-- structure of the scope kind hieararchy
+- structure of the scope kind hierarchy
 - kind of file attached to each kind of scope
 - root object description attached to each file
 - for each object description, its possible child object description, and its attribute description.
@@ -20,6 +20,9 @@ Object description can define constraint such as the minimum or maximum number o
 Attribute description can indicate if the attribute is mandatory, its value domain, typical initial value, type...
 """
 import xml.etree.ElementTree
+# Publish/subscribe framework
+# See http://louie.berlios.de/ and http://pydispatcher.sf.net/
+import louie 
 
 
 # Different type of attributes
@@ -40,9 +43,10 @@ PATH_TYPE = 'path'
 
 
 class AttributeDesc(object):
-    def __init__( self, name, type, init = None, default = None, allow_empty = False, mandatory = False ):
+    def __init__( self, name, attribute_type, init = None, default = None, 
+                  allow_empty = False, mandatory = False ):
         self.name = name
-        self.type = type
+        self.type = attribute_type
         if init is not None:
             init = str(init)
         self.init = init
@@ -55,28 +59,28 @@ class AttributeDesc(object):
         self.object_desc = object_desc
 
     def get( self, element ):
-       return element.get( self.name )
+        return element.get( self.name )
 
     def set( self, element, value ):
-       return element.set( self.name, value )
+        return element.set( self.name, value )
 
     def __repr__( self ):
         return '%s(name=%s, type=%s, mandatory=%s)' % (self.__class__.__name__, self.name, self.type, self.mandatory)
 
 class NumericAttributeDesc(AttributeDesc):
-    def __init__( self, name, type, min_value = None, max_value = None, **kwargs ):
-        AttributeDesc.__init__( self, name, type, **kwargs )
+    def __init__( self, name, attribute_type, min_value = None, max_value = None, **kwargs ):
+        AttributeDesc.__init__( self, name, attribute_type, **kwargs )
         self.min_value = min_value
         self.max_value = max_value
 
 class ColorAttributeDesc(AttributeDesc):
-    def __init__( self, name, type, components, **kwargs ):
-        AttributeDesc.__init__( self, name, type, **kwargs )
+    def __init__( self, name, attribute_type, components, **kwargs ):
+        AttributeDesc.__init__( self, name, attribute_type, **kwargs )
         self.nb_components = components
 
 class Vector2DAttributeDesc(AttributeDesc):
-    def __init__( self, name, type, **kwargs ):
-        AttributeDesc.__init__( self, name, type, **kwargs )
+    def __init__( self, name, attribute_type, **kwargs ):
+        AttributeDesc.__init__( self, name, attribute_type, **kwargs )
 
 class EnumeratedAttributeDesc(AttributeDesc):
     def __init__( self, name, values, is_list = False, **kwargs ):
@@ -463,8 +467,8 @@ def print_scope( scope ):
     print '* Scope:', scope.scope_name
     for child_scope in scope.child_scopes:
         print '  has child scope:', child_scope.scope_name
-    for file in scope.files_desc_by_name:
-        print '  contained file:', file
+    for tree in scope.files_desc_by_name:
+        print '  contained file:', tree
     print '  contains object:', ', '.join( sorted(scope.objects_by_tag) )
     for child_scope in scope.child_scopes:
         print_scope( child_scope )
@@ -482,24 +486,49 @@ def print_file_desc( file_desc ):
     print '  object tree:'
     print_object_desc_tree( file_desc.root_object_desc, '        ' )
 
-def print_object_desc_tree( object, indent ):
+def print_object_desc_tree( element, indent ):
     """Diagnostic function that print the hierarchy of an ObjectDesc and its children."""
     suffix = ''
-    if object.min_occurrence == object.max_occurrence:
-        if object.min_occurrence > 1:
-            suffix = '{%d}' % object.min_occurrence
-    elif object.min_occurrence == 0:
-        if object.max_occurrence == 1:
+    if element.min_occurrence == element.max_occurrence:
+        if element.min_occurrence > 1:
+            suffix = '{%d}' % element.min_occurrence
+    elif element.min_occurrence == 0:
+        if element.max_occurrence == 1:
             suffix = '?'
         else:
             suffix = '*'
-    elif object.min_occurrence == 1:
+    elif element.min_occurrence == 1:
         suffix = '+'
     else:
-        suffix = '{%d-%d}' % (object.min_occurrence, object.max_occurrence)
-    print indent + object.tag + suffix
-    for child_object in object.objects_by_tag.itervalues():
+        suffix = '{%d-%d}' % (element.min_occurrence, element.max_occurrence)
+    print indent + element.tag + suffix
+    for child_object in element.objects_by_tag.itervalues():
         print_object_desc_tree( child_object, indent + '    ' )
+
+
+
+
+# SIGNALS
+ELEMENT_ADDED = 'added'
+ELEMENT_ABOUT_TO_BE_REMOVED = 'about_to_be_removed'
+ELEMENT_ATTRIBUTE_UPDATED = 'updated'
+
+class ElementAdded(louie.Signal):
+    """Signal emitted when one element has been inserted into a tree or another element.
+       The parent element/tree must be connected connected to a tree for
+       the signal to be emitted.
+       Signature: (parent_element, element, index_in_parent)
+    """
+
+class ElementAboutToBeRemoved(louie.Signal):
+    """Signal emitted when an element connected to a tree is about to be removed.
+       Signature: (parent_element, element, index_in_parent)
+    """
+
+class AttributeUpdated(louie.Signal):
+    """Signal emitted when an attribute of an element connected to a tree has been modified.
+       Signature: (element, attribute_name, new_value, old_value )
+    """
 
 class WorldsOwner:
     def __init__( self ):
@@ -538,6 +567,7 @@ class WorldsOwner:
     def _attach_world( self, world ):
         """Called when a world is attached to the owner."""
         raise NotImplemented()
+
 
 class Universe(WorldsOwner):
     """Represents the universe where all elements, worlds and trees live in.
@@ -736,7 +766,7 @@ class Element(_ElementBase):
     def __init__( self, object_desc, attributes = None, children = None ):
         """Initializes the element of type object_descwith the specified attributes.
            object_desc: an ObjectDesc instance
-           attributes: a dictionnary of (name, value) of attributes values
+           attributes: a dictionary of (name, value) of attributes values
            children: an iterable (list) of child elements not attached to any tree to be attached as child of this element.
         """
         _ElementBase.__init__( self, object_desc.tag, attributes and attributes.copy() or {} )
@@ -749,11 +779,6 @@ class Element(_ElementBase):
 
     def is_root( self ):
         return self._parent is None
-
-    def unset( self, attribute_name ):
-        """Removes the specified attribute from the element.
-        """
-        del self.attrib[attribute_name] # is it okay to access attrib directly ?
 
     @property
     def universe( self ):
@@ -785,26 +810,33 @@ class Element(_ElementBase):
         return self._object_desc
 
     def attribute_meta( self, attribute_name ):
-       """Returns the AttributeDesc for the specified attribute.
-          @exception KeyError if attribute not found.
-       """
-       return self._object_desc.attributes_by_name[attribute_name]
+        """Returns the AttributeDesc for the specified attribute.
+           @exception KeyError if attribute not found.
+        """
+        return self._object_desc.attributes_by_name[attribute_name]
 
     def append( self, element ):
         """Adds a subelement to the end of this element.
            @param element The element to add.
            @exception AssertionError If a sequence member is not a valid object.
         """
-        _ElementBase.append( self, element )
+        index = len(self)
+        self._children.append( element )
         self._parent_element( element )
+        tree = self.tree
+        if tree:
+            louie.send( ElementAdded, tree, self, element, index )
 
     def insert( self, index, element ):
         """Inserts a subelement at the given position in this element.
            @param index Where to insert the new subelement.
            @exception AssertionError If the element is not a valid object.
         """
-        _ElementBase.insert( self, index, element )
+        self._children.insert( index, element )
         self._parent_element( element )
+        tree = self.tree
+        if tree:
+            louie.send( ElementAdded, tree, self, element, index )
 
     def __setitem__( self, index, element ):
         """Replaces the given subelement.
@@ -814,16 +846,31 @@ class Element(_ElementBase):
            @exception AssertionError If element is not a valid object.
         """
         self[index]._parent = None
-        _ElementBase.__setitem__( self, index, element )
+        tree = self.tree
+        old_element = self._children[index]
+        if tree:
+            louie.send( ElementAboutToBeRemoved, tree, self, old_element, index )
+        self._children[index] = element
+        old_element._parent = None
         self._parent_element( element )
+        if tree:
+            louie.send( ElementAdded, tree, self, element, index )
 
     def __delitem__( self, index ):
         """Deletes the given subelement.
            @param index What subelement to delete.
            @exception IndexError If the given element does not exist.
         """
-        self._children[index]._parent = None
-        _ElementBase.__delitem__( self, index )
+        if index < 0:
+            index += len(self)
+        if index < 0 or index >= len(self):
+            raise IndexError( "Index %(i)d is not in range[0,%(len)d[" % {'i':index,'len':len(self)} )
+        tree = self.tree
+        element = self._children[index]
+        if tree:
+            louie.send( ElementAboutToBeRemoved, tree, self, element, index )
+        del self._children[index]
+        element._parent = None
 
     def __setslice__( self, start, stop, elements ):
         """Replaces a number of subelements with elements from a sequence.
@@ -832,20 +879,59 @@ class Element(_ElementBase):
            @param elements A sequence object with zero or more elements.
            @exception AssertionError If a sequence member is not a valid object.
         """
-        for element in self[start:stop]:
+        if start < 0:
+            start += len(self)
+        if start < 0 or start >= len(self):
+            raise IndexError( "Start index %(i)d is not in range[0,%(len)d[" % {'i':start,'len':len(self)} )
+        if stop < 0:
+            stop += len(self)
+        if stop < start:
+            stop = start
+        if stop > len(self):
+            raise IndexError( "End index %(i)d is not in range[0,%(len)d]" % {'i':stop,'len':len(self)} )
+        tree = self.tree
+        for index in xrange(start,stop):
+            element = self._children[start]
+            if tree:
+                louie.send( ElementAboutToBeRemoved, tree, self, element, start )
             element._parent = None
-        _ElementBase.__setslice__( self, start, stop, elements )
-        for element in elements:
+            del self._children[start]
+        for offset, element in enumerate(elements):
+            index = start + offset
             self._parent_element( element )
+            self._children.insert( index, element )
+            louie.send( ElementAdded, tree, self, element, index )
 
     def __delslice__( self, start, stop ):
         """Deletes a number of subelements.
            @param start The first subelement to delete.
            @param stop The first subelement to leave in there.
         """
-        for element in self[start:stop]:
+        if start < 0:
+            start += len(self)
+        if start < 0 or start >= len(self):
+            raise IndexError( "Start index %(i)d is not in range[0,%(len)d[" % {'i':start,'len':len(self)} )
+        if stop < 0:
+            stop += len(self)
+        if stop < start:
+            stop = start
+        if stop > len(self):
+            raise IndexError( "End index %(i)d is not in range[0,%(len)d]" % {'i':stop,'len':len(self)} )
+        tree = self.tree
+        for index in xrange(start,stop):
+            element = self._children[start]
+            if tree:
+                louie.send( ElementAboutToBeRemoved, tree, self, element, start )
             element._parent = None
-        _ElementBase.__delslice__( self, start, stop )
+            del self._children[start]
+
+    def index_in_parent( self ):
+        """Returns the index of the element in its parent.
+           Returns None if the element has no parent.
+        """
+        if self._parent is None:
+            return None
+        return self._parent._children.index( self )
 
     def remove( self, element ):
         """Removes a matching subelement.  Unlike the <b>find</b> methods,
@@ -855,29 +941,54 @@ class Element(_ElementBase):
            @exception ValueError If a matching element could not be found.
            @exception AssertionError If the element is not a valid object.
         """
-        _ElementBase.remove( self, element )
+        index = self._children.index( element )
+        tree = self.tree
+        if tree:
+            louie.send( ElementAboutToBeRemoved, tree, self, element, index )
+        del self._children[index]
         element._parent = None
 
     def clear( self ):
         """Resets an element.  This function removes all subelements, clears
            all attributes, and sets the text and tail attributes to None.
         """
-        for element in self:
+        tree = self.tree
+        for index in xrange(0,len(self)):
+            element = self._children[0]
+            if tree:
+                louie.send( ElementAboutToBeRemoved, tree, self, element, 0 )
             element._parent = None
+            del self._children[0]
         _ElementBase.clear( self )
 
-    def set(self, key, value):
+    def set(self, key, new_value):
         """Sets an element attribute.
            @param key What attribute to set.
            @param value The attribute value.
            @exception KeyError if the element has no attribute with the specified name in its description.
         """
         # @todo check that value is string-like
+        assert new_value is not None
         if key not in self._object_desc.attributes_by_name:
             raise KeyError( 'element %(tag)s has no attribute %(name)s' % {
                 'tag': self.meta.tag,
                 'name': key } )
-        self.attrib[key] = value
+        tree = self.tree
+        if tree:
+            old_value = self.attrib.get(key)
+            self.attrib[key] = new_value
+            louie.send( AttributeUpdated, tree, self, key, new_value, old_value )
+        else:
+            self.attrib[key] = new_value
+
+    def unset( self, attribute_name ):
+        """Removes the specified attribute from the element.
+        """
+        tree = self.tree
+        if tree:
+            old_value = self.attrib[attribute_name]
+            louie.send( AttributeUpdated, tree, self, attribute_name, None, old_value )
+        del self.attrib[attribute_name]
 
     def _parent_element( self, element ):
         assert isinstance(element, Element)
@@ -943,10 +1054,10 @@ if __name__ == "__main__":
         def add_object( self, key, object_desc, **attributes ):
             self.data[key] = attributes
             self.objects_desc[key] = object_desc
-            self.tracker.object_added( self, key, object_desc, self._retrieve_attribute )
+            self.tracker.object_added( key )
 
         def remove_object( self, key ):
-            self.tracker.object_about_to_be_removed( self, key, self.objects_desc[key], self._retrieve_attribute )
+            self.tracker.object_about_to_be_removed( key )
             del self.data[key]
             del self.objects_desc[key]
 
@@ -955,13 +1066,13 @@ if __name__ == "__main__":
             for name, new_value in attributes.iteritems():
                 old_value = self.data[key].get( name )
                 self.data[key][name] = new_value
-                self.tracker.attribute_updated( self, key, object_desc.attributes_by_name[name],
+                self.tracker.attribute_updated( key, object_desc.attributes_by_name[name],
                                                 old_value, new_value )
 
         def _retrieve_attribute( self, scope_key, object_key, attribute_desc ):
-            object = scope_key.data.get(object_key)
-            if object:
-                return object.get(attribute_desc.name)
+            element = scope_key.data.get(object_key)
+            if element:
+                return element.get(attribute_desc.name)
             return None
 
         def __repr__( self ):
@@ -970,118 +1081,118 @@ if __name__ == "__main__":
 
     class MetaTest(unittest.TestCase):
 
-        def test_identifiers(self):
-            tracker = ReferenceTracker()
-            global_scope = TestScope(tracker,'global')
-            tracker.scope_added( global_scope, TEST_GLOBAL_SCOPE, None )
-            level1_scope = TestScope(tracker,'level1')
-            tracker.scope_added( level1_scope, TEST_LEVEL_SCOPE, global_scope )
-            # add objects
-            global_scope.add_object( 'hello', GLOBAL_TEXT, id = 'TEXT_HELLO', fr = 'bonjour' )
-            level1_scope.add_object( 'hi', LEVEL_TEXT, id = 'TEXT_HI', fr = 'salut' )
-            # check
-            self.assert_( tracker.is_valid_reference( global_scope,
-                                                      LEVEL_SIGN.attributes_by_name['text'],
-                                                      'TEXT_HELLO' ) )
-            self.assert_( tracker.is_valid_reference( level1_scope,
-                                                      LEVEL_SIGN.attributes_by_name['text'],
-                                                      'TEXT_HELLO' ) )
-            self.assert_( tracker.is_valid_reference( level1_scope,
-                                                      LEVEL_SIGN.attributes_by_name['text'],
-                                                      'TEXT_HI' ) )
-            self.failIf( tracker.is_valid_reference( global_scope,
-                                                     LEVEL_SIGN.attributes_by_name['text'],
-                                                     'TEXT_HI' ) )
-            self.assertEqual( ['TEXT_HELLO'], tracker.list_identifiers( global_scope, 'text' ) )
-            self.assertEqual( sorted(['TEXT_HELLO','TEXT_HI']),
-                              sorted(tracker.list_identifiers( level1_scope, 'text' )) )
-            # update global hello object attribute
-            global_scope.update_attribute( 'hello', id='TEXT_HELLO_NEW', fr='bonjour new' )
-            # check
-            self.failIf( tracker.is_valid_reference( global_scope,
-                                                     LEVEL_SIGN.attributes_by_name['text'],
-                                                     'TEXT_HELLO' ) )
-            self.failIf( tracker.is_valid_reference( level1_scope,
-                                                     LEVEL_SIGN.attributes_by_name['text'],
-                                                     'TEXT_HELLO' ) )
-            self.assert_( tracker.is_valid_reference( global_scope,
-                                                      LEVEL_SIGN.attributes_by_name['text'],
-                                                      'TEXT_HELLO_NEW' ) )
-            self.assert_( tracker.is_valid_reference( level1_scope,
-                                                      LEVEL_SIGN.attributes_by_name['text'],
-                                                      'TEXT_HELLO_NEW' ) )
-            self.assertEqual( ['TEXT_HELLO_NEW'], tracker.list_identifiers( global_scope, 'text' ) )
-            self.assertEqual( sorted(['TEXT_HELLO_NEW','TEXT_HI']),
-                              sorted(tracker.list_identifiers( level1_scope, 'text' )) )
-            # remove object
-            global_scope.remove_object( 'hello' )
-            # check
-            self.failIf( tracker.is_valid_reference( level1_scope,
-                                                     LEVEL_SIGN.attributes_by_name['text'],
-                                                     'TEXT_HELLO_NEW' ) )
-            self.assertEqual( sorted(['TEXT_HI']),
-                              sorted(tracker.list_identifiers( level1_scope, 'text' )) )
+##        def test_identifiers(self):
+##            tracker = ReferenceTracker()
+##            global_scope = TestScope(tracker,'global')
+##            tracker.scope_added( global_scope, TEST_GLOBAL_SCOPE, None )
+##            level1_scope = TestScope(tracker,'level1')
+##            tracker.scope_added( level1_scope, TEST_LEVEL_SCOPE, global_scope )
+##            # add objects
+##            global_scope.add_object( 'hello', GLOBAL_TEXT, id = 'TEXT_HELLO', fr = 'bonjour' )
+##            level1_scope.add_object( 'hi', LEVEL_TEXT, id = 'TEXT_HI', fr = 'salut' )
+##            # check
+##            self.assert_( tracker.is_valid_reference( global_scope,
+##                                                      LEVEL_SIGN.attributes_by_name['text'],
+##                                                      'TEXT_HELLO' ) )
+##            self.assert_( tracker.is_valid_reference( level1_scope,
+##                                                      LEVEL_SIGN.attributes_by_name['text'],
+##                                                      'TEXT_HELLO' ) )
+##            self.assert_( tracker.is_valid_reference( level1_scope,
+##                                                      LEVEL_SIGN.attributes_by_name['text'],
+##                                                      'TEXT_HI' ) )
+##            self.failIf( tracker.is_valid_reference( global_scope,
+##                                                     LEVEL_SIGN.attributes_by_name['text'],
+##                                                     'TEXT_HI' ) )
+##            self.assertEqual( ['TEXT_HELLO'], tracker.list_identifiers( global_scope, 'text' ) )
+##            self.assertEqual( sorted(['TEXT_HELLO','TEXT_HI']),
+##                              sorted(tracker.list_identifiers( level1_scope, 'text' )) )
+##            # update global hello object attribute
+##            global_scope.update_attribute( 'hello', id='TEXT_HELLO_NEW', fr='bonjour new' )
+##            # check
+##            self.failIf( tracker.is_valid_reference( global_scope,
+##                                                     LEVEL_SIGN.attributes_by_name['text'],
+##                                                     'TEXT_HELLO' ) )
+##            self.failIf( tracker.is_valid_reference( level1_scope,
+##                                                     LEVEL_SIGN.attributes_by_name['text'],
+##                                                     'TEXT_HELLO' ) )
+##            self.assert_( tracker.is_valid_reference( global_scope,
+##                                                      LEVEL_SIGN.attributes_by_name['text'],
+##                                                      'TEXT_HELLO_NEW' ) )
+##            self.assert_( tracker.is_valid_reference( level1_scope,
+##                                                      LEVEL_SIGN.attributes_by_name['text'],
+##                                                      'TEXT_HELLO_NEW' ) )
+##            self.assertEqual( ['TEXT_HELLO_NEW'], tracker.list_identifiers( global_scope, 'text' ) )
+##            self.assertEqual( sorted(['TEXT_HELLO_NEW','TEXT_HI']),
+##                              sorted(tracker.list_identifiers( level1_scope, 'text' )) )
+##            # remove object
+##            global_scope.remove_object( 'hello' )
+##            # check
+##            self.failIf( tracker.is_valid_reference( level1_scope,
+##                                                     LEVEL_SIGN.attributes_by_name['text'],
+##                                                     'TEXT_HELLO_NEW' ) )
+##            self.assertEqual( sorted(['TEXT_HI']),
+##                              sorted(tracker.list_identifiers( level1_scope, 'text' )) )
 
-        def test_back_references(self):
-            tracker = ReferenceTracker()
-            global_scope = TestScope(tracker,'global')
-            tracker.scope_added( global_scope, TEST_GLOBAL_SCOPE, None )
-            level1_scope = TestScope(tracker,'level1')
-            tracker.scope_added( level1_scope, TEST_LEVEL_SCOPE, global_scope )
-            level2_scope = TestScope(tracker,'level2')
-            tracker.scope_added( level2_scope, TEST_LEVEL_SCOPE, global_scope )
-            # add objects
-            global_scope.add_object( 'hello', GLOBAL_TEXT, id = 'TEXT_HELLO', fr = 'bonjour' )
-            level1_scope.add_object( 'hi', LEVEL_TEXT, id = 'TEXT_HI', fr = 'salut' )
-            for level_scope in (level1_scope, level2_scope):
-                level_scope.add_object( 'sign1', LEVEL_SIGN, text = 'TEXT_HI' )
-                level_scope.add_object( 'sign2', LEVEL_SIGN, text = 'TEXT_HELLO' )
-            level1_scope.add_object( 'sign3', LEVEL_SIGN, text = 'TEXT_HI' )
-            level2_scope.add_object( 'sign4', LEVEL_SIGN, text = 'TEXT_HELLO', alt_text = 'TEXT_HELLO' )
-            # check
-            level_text_attribute = LEVEL_SIGN.attributes_by_name['text']
-            level_alt_text_attribute = LEVEL_SIGN.attributes_by_name['alt_text']
-            self.assertEqual( sorted([ (level1_scope, 'sign2', level_text_attribute),
-                                       (level2_scope, 'sign2', level_text_attribute),
-                                       (level2_scope, 'sign4', level_text_attribute),
-                                       (level2_scope, 'sign4', level_alt_text_attribute) ]),
-                              sorted(tracker.list_references( 'text', 'TEXT_HELLO' )) )
-            self.assertEqual( sorted([ (level1_scope, 'sign1', level_text_attribute),
-                                       (level2_scope, 'sign1', level_text_attribute),
-                                       (level1_scope, 'sign3', level_text_attribute) ]),
-                              sorted(tracker.list_references( 'text', 'TEXT_HI' )) )
-            # remove object
-            level2_scope.remove_object( 'sign4' )
-            self.assertEqual( sorted([ (level1_scope, 'sign2', level_text_attribute),
-                                       (level2_scope, 'sign2', level_text_attribute) ]),
-                              sorted(tracker.list_references( 'text', 'TEXT_HELLO' )) )
-            # update objects
-            level1_scope.update_attribute( 'sign2', text='TEXT_HI' )
-            level1_scope.update_attribute( 'sign3', text='TEXT_HELLO' )
-            # check
-            self.assertEqual( sorted([ (level2_scope, 'sign2', level_text_attribute),
-                                       (level1_scope, 'sign3', level_text_attribute) ]),
-                              sorted(tracker.list_references( 'text', 'TEXT_HELLO' )) )
-            self.assertEqual( sorted([ (level1_scope, 'sign1', level_text_attribute),
-                                       (level2_scope, 'sign1', level_text_attribute),
-                                       (level1_scope, 'sign2', level_text_attribute) ]),
-                              sorted(tracker.list_references( 'text', 'TEXT_HI' )) )
+##        def test_back_references(self):
+##            tracker = ReferenceTracker()
+##            global_scope = TestScope(tracker,'global')
+##            tracker.scope_added( global_scope )
+##            level1_scope = TestScope(tracker,'level1')
+##            tracker.scope_added( level1_scope, TEST_LEVEL_SCOPE, global_scope )
+##            level2_scope = TestScope(tracker,'level2')
+##            tracker.scope_added( level2_scope, TEST_LEVEL_SCOPE, global_scope )
+##            # add objects
+##            global_scope.add_object( 'hello', GLOBAL_TEXT, id = 'TEXT_HELLO', fr = 'bonjour' )
+##            level1_scope.add_object( 'hi', LEVEL_TEXT, id = 'TEXT_HI', fr = 'salut' )
+##            for level_scope in (level1_scope, level2_scope):
+##                level_scope.add_object( 'sign1', LEVEL_SIGN, text = 'TEXT_HI' )
+##                level_scope.add_object( 'sign2', LEVEL_SIGN, text = 'TEXT_HELLO' )
+##            level1_scope.add_object( 'sign3', LEVEL_SIGN, text = 'TEXT_HI' )
+##            level2_scope.add_object( 'sign4', LEVEL_SIGN, text = 'TEXT_HELLO', alt_text = 'TEXT_HELLO' )
+##            # check
+##            level_text_attribute = LEVEL_SIGN.attributes_by_name['text']
+##            level_alt_text_attribute = LEVEL_SIGN.attributes_by_name['alt_text']
+##            self.assertEqual( sorted([ (level1_scope, 'sign2', level_text_attribute),
+##                                       (level2_scope, 'sign2', level_text_attribute),
+##                                       (level2_scope, 'sign4', level_text_attribute),
+##                                       (level2_scope, 'sign4', level_alt_text_attribute) ]),
+##                              sorted(tracker.list_references( 'text', 'TEXT_HELLO' )) )
+##            self.assertEqual( sorted([ (level1_scope, 'sign1', level_text_attribute),
+##                                       (level2_scope, 'sign1', level_text_attribute),
+##                                       (level1_scope, 'sign3', level_text_attribute) ]),
+##                              sorted(tracker.list_references( 'text', 'TEXT_HI' )) )
+##            # remove object
+##            level2_scope.remove_object( 'sign4' )
+##            self.assertEqual( sorted([ (level1_scope, 'sign2', level_text_attribute),
+##                                       (level2_scope, 'sign2', level_text_attribute) ]),
+##                              sorted(tracker.list_references( 'text', 'TEXT_HELLO' )) )
+##            # update objects
+##            level1_scope.update_attribute( 'sign2', text='TEXT_HI' )
+##            level1_scope.update_attribute( 'sign3', text='TEXT_HELLO' )
+##            # check
+##            self.assertEqual( sorted([ (level2_scope, 'sign2', level_text_attribute),
+##                                       (level1_scope, 'sign3', level_text_attribute) ]),
+##                              sorted(tracker.list_references( 'text', 'TEXT_HELLO' )) )
+##            self.assertEqual( sorted([ (level1_scope, 'sign1', level_text_attribute),
+##                                       (level2_scope, 'sign1', level_text_attribute),
+##                                       (level1_scope, 'sign2', level_text_attribute) ]),
+##                              sorted(tracker.list_references( 'text', 'TEXT_HI' )) )
 
         def test_descriptions( self ):
             self.assertEqual( sorted(['text', 'sign', 'inline']), sorted(TEST_LEVEL_SCOPE.objects_by_tag.keys()) )
             for scope in (TEST_LEVEL_SCOPE, TEST_GLOBAL_SCOPE):
                 for object_desc in scope.objects_by_tag.itervalues():
                     self.assertEqual( scope, object_desc.scope )
-                for file_desc in scope.files_desc_by_name.itervalues():
-                    self.assertEqual( scope, object_desc.scope )
+#                for file_desc in scope.files_desc_by_name.itervalues():
+#                    self.assertEqual( scope, object_desc.scope )
             self.assertEqual( sorted([LEVEL_SIGN, LEVEL_INLINE]), sorted(LEVEL_TEXT.parent_objects) )
-            for file, objects in { TEST_GLOBAL_FILE: [GLOBAL_TEXT],
+            for tree, objects in { TEST_GLOBAL_FILE: [GLOBAL_TEXT],
                                    TEST_LEVEL_FILE: [LEVEL_TEXT, LEVEL_SIGN] }.iteritems():
-                for object in objects:
-                    self.assertEqual( file, object.file )
-                    self.assert_( object in file.all_descendant_object_descs().values() )
-                    self.assert_( object.tag in file.all_descendant_object_descs() )
-                    self.assert_( object.tag in file.scope.objects_by_tag )
+                for element in objects:
+                    self.assertEqual( tree, element.file )
+                    self.assert_( element in tree.all_descendant_object_descs().values() )
+                    self.assert_( element.tag in tree.all_descendant_object_descs() )
+                    self.assert_( element.tag in tree.scope.objects_by_tag )
 
     class UniverseTest(unittest.TestCase):
 
@@ -1094,7 +1205,7 @@ if __name__ == "__main__":
             self.world_level2 = self.world.make_world( TEST_LEVEL_SCOPE, 'level2' )
             self.level2 = self.world_level1.make_tree( TEST_LEVEL_FILE )
 
-        def _makeElement(self, object_desc ):
+        def _make_element(self, object_desc ):
             return Element( object_desc )
 
         def test_world( self ):
@@ -1124,12 +1235,34 @@ if __name__ == "__main__":
             self.assertEqual( None, self.world.find_world( TEST_GLOBAL_SCOPE, 'level_unknown' ) )
     
         def test_element(self):
-            s1 = self._makeElement( LEVEL_SIGN )
-            t1 = self._makeElement( LEVEL_TEXT )
-            t2 = self._makeElement( LEVEL_TEXT )
-            t3 = self._makeElement( LEVEL_TEXT )
-            t4 = self._makeElement( LEVEL_TEXT )
-            t5 = self._makeElement( LEVEL_TEXT )
+            s1 = self._make_element( LEVEL_SIGN )
+            class ChangeListener:
+                def __init__(self,test):
+                    self.test = test
+                    self._events = []
+                    self._expectations = []
+                def expect_event(self, signal, parent_element, element, index ):
+                    self._events.append( (signal,parent_element, element, index) )
+                def on_event(self, parent_element, element, index, signal=None):
+                    expected = self._events.pop(0)  # if failure there, then unexpected extra events...
+                    actual = (signal,parent_element, element, index)
+                    self.test.assertEqual( expected, actual )
+                def expect_attribute(self, element, name, value, old_value):
+                    self._events.append( (AttributeUpdated, element, name, value, old_value) )
+                def on_attribute_change(self, element, name, value, old_value,signal=None ):
+                    expected = self._events.pop(0)  # if failure there, then unexpected extra events...
+                    actual = (signal,element,name,value,old_value)
+                    self.test.assertEqual( expected, actual )
+                def check(self):
+                    self.test.assertEqual( [], self._events )
+            def check_list( *args ):
+                elements = s1[:]
+                self.assertEquals( list(args), list(elements) ) 
+            t1 = self._make_element( LEVEL_TEXT )
+            t2 = self._make_element( LEVEL_TEXT )
+            t3 = self._make_element( LEVEL_TEXT )
+            t4 = self._make_element( LEVEL_TEXT )
+            t5 = self._make_element( LEVEL_TEXT )
             # Test: append() & insert()
             s1.append( t3 )    # t3
             s1.insert( 0, t1 ) # t1, t3
@@ -1150,8 +1283,16 @@ if __name__ == "__main__":
             self.assertEqual( None, t2.tree )
             self.assertEqual( None, t2.world )
             self.assertEqual( None, t2.universe )
+            check_list( t1, t2, t3, t4, t5 )
+
             # Attach s1 to a root
             self.level1.set_root( s1 )
+            events_checker = ChangeListener( self )
+            louie.connect( events_checker.on_event, ElementAdded )
+            louie.connect( events_checker.on_event, ElementAboutToBeRemoved )
+            louie.connect( events_checker.on_attribute_change, AttributeUpdated )
+            events_checker.check()
+
             # Checks that universe... is correctly propagated to all children
             self.assertEqual( self.level1, s1.tree )
             self.assertEqual( self.level1, t2.tree )
@@ -1159,42 +1300,77 @@ if __name__ == "__main__":
             self.assertEqual( self.world_level1, t2.world )
             self.assertEqual( self.universe, s1.universe )
             self.assertEqual( self.universe, t2.universe )
+            check_list( t1, t2, t3, t4, t5 )
             # setitem
-            t6 = self._makeElement( LEVEL_TEXT )
+            t6 = self._make_element( LEVEL_TEXT )
+            events_checker.expect_event(ElementAboutToBeRemoved, s1, t1, 0)
+            events_checker.expect_event(ElementAdded, s1, t6, 0)
             s1[0] = t6
             self.assertEqual( t6, s1[0] )
             self.assertEqual( s1, t6.parent )
             self.assertEqual( None, t1.parent )
+            check_list( t6, t2, t3, t4, t5 )
+            events_checker.check()
             # delitem
+            events_checker.expect_event(ElementAboutToBeRemoved, s1, t6, 0)
             del s1[0]
             self.assertEqual( t2, s1[0] )
             self.assertEqual( None, t6.parent )
+            check_list( t2, t3, t4, t5 )
+            events_checker.check()
             # setslice
+            events_checker.expect_event(ElementAdded, s1, t1, 0)
             s1[0:0] = [t1]
             self.assertEqual( t1, s1[0] )
+            check_list( t1, t2, t3, t4, t5 )
+            events_checker.expect_event(ElementAboutToBeRemoved, s1, t2, 1)
+            events_checker.expect_event(ElementAboutToBeRemoved, s1, t3, 1)
             s1[1:3] = []
+            check_list( t1, t4, t5 )
             self.assertEqual( None, t2.parent )
             self.assertEqual( None, t3.parent )
             self.assertEqual( 5-2, len(s1) )
+            events_checker.expect_event(ElementAdded, s1, t2, 1)
+            events_checker.expect_event(ElementAdded, s1, t3, 2)
             s1[1:1] = [t2,t3]
+            check_list( t1, t2, t3, t4, t5 )
             self.assertEqual( s1, t2.parent )
             self.assertEqual( s1, t3.parent )
             self.assertEqual( 5, len(s1) )
+            events_checker.check()
             # delslice
+            events_checker.expect_event(ElementAboutToBeRemoved, s1, t2, 1)
+            events_checker.expect_event(ElementAboutToBeRemoved, s1, t3, 1)
             del s1[1:3]
+            check_list( t1, t4, t5 )
             self.assertEqual( None, t2.parent )
             self.assertEqual( None, t3.parent )
             self.assertEqual( 5-2, len(s1) )
+            events_checker.expect_event(ElementAdded, s1, t2, 1)
+            events_checker.expect_event(ElementAdded, s1, t3, 2)
             s1[1:1] = [t2,t3]
+            check_list( t1, t2, t3, t4, t5 )
             self.assertEqual( s1, t2.parent )
             self.assertEqual( s1, t3.parent )
+            events_checker.check()
             # remove
+            events_checker.expect_event(ElementAboutToBeRemoved, s1, t2, 1)
             s1.remove(t2)
+            check_list( t1, t3, t4, t5 )
             self.assertEqual( None, t2.parent )
             self.assertEqual( 5-1, len(s1) )
+            events_checker.expect_event(ElementAdded, s1, t2, 1)
             s1[1:1] = [t2]
+            check_list( t1, t2, t3, t4, t5 )
+            events_checker.check()
             # clear
+            events_checker.expect_event(ElementAboutToBeRemoved, s1, t1, 0)
+            events_checker.expect_event(ElementAboutToBeRemoved, s1, t2, 0)
+            events_checker.expect_event(ElementAboutToBeRemoved, s1, t3, 0)
+            events_checker.expect_event(ElementAboutToBeRemoved, s1, t4, 0)
+            events_checker.expect_event(ElementAboutToBeRemoved, s1, t5, 0)
             s1.clear()
+            check_list()
             self.assertEqual( 0, len(s1) )
             self.assertEqual( None, t1.parent )
             self.assertEqual( None, t2.parent )
@@ -1202,12 +1378,20 @@ if __name__ == "__main__":
             self.assertEqual( None, t4.parent )
             self.assertEqual( None, t5.parent )
             self.assertEqual( 0, len(s1.keys()) )
+            events_checker.check()
+            # set attribute
+            events_checker.expect_event(ElementAdded, s1, t1, 0)
+            s1.append( t1 )
+            events_checker.expect_attribute( t1, 'id', 'TEXT_HI', None )
             t1.set( 'id', 'TEXT_HI' )
+            events_checker.expect_attribute( t1, 'id', 'TEXT_HO', 'TEXT_HI' )
+            t1.set( 'id', 'TEXT_HO' )
             try:
                 t1.set( '_bad_attribute', 'dummy')
                 self.fail()
-            except KeyError:
+            except KeyError: #IGNORE:W0704 
                 pass
+            events_checker.check()
 
         def test_from_to_xml_clone( self ):
             xml_data = """<inline>
