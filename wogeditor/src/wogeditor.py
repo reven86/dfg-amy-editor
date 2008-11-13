@@ -73,7 +73,6 @@ class ElementReferenceTracker(metaworld.ReferenceTracker):
         scope_key = object.world
         assert scope_key is not None, object
         metaworld.ReferenceTracker.object_added( self, object )
-        scope_desc = object_desc.scope
         for child_element in object:    # recurse to add all child elements
             child_object_desc = object_desc.find_immediate_child_by_tag( child_element.tag )
             if child_object_desc:
@@ -87,14 +86,13 @@ class ElementReferenceTracker(metaworld.ReferenceTracker):
         """
         object_desc = element.meta
         metaworld.ReferenceTracker.object_about_to_be_removed( self, element )
-        scope_desc = object_desc.scope
         for child_element in element:    # recurse to add all child elements
             child_object_desc = object_desc.find_immediate_child_by_tag( child_element.tag )
             if child_object_desc:
                 self.element_object_about_to_be_removed( child_element )
             else:
                 print 'Warning: unknown element "%s", child of "%s" in metaworld:' % (
-                    child_element.tag, object.tag)
+                    child_element.tag, element.tag)
 
     def update_element_attribute( self, element, attribute_name, new_value ):
         """Updates an element attribute value and automatically updates related identifier/back-references.
@@ -136,7 +134,8 @@ class GameModel(QtCore.QObject):
         self._readonly_resources = set()    # resources in resources.xml that have expanded defaults idprefix & path
         self._texts_tree = self._loadTree( self.global_world, metawog.GLOBAL_TEXT_FILE,
                                            properties_dir, 'text.xml.bin' )
-        self._levels = self._loadDirList( os.path.join( self._res_dir, 'levels' ), filter = '%s.scene.bin' )
+        self._levels = self._loadDirList( os.path.join( self._res_dir, 'levels' ), 
+                                          filename_filter = '%s.scene.bin' )
         self.level_models_by_name = {}
         self.current_model = None
         self.is_dirty = False
@@ -147,42 +146,42 @@ class GameModel(QtCore.QObject):
     def getResourcePath( self, game_dir_relative_path ):
         return os.path.join( self._wog_dir, game_dir_relative_path )
 
-    def _loadTree( self, world, meta_tree, dir, file_name ):
-        path = os.path.join( dir, file_name )
+    def _loadTree( self, world, meta_tree, directory, file_name ):
+        path = os.path.join( directory, file_name )
         if not os.path.isfile( path ):
             raise GameModelException( tr( 'LoadData',
                 'File "%1" does not exist. You likely provided an incorrect WOG directory.' ).arg( path ) )
         xml_data = wogfile.decrypt_file_data( path )
         return world.make_tree_from_xml( meta_tree, xml_data )
 
-    def _savePackedData( self, dir, file_name, element_tree ):
-        path = os.path.join( dir, file_name )
+    def _savePackedData( self, directory, file_name, element_tree ):
+        path = os.path.join( directory, file_name )
         xml_data = xml.etree.ElementTree.tostring( element_tree )
         wogfile.encrypt_file_data( path, xml_data )
 
-    def _loadDirList( self, dir, filter ):
-        if not os.path.isdir( dir ):
+    def _loadDirList( self, directory, filename_filter ):
+        if not os.path.isdir( directory ):
             raise GameModelException( tr('LoadLevelList',
-                'Directory "%1" does not exist. You likely provided an incorrect WOG directory.' ).arg( dir ) )
+                'Directory "%1" does not exist. You likely provided an incorrect WOG directory.' ).arg( directory ) )
         def is_valid_dir( entry ):
             """Accepts the directory only if it contains a specified file."""
-            dir_path = os.path.join( dir, entry )
+            dir_path = os.path.join( directory, entry )
             if os.path.isdir( dir_path ):
                 try:
-                    filter_file_path = filter % entry
+                    filter_file_path = filename_filter % entry
                 except TypeError:
-                    filter_file_path = filter
+                    filter_file_path = filename_filter
                 if os.path.isfile( os.path.join( dir_path, filter_file_path ) ):
                     return True
             return False
-        dirs = [ entry for entry in os.listdir( dir ) if is_valid_dir( entry ) ]
+        dirs = [ entry for entry in os.listdir( directory ) if is_valid_dir( entry ) ]
         dirs.sort()
         return dirs
 
     def _loadBalls( self ):
         """Loads all ball models and initialize related identifiers/references."""
         ball_names = self._loadDirList( os.path.join( self._res_dir, 'balls' ),
-                                        filter = 'balls.xml.bin' )
+                                        filename_filter = 'balls.xml.bin' )
         ball_dir = os.path.join( self._res_dir, 'balls' )
         for ball_name in ball_names:
             ball_world = self.global_world.make_world( metawog.BALL_SCOPE, ball_name, BallModel, self )
@@ -1233,7 +1232,7 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
                 def __init__( self, *args ):
                     self.args = args
                 def __call_( self, parent ):
-                    return QtGui.QStyledItemDelegate.createEditor( args[0], parent, *(args[1:]) )
+                    return QtGui.QStyledItemDelegate.createEditor( args[0], parent, *(self.args[1:]) )
             editor = handler_data['editor']( parent, option, index, element, attribute_desc, DefaultEditorFactory() )
         else: # No specific, use default QLineEditor
             editor = QtGui.QStyledItemDelegate.createEditor( self, parent, option, index )
@@ -1304,6 +1303,25 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
 ##            value = editor.text()
 ##            model.setData(index, QtCore.QVariant( value ), QtCore.Qt.EditRole)
             QtGui.QStyledItemDelegate.setModelData( self, editor, model, index )
+
+class MetaWorldTreeViewModel(QtGui.QStandardItemModel):
+    def __init__( self, meta_tree, *args ):
+        QtGui.QStandardItemModel.__init__( self, *args )
+        self._metaworld_tree = None
+        self._meta_tree = meta_tree
+
+    @property
+    def metaworld_tree( self ):
+        return self._metaworld_tree
+
+    def set_metaworld_tree( self, tree ):
+        assert tree.meta == self._meta_tree, (tree.meta, self._meta_tree)
+        self._metaworld_tree = tree
+
+class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
+    def __init__( self, *args ):
+        QtGui.QStandardItemModel.__init__( self, *args )
+        self.metaworld_element = None
 
 
 class MainWindow(QtGui.QMainWindow):
@@ -1383,7 +1401,9 @@ class MainWindow(QtGui.QMainWindow):
 
     def _refreshElementTree( self, element_tree_view, root_element ):
         """Refresh a tree view using its root element."""
+        assert root_element.tree is not None
         element_tree_view.model().clear()
+        element_tree_view.model().set_metaworld_tree( root_element.tree )
         root_item = self._insertElementTreeInTree( element_tree_view.model(), root_element )
         element_tree_view.setExpanded( root_item.index(), True )
 
@@ -1477,7 +1497,7 @@ class MainWindow(QtGui.QMainWindow):
                     ordered_attributes.append( (name, element.get(name)) )
             ordered_attributes.extend( [ (name, element.get(name)) for name in attribute_names ] )
             # Update the property list model
-            self._resetPropertyListModel()
+            self._resetPropertyListModel( element )
             for name, value in ordered_attributes:
                 item_name = QtGui.QStandardItem( name )
                 item_name.setEditable( False )
@@ -1488,7 +1508,7 @@ class MainWindow(QtGui.QMainWindow):
                 item_value.setData( QtCore.QVariant( (scope_key, object_file, object_desc, element, name) ), QtCore.Qt.UserRole )
                 self.propertiesListModel.appendRow( [ item_name, item_value ] )
         else: # Update the property list using the model
-            self._resetPropertyListModel()
+            self._resetPropertyListModel( element )
             scope_key = self.getCurrentLevelModel()
             missing_attributes = set( element.keys() )
             for attribute_desc in object_desc.attributes_order:
@@ -1849,7 +1869,7 @@ class MainWindow(QtGui.QMainWindow):
         dock = QtGui.QDockWidget( self.tr( name ), self )
         dock.setAllowedAreas( QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea )
         element_tree_view = QtGui.QTreeView( dock )
-        tree_model = QtGui.QStandardItemModel(0, 1, element_tree_view)  # nb rows, nb cols
+        tree_model = MetaWorldTreeViewModel(object_file, 0, 1, element_tree_view)  # nb rows, nb cols
         tree_model.setHorizontalHeaderLabels( [self.tr('Element')] )
         element_tree_view.setModel( tree_model )
         dock.setWidget( element_tree_view )
@@ -1889,8 +1909,8 @@ class MainWindow(QtGui.QMainWindow):
         self.propertiesList.setRootIsDecorated( False )
         self.propertiesList.setAlternatingRowColors( True )
 
-        self.propertiesListModel = QtGui.QStandardItemModel(0, 2, self.propertiesList)  # nb rows, nb cols
-        self._resetPropertyListModel()
+        self.propertiesListModel = MetaWorldPropertyListModel(0, 2, self.propertiesList)  # nb rows, nb cols
+        self._resetPropertyListModel( None )
         self.propertiesList.setModel( self.propertiesListModel )
         delegate = PropertyListItemDelegate( self.propertiesList, self )
         self.propertiesList.setItemDelegate( delegate )
@@ -1900,9 +1920,10 @@ class MainWindow(QtGui.QMainWindow):
         self.connect(self.propertiesListModel, QtCore.SIGNAL("dataChanged(const QModelIndex&,const QModelIndex&)"),
                      self._onPropertyListValueChanged)
 
-    def _resetPropertyListModel( self ):
+    def _resetPropertyListModel( self, element ):
         self.propertiesListModel.clear()
         self.propertiesListModel.setHorizontalHeaderLabels( [self.tr('Name'), self.tr('Value')] )
+        self.propertiesListModel.metaworld_element = element
 
     def _readSettings( self ):
         """Reads setting from previous session & restore window state."""
