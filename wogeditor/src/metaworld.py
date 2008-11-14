@@ -262,6 +262,13 @@ class ObjectDesc(ObjectsDescOwner):
     def _object_added( self, object_desc ):
         object_desc.parent_objects.add( self )
 
+    def attribute_by_name( self, attribute_name ):
+        """Retrieves the attribute description for the specified attribute_name.
+           @exception KeyError if the element has no attribute named attribute_name.
+        """ 
+        return self.attributes_by_name[attribute_name]
+
+
     def __repr__( self ):
         return '%s(tag=%s, attributes=[%s], objects=[%s])' % (
             self.__class__.__name__, self.tag, ','.join([a.name for a in self.attributes_order]),
@@ -577,6 +584,12 @@ class WorldAboutToBeRemoved(louie.Signal):
 class WorldsOwner:
     def __init__( self ):
         self._worlds = {} # dict(desc: dict(key: world) )
+
+    def all_child_worlds(self):
+        worlds = []
+        for world_data in self._worlds.itervalues():
+            worlds.append( world_data.values() )
+        return worlds
         
     def make_world( self, scope_desc, world_key = None, factory = None, *args, **kwargs ):
         """Creates a child World using the specified scoped_desc description and associating it with world_key.
@@ -630,39 +643,139 @@ class Universe(WorldsOwner):
         louie.connect( self._on_tree_about_to_be_removed, TreeAboutToBeRemoved )
         louie.connect( self._on_world_added, WorldAdded )
         louie.connect( self._on_world_about_to_be_removed, WorldAboutToBeRemoved )
+        self.ref_by_world_and_familly = {} # dict( (world,familly): dict(id: element) )
+        self.back_references = {} # dict( (familly,identifier) : set(world,element,attribute_desc)] )
 
     @property
     def universe( self ):
         return self
+            
+    def _on_world_added(self, world):
+        if world.universe == self:
+            for tree in world.trees:
+                self._on_tree_added(tree)
+            for world in world.all_child_worlds():
+                self._on_world_added(world)
+    
+    def _on_world_about_to_be_removed(self, world):
+        if world.universe == self:
+            for tree in world.trees:
+                self._on_tree_about_to_be_removed(tree)
+            for world in world.all_child_worlds():
+                self._on_world_about_to_be_removed(world)
 
     def _on_tree_added(self, tree):
         if tree.universe == self:
             self._manage_tree_connections( tree, louie.connect )
+            if tree.root:
+                self._on_element_added( tree.root, 0 )
 
     def _on_tree_about_to_be_removed(self, tree):
         if tree.universe == self:
             self._manage_tree_connections( tree, louie.disconnect )
+            if tree.root:
+                self._on_element_about_to_be_removed( tree.root, 0 ) 
             
     def _manage_tree_connections(self, tree, connection_manager):
         connection_manager( self._on_element_added, ElementAdded, tree )
         connection_manager( self._on_element_about_to_be_removed, 
                             ElementAboutToBeRemoved, tree )
         connection_manager( self._on_element_updated, AttributeUpdated, tree )
+
+    def _on_element_added(self, element, index_in_parent): #IGNORE:W0613
+        assert isinstance(element,Element)
+        assert index_in_parent >=0, index_in_parent
+        
+        # Checks if the object has any identifier attribute
+        identifier_meta = element.meta.identifier_attribute
+        if identifier_meta:
+            identifier_value = identifier_meta.get( element )
+            self._register_element_identifier( element, identifier_meta, identifier_value )
+
+        # Checks object for all reference attributes
+        for attribute_meta in element.meta.reference_attributes:
+            reference_value = attribute_meta.get( element )
+            self._register_element_reference( element, attribute_meta, reference_value )
+
+        for index, child_element in enumerate( element ):
+            self._on_element_added(child_element, index)
+
+    def _register_element_identifier( self, element, id_meta, identifier_value ):
+##        print '=> registering "%s" with identifier: "%s"' % (object_key, repr(identifier_value))
+        assert element is not None
+        if identifier_value is not None:
+            # walk parents scopes until we find the right one.
+            world = element.world
+            while world.meta != id_meta.reference_scope:
+                world = world.parent_world
+            id_scope_key = (world,id_meta.reference_familly)
+            references = self.ref_by_world_and_familly.get( id_scope_key )
+            if references is None:
+                references = {}
+                self.ref_by_world_and_familly[ id_scope_key ] = references
+            references[identifier_value] = element
+
+    def _register_element_reference( self, element, attribute_meta, reference_value ):
+        if reference_value is not None:
+            back_reference_key = (attribute_meta.reference_familly, reference_value)
+            back_references = self.back_references.get( back_reference_key )
+            if back_references is None:
+                back_references = set()
+                self.back_references[back_reference_key] = back_references
+            back_references.add( (element, attribute_meta) )
+
+    def _on_element_about_to_be_removed(self, element, index_in_parent): #IGNORE:W0613
+        assert isinstance(element,Element)
+        assert index_in_parent >= 0, index_in_parent
+
+        # Checks if the object has any identifier attribute
+        id_meta = element.meta.identifier_attribute
+        if id_meta:
+            identifier_value = id_meta.get( element )
+            self._unregister_element_identifier( element, id_meta, identifier_value )
             
-    def _on_world_added(self, world):
-        pass
-    
-    def _on_world_about_to_be_removed(self, world):
-        pass
+        # Checks object for all reference attributes
+        for attribute_meta in element.meta.reference_attributes:
+            reference_value = attribute_meta.get( element )
+            self._unregister_element_reference( element, attribute_meta, reference_value )
 
-    def _on_element_added(self, parent, element): #IGNORE:W0613
-        print 'Element added', element
+        for index, child_element in enumerate( element ):
+            self._on_element_about_to_be_removed(child_element, index)
 
-    def _on_element_about_to_be_removed(self, parent, element): #IGNORE:W0613
-        print 'Element removed', element
+    def _unregister_element_identifier( self, element, id_meta, identifier_value ):
+##        print '=> unregistering "%s" with identifier: "%s"' % (element, repr(identifier_value))
+        if identifier_value is not None:
+            # walk parents scopes until we find the right one.
+            world = element.world
+            while world.meta != id_meta.reference_scope:
+                world = world.parent_world
+            # unregister the reference
+            id_scope_key = (world,id_meta.reference_familly)
+            references = self.ref_by_world_and_familly.get( id_scope_key )
+            if references:
+                try:
+                    del references[identifier_value]
+                except KeyError:    # IGNORE:W0704 May happens in case of multiple image with same identifier (usually blank)
+                    pass            # since unicity is not validated yet
+
+    def _unregister_element_reference( self, element, attribute_meta, reference_value ):
+        if reference_value is not None:
+            back_reference_key = (attribute_meta.reference_familly, reference_value)
+            back_references = self.back_references.get( back_reference_key )
+            if back_references:
+                back_references.remove( (element, attribute_meta) )
 
     def _on_element_updated(self, element, name, new_value, old_value): #IGNORE:W0613
-        print 'Element updated', element
+        assert isinstance(element,Element) 
+#        print 'Element updated', element
+        attribute_meta = element.meta.attribute_by_name( name )
+        id_meta = element.meta.identifier_attribute
+        if id_meta is attribute_meta:
+            self._unregister_element_identifier( element, id_meta, old_value )
+            self._register_element_identifier( element, id_meta, new_value )
+        if attribute_meta in element.meta.reference_attributes:
+            self._unregister_element_reference( element, attribute_meta, old_value )
+            self._register_element_reference( element, attribute_meta, new_value )
     
     def _warning( self, message, **kwargs ):
         print message % kwargs
@@ -744,6 +857,10 @@ class World(WorldsOwner):
     @property
     def meta( self ):
         return self._scope_desc
+
+    @property
+    def trees(self):
+        return self._trees.values()
 
     def _attached_to_parent_world( self, parent_world ):
         """Called when a sub-world is attached to the world."""
