@@ -518,17 +518,61 @@ class ElementAdded(louie.Signal):
        The parent element/tree must be connected connected to a tree for
        the signal to be emitted.
        Signature: (parent_element, element, index_in_parent)
+       parent_element: new parent Element of the element that has been added.
+                       None if element is the root of the tree.
+       element: Element that has been added.
+       index_in_parent: zero-based index of insertion element in parent_element.
+                        Always 0 if element is the root of the tree.
+       Can retrieve the element tree via element.tree.   
     """
 
 class ElementAboutToBeRemoved(louie.Signal):
     """Signal emitted when an element connected to a tree is about to be removed.
        Signature: (parent_element, element, index_in_parent)
+       parent_element: parent Element of the element that will be removed.
+                       None if element is the root of the tree.
+       element: Element that will be removed.
+       index_in_parent: zero-based index of insertion element in parent_element.
+                        Always 0 if element is the root of the tree.  
     """
 
 class AttributeUpdated(louie.Signal):
     """Signal emitted when an attribute of an element connected to a tree has been modified.
        Signature: (element, attribute_name, new_value, old_value )
+       element: element that has been modified
+       attribute_name: name of the attribute of the element that has been modified
+       new_value: new value of the attribute. None if the attribute has been removed.
+       old_value: old value of the attribute. None if the attribute has been added.
     """
+    
+class TreeAdded(louie.Signal):
+    """Signal emitted when a tree has been added to a world connected to the universe.
+       Signature: (tree)
+       tree: tree that has been added to a world.
+             Can retrieve the tree world & universe using tree.world and tree.universe.
+    """
+    
+class TreeAboutToBeRemoved(louie.Signal):
+    """Signal emitted when a tree is about to be removed from a world connected to the universe.
+       Signature: (tree)
+       tree: tree that is about to be removed from a world.
+             Can retrieve the tree world & universe using tree.world and tree.universe.
+    """
+
+class WorldAdded(louie.Signal):
+    """Signal emitted when a world is added to another world or the universe.
+       Signature: (world)
+       world: World that has been added. Can retrieve is parent world and universe from
+              attributes.
+    """
+    
+class WorldAboutToBeRemoved(louie.Signal):
+    """Signal emitted when a world is about to be removed from another world or the universe.
+       Signature: (world)
+       world: World that is about to be removed. Can retrieve is parent world and universe from
+              attributes.
+    """
+    
 
 class WorldsOwner:
     def __init__( self ):
@@ -544,13 +588,25 @@ class WorldsOwner:
         """
         #@todo check that scope_desc is an allowed child scope
         factory = factory or World
-        world = factory( self.universe, scope_desc, world_key, *args, **kwargs )
+        world = factory( self.universe, scope_desc, world_key, #IGNORE:E1101 
+                         *args, **kwargs ) 
         if scope_desc not in self._worlds:
             self._worlds[scope_desc] = {}
         assert world.key not in self._worlds[scope_desc]
         self._worlds[scope_desc][world.key] = world
-        self._attach_world( world )
+        parent_world = self.universe != self and self or None #IGNORE:E1101
+        world._attached_to_parent_world(parent_world)
         return world
+
+    def remove_world(self, world):
+        """Removes the specified child World from the World or Universe.
+           exception: KeyError if the World does not belong.
+        """
+        # @todo
+        assert world.key in self._worlds[world.meta]
+        parent_world = self.universe != self and self or None #IGNORE:E1101
+        world._about_to_be_detached_from_parent_world(parent_world)
+        del self._worlds[world.meta][world.key]
 
     def find_world( self, scope_desc, world_key ):
         worlds_by_key = self._worlds.get( scope_desc, {} )
@@ -564,24 +620,49 @@ class WorldsOwner:
         worlds_by_key = self._worlds.get( scope_desc, {} )
         return worlds_by_key.keys()
 
-    def _attach_world( self, world ):
-        """Called when a world is attached to the owner."""
-        raise NotImplemented()
-
 
 class Universe(WorldsOwner):
     """Represents the universe where all elements, worlds and trees live in.
     """
     def __init__( self ):
         WorldsOwner.__init__( self )
+        louie.connect( self._on_tree_added, TreeAdded )
+        louie.connect( self._on_tree_about_to_be_removed, TreeAboutToBeRemoved )
+        louie.connect( self._on_world_added, WorldAdded )
+        louie.connect( self._on_world_about_to_be_removed, WorldAboutToBeRemoved )
 
     @property
     def universe( self ):
         return self
 
-    def _attach_world( self, world ):
-        """Called when a root world is attached to the universe."""
+    def _on_tree_added(self, tree):
+        if tree.universe == self:
+            self._manage_tree_connections( tree, louie.connect )
+
+    def _on_tree_about_to_be_removed(self, tree):
+        if tree.universe == self:
+            self._manage_tree_connections( tree, louie.disconnect )
+            
+    def _manage_tree_connections(self, tree, connection_manager):
+        connection_manager( self._on_element_added, ElementAdded, tree )
+        connection_manager( self._on_element_about_to_be_removed, 
+                            ElementAboutToBeRemoved, tree )
+        connection_manager( self._on_element_updated, AttributeUpdated, tree )
+            
+    def _on_world_added(self, world):
         pass
+    
+    def _on_world_about_to_be_removed(self, world):
+        pass
+
+    def _on_element_added(self, parent, element): #IGNORE:W0613
+        print 'Element added', element
+
+    def _on_element_about_to_be_removed(self, parent, element): #IGNORE:W0613
+        print 'Element removed', element
+
+    def _on_element_updated(self, element, name, new_value, old_value): #IGNORE:W0613
+        print 'Element updated', element
     
     def _warning( self, message, **kwargs ):
         print message % kwargs
@@ -664,12 +745,20 @@ class World(WorldsOwner):
     def meta( self ):
         return self._scope_desc
 
-    def _attach_world( self, world ):
+    def _attached_to_parent_world( self, parent_world ):
         """Called when a sub-world is attached to the world."""
-        world._parent_world = self
+        self._parent_world = parent_world
+        louie.send( WorldAdded, parent_world, self )
+
+    def _about_to_be_detached_from_parent_world(self, parent_world ):
+        """Called when a world is removed from the owner."""
+        louie.send( WorldAboutToBeRemoved, parent_world, self )
+        self._parent_world = None
 
     def make_tree( self, file_desc, root_element = None ):
-        return Tree( self.universe, file_desc, root_element = root_element, world = self )
+        tree = Tree( self.universe, file_desc, root_element = root_element )
+        self.add_tree( tree )
+        return tree
 
     def make_tree_from_xml( self, file_desc, xml_data ):
         """Makes a tree from the provided xml data for the specified kind of tree.
@@ -690,11 +779,17 @@ class World(WorldsOwner):
     def add_tree( self, *trees ):
         for tree in trees:
             assert tree._world is None
+            assert isinstance(tree, Tree)
             tree._world = self
+            assert tree._file_desc not in self._trees 
             self._trees[ tree._file_desc ] = tree
+            louie.send( TreeAdded, self, tree )
 
     def remove_tree( self, *trees ):
         for tree in trees:
+            assert isinstance(tree, Tree)
+            assert self._trees.get(tree._file_desc) == tree
+            louie.send( TreeAboutToBeRemoved, self, tree )
             del self._trees[ tree._file_desc ]
             tree._world = None
 
@@ -705,19 +800,21 @@ class World(WorldsOwner):
 class Tree:
     """Represents a part of the world elements live in, described by a FileDesc.
     """
-    def __init__( self, universe, file_desc, root_element = None, world = None ):
+    def __init__( self, universe, file_desc, root_element = None ):
         self._universe = universe
         self._file_desc = file_desc
         self._root_element = root_element
-        self._world = world
+        self._world = None
         self.set_root( root_element )
 
     def set_root( self, root_element ):
         assert root_element is None or isinstance(root_element, Element), type(root_element)
         if self._root_element is not None:  # detach old root
+            louie.send( ElementAboutToBeRemoved, self, self._root_element, 0 )
             self._root_element._tree = None
         if root_element is not None: # attach new root
             root_element._tree = self
+            louie.send( ElementAdded, self, root_element, 0 )
         self._root_element = root_element
 
     def __repr__( self ):
@@ -825,7 +922,7 @@ class Element(_ElementBase):
         self._parent_element( element )
         tree = self.tree
         if tree:
-            louie.send( ElementAdded, tree, self, element, index )
+            louie.send( ElementAdded, tree, element, index )
 
     def insert( self, index, element ):
         """Inserts a subelement at the given position in this element.
@@ -836,7 +933,7 @@ class Element(_ElementBase):
         self._parent_element( element )
         tree = self.tree
         if tree:
-            louie.send( ElementAdded, tree, self, element, index )
+            louie.send( ElementAdded, tree, element, index )
 
     def __setitem__( self, index, element ):
         """Replaces the given subelement.
@@ -845,16 +942,15 @@ class Element(_ElementBase):
            @exception IndexError If the given element does not exist.
            @exception AssertionError If element is not a valid object.
         """
-        self[index]._parent = None
         tree = self.tree
         old_element = self._children[index]
         if tree:
-            louie.send( ElementAboutToBeRemoved, tree, self, old_element, index )
+            louie.send( ElementAboutToBeRemoved, tree, old_element, index )
         self._children[index] = element
         old_element._parent = None
         self._parent_element( element )
         if tree:
-            louie.send( ElementAdded, tree, self, element, index )
+            louie.send( ElementAdded, tree, element, index )
 
     def __delitem__( self, index ):
         """Deletes the given subelement.
@@ -868,7 +964,7 @@ class Element(_ElementBase):
         tree = self.tree
         element = self._children[index]
         if tree:
-            louie.send( ElementAboutToBeRemoved, tree, self, element, index )
+            louie.send( ElementAboutToBeRemoved, tree, element, index )
         del self._children[index]
         element._parent = None
 
@@ -893,14 +989,14 @@ class Element(_ElementBase):
         for index in xrange(start,stop):
             element = self._children[start]
             if tree:
-                louie.send( ElementAboutToBeRemoved, tree, self, element, start )
+                louie.send( ElementAboutToBeRemoved, tree, element, start )
             element._parent = None
             del self._children[start]
         for offset, element in enumerate(elements):
             index = start + offset
             self._parent_element( element )
             self._children.insert( index, element )
-            louie.send( ElementAdded, tree, self, element, index )
+            louie.send( ElementAdded, tree, element, index )
 
     def __delslice__( self, start, stop ):
         """Deletes a number of subelements.
@@ -921,7 +1017,7 @@ class Element(_ElementBase):
         for index in xrange(start,stop):
             element = self._children[start]
             if tree:
-                louie.send( ElementAboutToBeRemoved, tree, self, element, start )
+                louie.send( ElementAboutToBeRemoved, tree, element, start )
             element._parent = None
             del self._children[start]
 
@@ -944,7 +1040,7 @@ class Element(_ElementBase):
         index = self._children.index( element )
         tree = self.tree
         if tree:
-            louie.send( ElementAboutToBeRemoved, tree, self, element, index )
+            louie.send( ElementAboutToBeRemoved, tree, element, index )
         del self._children[index]
         element._parent = None
 
@@ -956,7 +1052,7 @@ class Element(_ElementBase):
         for index in xrange(0,len(self)):
             element = self._children[0]
             if tree:
-                louie.send( ElementAboutToBeRemoved, tree, self, element, 0 )
+                louie.send( ElementAboutToBeRemoved, tree, element, 0 )
             element._parent = None
             del self._children[0]
         _ElementBase.clear( self )
@@ -1203,7 +1299,7 @@ if __name__ == "__main__":
             self.world_level1 = self.world.make_world( TEST_LEVEL_SCOPE, 'level1' )
             self.level1 = self.world_level1.make_tree( TEST_LEVEL_FILE )
             self.world_level2 = self.world.make_world( TEST_LEVEL_SCOPE, 'level2' )
-            self.level2 = self.world_level1.make_tree( TEST_LEVEL_FILE )
+            self.level2 = self.world_level2.make_tree( TEST_LEVEL_FILE )
 
         def _make_element(self, object_desc ):
             return Element( object_desc )
@@ -1243,9 +1339,9 @@ if __name__ == "__main__":
                     self._expectations = []
                 def expect_event(self, signal, parent_element, element, index ):
                     self._events.append( (signal,parent_element, element, index) )
-                def on_event(self, parent_element, element, index, signal=None):
+                def on_event(self, element, index, signal=None):
                     expected = self._events.pop(0)  # if failure there, then unexpected extra events...
-                    actual = (signal,parent_element, element, index)
+                    actual = (signal,element.parent, element, index)
                     self.test.assertEqual( expected, actual )
                 def expect_attribute(self, element, name, value, old_value):
                     self._events.append( (AttributeUpdated, element, name, value, old_value) )
@@ -1286,11 +1382,17 @@ if __name__ == "__main__":
             check_list( t1, t2, t3, t4, t5 )
 
             # Attach s1 to a root
-            self.level1.set_root( s1 )
             events_checker = ChangeListener( self )
             louie.connect( events_checker.on_event, ElementAdded )
             louie.connect( events_checker.on_event, ElementAboutToBeRemoved )
             louie.connect( events_checker.on_attribute_change, AttributeUpdated )
+            events_checker.expect_event(ElementAdded, None, s1, 0)
+            self.level1.set_root( s1 )
+            events_checker.check()
+            events_checker.expect_event(ElementAboutToBeRemoved, None, s1, 0)
+            self.level1.set_root( None )
+            events_checker.expect_event(ElementAdded, None, s1, 0)
+            self.level1.set_root( s1 )
             events_checker.check()
 
             # Checks that universe... is correctly propagated to all children
@@ -1403,12 +1505,13 @@ if __name__ == "__main__":
 </inline>
 """
             def check( xml_data ):
-                level_tree = self.world_level1.make_tree_from_xml( TEST_LEVEL_FILE, xml_data )
+                world_level = self.world.make_world( TEST_LEVEL_SCOPE, 'levelxml' )
+                level_tree = world_level.make_tree_from_xml( TEST_LEVEL_FILE, xml_data )
                 self.assertEqual( TEST_LEVEL_FILE, level_tree.meta )
                 self.assertEqual( self.universe, level_tree.universe )
-                self.assertEqual( self.world_level1, level_tree.world )
-                self.assertEqual( level_tree, self.world_level1.find_tree( TEST_LEVEL_FILE ) )
-                self.assertEqual( self.world_level1, level_tree.root.world )
+                self.assertEqual( world_level, level_tree.world )
+                self.assertEqual( level_tree, world_level.find_tree( TEST_LEVEL_FILE ) )
+                self.assertEqual( world_level, level_tree.root.world )
                 # content            
                 inline = level_tree.root
                 self.assertEqual( LEVEL_INLINE, inline.meta )
@@ -1422,6 +1525,7 @@ if __name__ == "__main__":
                 self.assertEqual( sorted( [('fr','Oh'),('id','TEXT_HO')] ), sorted(inline[1].items()) )
                 self.assertEqual( sorted( [('alt_text','TEXT_HO'),('text','TEXT_HI')] ), sorted(inline[2].items()) )
                 self.assertEqual( sorted( [('fr','Enfant'),('id','TEXT_CHILD')] ), sorted(inline[2][0].items()) )
+                self.world.remove_world( world_level )
                 return level_tree
 
             level_tree = check( xml_data )
@@ -1437,9 +1541,10 @@ if __name__ == "__main__":
 
         def test_from_xml2( self ):
             xml_data = """<inline></inline>"""
-            level_tree = self.world_level1.make_tree_from_xml( TEST_LEVEL_FILE, xml_data )
-            self.assertEqual( self.world_level1, level_tree.world )
-            self.assertEqual( self.world_level1, level_tree.root.world )
+            world_level = self.world.make_world( TEST_LEVEL_SCOPE, 'levelxml' )
+            level_tree = world_level.make_tree_from_xml( TEST_LEVEL_FILE, xml_data )
+            self.assertEqual( world_level, level_tree.world )
+            self.assertEqual( world_level, level_tree.root.world )
             
 
 # to test:
