@@ -275,11 +275,6 @@ class GameModel(QtCore.QObject):
         level_model = self.getLevelModel(level_name)
         louie.send( ActiveWorldChanged, self._universe, level_model )
 
-    def elementSelected( self, level_name, element_file, element ):
-        """Signal that the specified element has been selected."""
-        self.emit( QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                   level_name, element_file, element )
-
     def _onElementAdded(self, element, index_in_parent): #IGNORE:W0613
         self.modified_worlds_to_check.add( element.world )
 
@@ -420,9 +415,28 @@ class DirtyWorldTracker(object):
         """Forget any change made to the specified tree type."""
         self.__dirty_tree_metas.remove( tree_meta )
 
-class LevelModel(metaworld.World):
+class SelectedElementsTracker(object):
+    def __init__(self, world):
+        self.__selection = set() # set of selected elements
+        self.__world = world
+
+    @property
+    def selected_elements(self):
+        return self.__selection.copy()
+        
+    def set_selection(self, selected_elements ):
+        if isinstance(selected_elements, metaworld.Element):
+            selected_elements = [selected_elements]
+        selected_elements = set(selected_elements)
+        deselected_elements = selected_elements - self.__selection
+        self.__selection = selected_elements.copy()  
+        louie.send( WorldSelectionChanged, self.__world, 
+                    selected_elements, deselected_elements )
+
+class LevelModel(metaworld.World,SelectedElementsTracker):
     def __init__( self, universe, world_meta, level_name, game_model, is_dirty = False ):
         metaworld.World.__init__( self, universe, world_meta, level_name )
+        SelectedElementsTracker.__init__( self, self )
         self.game_model = game_model
         self.__dirty_tracker = DirtyWorldTracker( self, is_dirty )
 
@@ -480,12 +494,6 @@ class LevelModel(metaworld.World):
         else:
             print 'Warning: invalid image reference: %(ref)s' % {'ref':image_id}
         return pixmap or QtGui.QPixmap()
-
-    def elementSelected( self, element_file, element ):
-        """Indicates that the specified element has been selected.
-           element_file: one of metawog.TREE_LEVEL_GAME, metawog.TREE_LEVEL_SCENE, metawog.TREE_LEVEL_RESOURCE
-        """
-        self.game_model.elementSelected( self.level_name, element_file, element )
 
     def updateLevelResources( self ):
         """Ensures all image/sound resource present in the level directory 
@@ -551,16 +559,16 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.scale( 1.0, 1.0 )
         self.connect( self.__scene, QtCore.SIGNAL('selectionChanged()'),
                       self._sceneSelectionChanged )
-        self.connect( self.__game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                      self._updateObjectSelection )
         self.setRenderHints( QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform )
         # Subscribes to level element change to refresh the view
         for tree in self.getLevelModel().trees:
             tree.connect_to_element_events( self.__on_element_added,
                                             self.__on_element_updated,
                                             self.__on_element_about_to_be_removed )
-        louie.connect( self._on_active_world_change, ActiveWorldChanged )
-        
+        level_model = game_model.getLevelModel(level_name)
+        louie.connect( self._on_active_world_change, ActiveWorldChanged, 
+                       level_model.universe )
+        louie.connect( self._on_selection_change, WorldSelectionChanged, level_model )
 
     def selectLevelOnSubWindowActivation( self ):
         """Called when the user switched MDI window."""
@@ -600,14 +608,9 @@ class LevelGraphicView(QtGui.QGraphicsView):
 ##                print 'selection changed', item
                 element = item.data(0).toPyObject()
                 assert element is not None, "Hmmm, forgot to associate a data to that item..."
-                if element in self.__scene_elements:
-                    self.getLevelModel().elementSelected( metawog.TREE_LEVEL_SCENE, element )
-                elif element in self.__level_elements:
-                    self.getLevelModel().elementSelected( metawog.TREE_LEVEL_GAME, element )
-                else: # Should never get there
-                    assert False
+                element.world.set_selection( element )
 
-    def _updateObjectSelection( self, level_name, element_file, selected_element ):
+    def _on_selection_change(self, selected_elements, deselected_elements): #IGNORE:W0613
         """Ensures that the selected element is seleted in the graphic view.
            Called whenever an element is selected in the tree view or the graphic view.
         """
@@ -617,7 +620,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
         # then unselect parent, selection parent...)
         for item in self.__scene.items():
             element = item.data(0).toPyObject()
-            if element == selected_element:
+            if element in selected_elements:
 ##                print 'Selecting', item, 'isSelected =', item.isSelected()
 ##                print '    Group is', item.group()
                 if not item.isSelected() and item.group() is None:
@@ -1408,22 +1411,68 @@ class MetaWorldTreeView(QtGui.QTreeView):
                       self._onContextMenu )
         louie.connect( self._on_active_world_change, ActiveWorldChanged )
         
+    def setModel(self, model):
+        QtGui.QTreeView.setModel(self, model)
+        assert self.selectionModel() is not None
+        self.connect( self.selectionModel(), 
+                      QtCore.SIGNAL("selectionChanged(QItemSelection,QItemSelection)"),
+                      self._onTreeViewSelectionChange )
+        
     def _on_active_world_change(self, active_world):
         """Refresh a tree view with the new root element."""
         model = self.model()
+        # disconnect for previous world selection events
+        if model is not None and model.metaworld_tree is not None:
+            old_world = model.metaworld_tree.world
+            louie.disconnect( self._on_selection_change, WorldSelectionChanged, 
+                              old_world )
+        # connect to new world selection events & refresh tree view
         if model is None or active_world is None:
             model.set_metaworld_tree( None )
             self.hide()
         else:
             model_tree = active_world.find_tree( model.meta_tree )
             if model_tree is not None:
+                louie.connect( self._on_selection_change, WorldSelectionChanged, 
+                               active_world )
                 model.set_metaworld_tree( model_tree )
                 root_index = model.index(0,0)
                 self.setExpanded( root_index, True )
                 self.show()
             else: # the new world has no tree of the type of the view
                 self.hide()
+
+    def _on_selection_change(self, selected_elements, deselected_elements): #IGNORE:W0613
+        """Select the item corresponding to element in the tree view.
+        """
+        selected_meta_tree = set( [element.tree.meta 
+                                   for element in selected_elements] )
+        model = self.model()
+        selection_model = self.selectionModel()
+        if model is not None and selection_model is not None:
+            if model.meta_tree in selected_meta_tree:
+                element = list(selected_elements)[0] # @todo handle multiple selection
+                selected_item = model._findItemByElement( element )
+                if selected_item:
+                    selected_index = selected_item.index()
+                    selection_model.select( selected_index, 
+                                            QtGui.QItemSelectionModel.ClearAndSelect )
+                    self.setExpanded( selected_index, True )
+                    self.parent().raise_() # Raise the dock windows associated to the tree view
+                    self.scrollTo( selected_index )
+                else:
+                    print 'Warning: selected item not found in tree view.', element
+            else:
+                selection_model.clear()
         
+    def _onTreeViewSelectionChange( self, selected, deselected ): #IGNORE:W0613
+        """Called whenever the scene tree selection change."""
+        selected_indexes = selected.indexes()
+        if len( selected_indexes ) == 1: # Do not handle multiple selection yet
+            item = self.model().itemFromIndex( selected_indexes[0] )
+            element = item.data( QtCore.Qt.UserRole ).toPyObject()
+            element.world.set_selection( element )
+
     def _onContextMenu( self, menu_pos ):
         # Select the right clicked item
         index = self.indexAt(menu_pos)
@@ -1488,6 +1537,55 @@ class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
     def __init__( self, *args ):
         QtGui.QStandardItemModel.__init__( self, *args )
         self.metaworld_element = None
+        self.__previous_world = None
+        louie.connect( self._on_active_world_change, ActiveWorldChanged )
+        self._resetPropertyListModel()
+
+    def _resetPropertyListModel( self, element = None ):
+        self.clear()
+        self.setHorizontalHeaderLabels( [self.tr('Name'), self.tr('Value')] )
+        self.metaworld_element = element
+
+    def _on_active_world_change(self, active_world):
+        if self.__previous_world is not None:
+            louie.disconnect( self._on_selection_change, WorldSelectionChanged, 
+                              self.__previous_world )
+        self.__previous_world = active_world
+        louie.connect( self._on_selection_change, WorldSelectionChanged, 
+                       active_world )
+
+    def _on_selection_change(self, selected_elements, deselected_elements): #IGNORE:W0613
+        # Order the properties so that main attributes are at the beginning
+        if len(selected_elements) > 0:
+            element = list(selected_elements)[0] #@todo handle multiple selection
+            self._resetPropertyListModel( element )
+            element_meta = element.meta
+            world = element.world
+            missing_attributes = set( element.keys() )
+            for attribute_meta in element_meta.attributes_order:
+                attribute_name = attribute_meta.name
+                if attribute_name in missing_attributes:
+                    missing_attributes.remove( attribute_name )
+                attribute_value = element.get( attribute_name )
+                item_name = QtGui.QStandardItem( attribute_name )
+                item_name.setEditable( False )
+                if attribute_value is not None: # bold property name for defined property
+                    font = item_name.font()
+                    font.setBold( True )
+                    if attribute_value is None and attribute_meta.mandatory:
+                        # @todo Also put name in red if value is not valid.
+                        brush = QtGui.QBrush( QtGui.QColor( 255, 0, 0 ) )
+                        font.setForeground( brush )
+                    item_name.setFont( font )
+                item_value = QtGui.QStandardItem( attribute_value or '' )
+                item_value.setData( QtCore.QVariant( (world, element.tree, element_meta, element, attribute_name) ),
+                                    QtCore.Qt.UserRole )
+                self.appendRow( [ item_name, item_value ] )
+            if missing_attributes:
+                print 'Warning: The following attributes of "%s" are missing in metaworld:' % element.tag, ', '.join( missing_attributes )
+        else:
+            self._resetPropertyListModel()
+
 
 
 class MainWindow(QtGui.QMainWindow):
@@ -1526,8 +1624,6 @@ class MainWindow(QtGui.QMainWindow):
     def _reloadGameModel( self ):
         try:
             self._game_model = GameModel( self._wog_path )
-            self.connect( self._game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                          self._refreshOnSelectedObjectChange )
         except GameModelException, e:
             QtGui.QMessageBox.warning(self, self.tr("Loading WOG levels"),
                                       unicode(e))
@@ -1537,92 +1633,6 @@ class MainWindow(QtGui.QMainWindow):
         if level_mdi:
             level_view = level_mdi.widget()
             level_view.refreshFromModel( game_level_model )
-        
-    def _onElementTreeSelectionChange( self, tree_view, element_file, selected, deselected ):
-        """Called whenever the scene tree selection change."""
-        selected_indexes = selected.indexes()
-        if len( selected_indexes ) == 1: # Do not handle multiple selection yet
-            item = tree_view.model().itemFromIndex( selected_indexes[0] )
-            element = item.data( QtCore.Qt.UserRole ).toPyObject()
-            game_level_model = self.getCurrentLevelModel()
-            if game_level_model:
-                game_level_model.elementSelected( element_file, element )
-
-    def _refreshOnSelectedObjectChange( self, level_name, element_file, element ):
-        self._refreshPropertyListFromElement( element_file, element )
-        self._refreshSceneTreeSelection( element_file, element )
-
-    def _refreshSceneTreeSelection( self, element_file, element ):
-        """Select the item corresponding to element in the tree view.
-        """
-        tree_view = self.tree_view_by_element_world[element_file]
-        for other_tree_view in self.tree_view_by_element_world.itervalues():  
-            if other_tree_view != tree_view: # unselect elements on all other tree views
-                other_tree_view.selectionModel().clear()
-        selected_item = tree_view.model()._findItemByElement( element )
-        if selected_item:
-            selected_index = selected_item.index()
-            selection_model = tree_view.selectionModel()
-            selection_model.select( selected_index, QtGui.QItemSelectionModel.ClearAndSelect )
-            tree_view.setExpanded( selected_index, True )
-            tree_view.parent().raise_() # Raise the dock windows associated to the tree view
-            tree_view.scrollTo( selected_index )
-        else:
-            print 'Warning: selected item not found in tree view.', tree_view, element_file, element
-
-    def _refreshPropertyListFromElement( self, element_file, element ):
-        # Order the properties so that main attributes are at the beginning
-        element_meta = element_file.find_element_meta_by_tag(element.tag)
-        if element_meta is None:  # path for data without meta-model (to be removed)
-            attribute_names = element.keys()
-            attribute_order = ( 'id', 'name', 'x', 'y', 'depth', 'radius',
-                                'rotation', 'scalex', 'scaley', 'image', 'alpha' )
-            ordered_attributes = []
-            for name in attribute_order:
-                try:
-                    index = attribute_names.index( name )
-                except ValueError: # name not found
-                    pass
-                else: # name found
-                    del attribute_names[index]
-                    ordered_attributes.append( (name, element.get(name)) )
-            ordered_attributes.extend( [ (name, element.get(name)) for name in attribute_names ] )
-            # Update the property list model
-            self._resetPropertyListModel( element )
-            for name, value in ordered_attributes:
-                item_name = QtGui.QStandardItem( name )
-                item_name.setEditable( False )
-                item_value = QtGui.QStandardItem( value )
-                # @todo element_meta & world should be parameters...
-                element_meta = element_file.find_element_meta_by_tag(element.tag)
-                world = self.getCurrentLevelModel()
-                item_value.setData( QtCore.QVariant( (world, element_file, element_meta, element, name) ), QtCore.Qt.UserRole )
-                self.propertiesListModel.appendRow( [ item_name, item_value ] )
-        else: # Update the property list using the model
-            self._resetPropertyListModel( element )
-            world = self.getCurrentLevelModel()
-            missing_attributes = set( element.keys() )
-            for attribute_meta in element_meta.attributes_order:
-                attribute_name = attribute_meta.name
-                if attribute_name in missing_attributes:
-                    missing_attributes.remove( attribute_name )
-                attribute_value = element.get( attribute_name )
-                item_name = QtGui.QStandardItem( attribute_name )
-                item_name.setEditable( False )
-                if attribute_value is not None: # bold property name for defined property
-                    font = item_name.font()
-                    font.setBold( True )
-                    if attribute_value is None and attribute_meta.mandatory:
-                        # @todo Also put name in red if value is not valid.
-                        brush = QtGui.QBrush( QtGui.QColor( 255, 0, 0 ) )
-                        font.setForeground( brush )
-                    item_name.setFont( font )
-                item_value = QtGui.QStandardItem( attribute_value or '' )
-                item_value.setData( QtCore.QVariant( (world, element_file, element_meta, element, attribute_name) ),
-                                    QtCore.Qt.UserRole )
-                self.propertiesListModel.appendRow( [ item_name, item_value ] )
-            if missing_attributes:
-                print 'Warning: The following attributes of "%s" are missing in metaworld:' % element.tag, ', '.join( missing_attributes )
 
     def editLevel( self ):
         if self._game_model:
@@ -1775,7 +1785,7 @@ class MainWindow(QtGui.QMainWindow):
         if level_model:
             added_resource_elements = level_model.updateLevelResources()
             if added_resource_elements:
-                level_model.elementSelected( metawog.TREE_LEVEL_RESOURCE, added_resource_elements[0] )
+                level_model.set_selection( added_resource_elements )
 
     def undo( self ):
         pass
@@ -1909,18 +1919,6 @@ class MainWindow(QtGui.QMainWindow):
         self.addDockWidget( QtCore.Qt.RightDockWidgetArea, dock )
         if sibling_tabbed_dock: # Stacks the dock widget together
             self.tabifyDockWidget( sibling_tabbed_dock, dock )
-        class TreeBinder(object):
-            def __init__( self, tree_view, element_file, handler ):
-                self.__tree_view = tree_view
-                self.__element_type = element_file
-                self.__handler = handler
-
-            def __call__( self, *args ):
-                self.__handler( self.__tree_view, self.__element_type, *args )
-        # On tree node selection change
-        selection_model = element_tree_view.selectionModel()
-        self.connect( selection_model, QtCore.SIGNAL("selectionChanged(QItemSelection,QItemSelection)"),
-                      TreeBinder( element_tree_view, element_file, self._onElementTreeSelectionChange) )
         self.tree_view_by_element_world[element_file] = element_tree_view
         return dock, element_tree_view
         
@@ -1939,7 +1937,6 @@ class MainWindow(QtGui.QMainWindow):
         self.propertiesList.setAlternatingRowColors( True )
 
         self.propertiesListModel = MetaWorldPropertyListModel(0, 2, self.propertiesList)  # nb rows, nb cols
-        self._resetPropertyListModel( None )
         self.propertiesList.setModel( self.propertiesListModel )
         delegate = PropertyListItemDelegate( self.propertiesList, self )
         self.propertiesList.setItemDelegate( delegate )
@@ -1948,11 +1945,6 @@ class MainWindow(QtGui.QMainWindow):
 
         self.connect(self.propertiesListModel, QtCore.SIGNAL("dataChanged(const QModelIndex&,const QModelIndex&)"),
                      self._onPropertyListValueChanged)
-
-    def _resetPropertyListModel( self, element ):
-        self.propertiesListModel.clear()
-        self.propertiesListModel.setHorizontalHeaderLabels( [self.tr('Name'), self.tr('Value')] )
-        self.propertiesListModel.metaworld_element = element
 
     def _readSettings( self ):
         """Reads setting from previous session & restore window state."""
