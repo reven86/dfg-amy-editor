@@ -383,6 +383,7 @@ class LevelModel(metaworld.World):
                     self.images_by_id[new_value] = old_pixmap
                     del self.images_by_id[old_id]
                     reload_image = False
+        element.set( property_name, new_value )
         if reload_image:
             self._loadImageFromElement( element )
         self.dirty_element_types.add( element_file )
