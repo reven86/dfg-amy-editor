@@ -1,6 +1,6 @@
 """Provides a way to describe a graph of objects, that may be linked together.
 
-Objects live in a given world. Scopes are organized as a hierarchy: world children may see their parent objects,
+Objects live in a given world. Worlds are organized as a hierarchy: world children may see their parent objects,
 but the parent world can not see the child objects.
 
 Typically, their is a global world with resources common to all levels, and each level has its own world.
@@ -55,7 +55,7 @@ class AttributeMeta(object):
         self.mandatory = mandatory
         self.element_meta = None
 
-    def attach_to_element_desc( self, element_meta ):
+    def attach_to_element_meta( self, element_meta ):
         self.element_meta = element_meta
 
     def get( self, element ):
@@ -98,8 +98,8 @@ class ReferenceAttributeMeta(AttributeMeta):
         self.reference_family = reference_family
         self.reference_world = reference_world
 
-    def attach_to_element_desc( self, element_meta ):
-        AttributeMeta.attach_to_element_desc( self, element_meta )
+    def attach_to_element_meta( self, element_meta ):
+        AttributeMeta.attach_to_element_meta( self, element_meta )
         element_meta._add_reference_attribute( self )
 
 class IdentifierAttributeMeta(AttributeMeta):
@@ -108,8 +108,8 @@ class IdentifierAttributeMeta(AttributeMeta):
         self.reference_family = reference_family
         self.reference_world = reference_world
 
-    def attach_to_element_desc( self, element_meta ):
-        AttributeMeta.attach_to_element_desc( self, element_meta )
+    def attach_to_element_meta( self, element_meta ):
+        AttributeMeta.attach_to_element_meta( self, element_meta )
         element_meta._set_identifier_attribute( self )
 
 class PathAttributeMeta(AttributeMeta):
@@ -243,7 +243,7 @@ class ElementMeta(ObjectsMetaOwner):
         for attribute in attributes:
             assert attribute.name not in self.attributes_by_name, attribute.name
             self.attributes_by_name[attribute.name] = attribute
-            attribute.attach_to_element_desc( self )
+            attribute.attach_to_element_meta( self )
         self.attributes_order.extend( attributes )
 
     def _add_reference_attribute( self, attribute_meta ):
@@ -471,8 +471,8 @@ class ReferenceTracker(object):
         
 
 def print_world_meta( world ):
-    """Diagnostic function that print the full content of a Scope, including its files and objects."""
-    print '* Scope:', world.world_name
+    """Diagnostic function that print the full content of a World, including its files and objects."""
+    print '* World:', world.world_name
     for child_world in world.child_worlds:
         print '  has child world:', child_world.world_name
     for tree in world.trees_meta_by_name:
