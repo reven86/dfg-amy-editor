@@ -63,45 +63,6 @@ def flattened_element_children( element ):
         children.extend( flattened_element_children( child_element ) )
     return children
 
-class ElementReferenceTracker(metaworld.ReferenceTracker):
-    """Specialized version of the ReferenceTracker that provides helper for element tree based objects.
-    """
-    def element_object_added( self, object ):
-        """Registers the specified element and all its children that are declared in the scope description.
-        """
-        object_desc = object.meta
-        scope_key = object.world
-        assert scope_key is not None, object
-        metaworld.ReferenceTracker.object_added( self, object )
-        for child_element in object:    # recurse to add all child elements
-            child_object_desc = object_desc.find_immediate_child_by_tag( child_element.tag )
-            if child_object_desc:
-                self.element_object_added( child_element )
-            else:
-                print 'Warning: unknown element "%s", child of "%s" in metaworld:' % (
-                    child_element.tag, object.tag)
-
-    def element_object_about_to_be_removed( self, element ):
-        """Unregisters the specified element and all its children that are declared in the scope description.
-        """
-        object_desc = element.meta
-        metaworld.ReferenceTracker.object_about_to_be_removed( self, element )
-        for child_element in element:    # recurse to add all child elements
-            child_object_desc = object_desc.find_immediate_child_by_tag( child_element.tag )
-            if child_object_desc:
-                self.element_object_about_to_be_removed( child_element )
-            else:
-                print 'Warning: unknown element "%s", child of "%s" in metaworld:' % (
-                    child_element.tag, element.tag)
-
-    def update_element_attribute( self, element, attribute_name, new_value ):
-        """Updates an element attribute value and automatically updates related identifier/back-references.
-        """
-        old_value = element.get( attribute_name )
-        element.set( attribute_name, new_value )
-        attribute_desc = element.attribute_meta( attribute_name )
-        self.attribute_updated( element, attribute_desc, old_value, new_value )
-
 class GameModelException(Exception):
     pass
 
@@ -139,7 +100,6 @@ class GameModel(QtCore.QObject):
         self.level_models_by_name = {}
         self.current_model = None
         self.is_dirty = False
-        self.tracker = ElementReferenceTracker()
         self._initializeGlobalReferences()
         self._loadBalls()
 
@@ -191,18 +151,10 @@ class GameModel(QtCore.QObject):
                                             os.path.join(ball_dir, ball_name), 'resources.xml.bin' )
             assert ball_tree.world == ball_world
             assert ball_tree.root.world == ball_world, ball_tree.root.world
-            self.tracker.scope_added( ball_world )
-            self.tracker.element_object_added( ball_tree.root )
-            self.tracker.element_object_added( resource_tree.root )
 
     def _initializeGlobalReferences( self ):
         """Initialize global effects, materials, resources and texts references."""
-        self.tracker.scope_added( self.global_world )
-        self.tracker.element_object_added( self._effects_tree.root )
-        self.tracker.element_object_added( self._materials_tree.root )
-        self.tracker.element_object_added( self._texts_tree.root )
         self._expandResourceDefaultsIdPrefixAndPath()
-        self.tracker.element_object_added( self._resources_tree.root )
 
     def _expandResourceDefaultsIdPrefixAndPath( self ):
         """Expands the default idprefix and path that are used as short-cut in the XML file."""
@@ -379,10 +331,6 @@ class LevelModel(metaworld.World):
     def resource_tree( self ):
         return self.find_tree( metawog.LEVEL_RESOURCE_FILE ).root
 
-    @property
-    def tracker( self ):
-        return self.game_model.tracker
-
     def isDirty( self ):
         return len(self.dirty_object_types) != 0
 
@@ -392,10 +340,6 @@ class LevelModel(metaworld.World):
     def initializeLevelReferencesAndCache( self ):
         level_scope = self
         parent_scope = self.game_model
-        self.tracker.scope_added( level_scope )
-        self.tracker.element_object_added( self.level_tree )
-        self.tracker.element_object_added( self.scene_tree )
-        self.tracker.element_object_added( self.resource_tree )
         # cache
         for image_element in self.resource_tree.findall( './/Image' ):
             self._loadImageFromElement( image_element )
@@ -442,7 +386,6 @@ class LevelModel(metaworld.World):
                     self.images_by_id[new_value] = old_pixmap
                     del self.images_by_id[old_id]
                     reload_image = False
-        self.game_model.tracker.update_element_attribute( element, property_name, new_value )
         if reload_image:
             self._loadImageFromElement( element )
         self.dirty_object_types.add( object_file )
@@ -465,8 +408,6 @@ class LevelModel(metaworld.World):
         if index is None:
             index = len(parent_element)
         parent_element.insert( index, element )
-        # Update identifiers & reference related to element
-        self.tracker.element_object_added( element )
         # Broadcast the insertion event
         self.dirty_object_types.add( object_file )
         if element.tag == 'Image':  # @todo dirty hack, need to be cleaner
@@ -475,12 +416,10 @@ class LevelModel(metaworld.World):
 
     def removeElement( self, object_file, element ):
         """Removes the specified element and all its children from the level."""
-        # Update element reference & identifiers in tracker
         if element in (self.scene_tree, self.level_tree, self.resource_tree):
             print 'Warning: attempted to remove root element, GUI should not allow that'
             return False # can not remove those elements
         # @todo makes tag look-up fails once model is complete
-        self.tracker.element_object_about_to_be_removed( element )
         found = find_element_in_tree( self.getObjectFileRootElement(object_file), element )
         if found is None:
             print 'Warning: inconsistency, element to remove in not in the specified object_file', element
@@ -1154,14 +1093,14 @@ def validate_xy_property( scope_key, attribute_desc, input ):
             return QtGui.QValidator.Intermediate, 'Position must be of the form "X,Y" were X and Y are real number'
     return QtGui.QValidator.Acceptable
 
-def validate_reference_property( scope_key, attribute_desc, input ):
-    input = unicode(input)
-    if scope_key.tracker.is_valid_reference( scope_key, attribute_desc, input ):
+def validate_reference_property( world, attribute_meta, reference_value ):
+    reference_value = unicode(reference_value)
+    if world.is_valid_reference( attribute_meta, reference_value ):
         return QtGui.QValidator.Acceptable
-    return QtGui.QValidator.Intermediate, '"%%1" is not a valid reference to an object of type %s' % attribute_desc.reference_family, input
+    return QtGui.QValidator.Intermediate, '"%%1" is not a valid reference to an object of type %s' % attribute_meta.reference_family, reference_value
 
-def complete_reference_property( scope_key, attribute_desc ):
-    return scope_key.tracker.list_identifiers( scope_key, attribute_desc.reference_family )
+def complete_reference_property( world, attribute_meta ):
+    return world.list_identifiers( attribute_meta.reference_family )
 
 # For later
 ##def editor_rgb_property( parent, option, index, element, attribute_desc, default_editor_factory ):
@@ -1232,7 +1171,7 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
                 def __init__( self, *args ):
                     self.args = args
                 def __call_( self, parent ):
-                    return QtGui.QStyledItemDelegate.createEditor( args[0], parent, *(self.args[1:]) )
+                    return QtGui.QStyledItemDelegate.createEditor( self.args[0], parent, *(self.args[1:]) )
             editor = handler_data['editor']( parent, option, index, element, attribute_desc, DefaultEditorFactory() )
         else: # No specific, use default QLineEditor
             editor = QtGui.QStyledItemDelegate.createEditor( self, parent, option, index )
@@ -1241,7 +1180,8 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
             editor.setValidator( validator )
         if handler_data and handler_data.get('completer'):
             word_list = QtCore.QStringList()
-            sorted_word_list = handler_data.get('completer')( scope_key, attribute_desc )
+            completer = handler_data['completer'] 
+            sorted_word_list = list( completer( scope_key, attribute_desc ) )
             sorted_word_list.sort( lambda x,y: cmp(x.lower(), y.lower()) )
             for word in sorted_word_list:
                 word_list.append( word )
