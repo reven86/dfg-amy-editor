@@ -299,13 +299,13 @@ class GameModel(QtCore.QObject):
         self.is_dirty = True
 
 class BallModel(metaworld.World):
-    def __init__( self, universe, world_desc, ball_name, game_model ):
-        metaworld.World.__init__( self, universe, world_desc, ball_name )
+    def __init__( self, universe, world_meta, ball_name, game_model ):
+        metaworld.World.__init__( self, universe, world_meta, ball_name )
         self.game_model = game_model
 
 class LevelModel(metaworld.World):
-    def __init__( self, universe, world_desc, level_name, game_model, is_dirty = False ):
-        metaworld.World.__init__( self, universe, world_desc, level_name )
+    def __init__( self, universe, world_meta, level_name, game_model, is_dirty = False ):
+        metaworld.World.__init__( self, universe, world_meta, level_name )
         self.game_model = game_model
         self.dirty_object_types = set()
         if is_dirty:

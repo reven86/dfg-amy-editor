@@ -466,22 +466,22 @@ class WorldsOwner:
             worlds.append( world_data.values() )
         return worlds
         
-    def make_world( self, world_desc, world_key = None, factory = None, *args, **kwargs ):
-        """Creates a child World using the specified world_desc description and associating it with world_key.
-           world_desc: description of the world to instantiate.
+    def make_world( self, world_meta, world_key = None, factory = None, *args, **kwargs ):
+        """Creates a child World using the specified world_meta description and associating it with world_key.
+           world_meta: description of the world to instantiate.
            workd_key: a unique identifier for the world within the world for worlds of the same kind.
            factory: Type to instantiate. Must be a subclass of World. Default is World.
-                    Factory parameters are: (universe, world_desc, key)
+                    Factory parameters are: (universe, world_meta, key)
                     It will also be passed any extra parameters provided to the function.
         """
-        #@todo check that world_desc is an allowed child world
+        #@todo check that world_meta is an allowed child world
         factory = factory or World
-        world = factory( self.universe, world_desc, world_key, #IGNORE:E1101 
+        world = factory( self.universe, world_meta, world_key, #IGNORE:E1101 
                          *args, **kwargs ) 
-        if world_desc not in self._worlds:
-            self._worlds[world_desc] = {}
-        assert world.key not in self._worlds[world_desc]
-        self._worlds[world_desc][world.key] = world
+        if world_meta not in self._worlds:
+            self._worlds[world_meta] = {}
+        assert world.key not in self._worlds[world_meta]
+        self._worlds[world_meta][world.key] = world
         parent_world = self.universe != self and self or None #IGNORE:E1101
         world._attached_to_parent_world(parent_world)
         return world
@@ -496,16 +496,16 @@ class WorldsOwner:
         world._about_to_be_detached_from_parent_world(parent_world)
         del self._worlds[world.meta][world.key]
 
-    def find_world( self, world_desc, world_key ):
-        worlds_by_key = self._worlds.get( world_desc, {} )
+    def find_world( self, world_meta, world_key ):
+        worlds_by_key = self._worlds.get( world_meta, {} )
         return worlds_by_key.get( world_key )
 
-    def list_worlds_of_type( self, world_desc ):
-        worlds_by_key = self._worlds.get( world_desc, {} )
+    def list_worlds_of_type( self, world_meta ):
+        worlds_by_key = self._worlds.get( world_meta, {} )
         return worlds_by_key.values()
 
-    def list_world_keys( self, world_desc ):
-        worlds_by_key = self._worlds.get( world_desc, {} )
+    def list_world_keys( self, world_meta ):
+        worlds_by_key = self._worlds.get( world_meta, {} )
         return worlds_by_key.keys()
 
 
@@ -757,10 +757,10 @@ class World(WorldsOwner):
 
        The elements attached to a world are unknown to other World.    
     """
-    def __init__( self, universe, world_desc, key = None ):
+    def __init__( self, universe, world_meta, key = None ):
         WorldsOwner.__init__( self )
         self._universe = universe
-        self._world_desc = world_desc
+        self._world_meta = world_meta
         self._trees = {}
         self._key = key
         self._parent_world = None
@@ -783,7 +783,7 @@ class World(WorldsOwner):
 
     @property
     def meta( self ):
-        return self._world_desc
+        return self._world_meta
 
     @property
     def trees(self):
@@ -837,16 +837,16 @@ class World(WorldsOwner):
             assert tree._world is None
             assert isinstance(tree, Tree)
             tree._world = self
-            assert tree._file_desc not in self._trees 
-            self._trees[ tree._file_desc ] = tree
+            assert tree._tree_meta not in self._trees 
+            self._trees[ tree._tree_meta ] = tree
             louie.send( TreeAdded, self, tree )
 
     def remove_tree( self, *trees ):
         for tree in trees:
             assert isinstance(tree, Tree)
-            assert self._trees.get(tree._file_desc) == tree
+            assert self._trees.get(tree._tree_meta) == tree
             louie.send( TreeAboutToBeRemoved, self, tree )
-            del self._trees[ tree._file_desc ]
+            del self._trees[ tree._tree_meta ]
             tree._world = None
 
     def _warning( self, message, **kwargs ):
@@ -858,7 +858,7 @@ class Tree:
     """
     def __init__( self, universe, tree_meta, root_element = None ):
         self._universe = universe
-        self._file_desc = tree_meta
+        self._tree_meta = tree_meta
         self._root_element = root_element
         self._world = None
         self.set_root( root_element )
@@ -890,7 +890,7 @@ class Tree:
 
     @property
     def meta( self ):
-        return self._file_desc
+        return self._tree_meta
 
     def to_xml( self, encoding = None ):
         """Outputs a XML string representing the tree.
