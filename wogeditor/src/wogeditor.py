@@ -66,6 +66,47 @@ def flattened_element_children( element ):
 class GameModelException(Exception):
     pass
 
+class PixmapCache(object):
+    def __init__(self, wog_dir, universe):
+        self._wog_dir = wog_dir
+        self._pixmaps_by_element = {}
+        self.__event_synthetizer = metaworld.ElementEventsSynthetizer(universe,
+            None,
+            self._on_element_updated, 
+            self._on_element_about_to_be_removed )
+        
+    def get_pixmap(self, image_element):
+        """Returns a pixmap corresponding to the image_element.
+           The pixmap is loaded if not present in the cache.
+           None is returned on failure to load the pixmap.
+        """
+        assert image_element.tag == 'Image'
+        pixmap = self._pixmaps_by_element.get( image_element )
+        if pixmap:
+            return pixmap
+        path = os.path.join( self._wog_dir, image_element.get('path','') + '.png' )
+        if not os.path.isfile(path):
+            print 'Warning: invalid image path for "%(id)s": "%(path)s"' % \
+                image_element.attributes
+        else:
+            pixmap = QtGui.QPixmap()
+            if pixmap.load( path ):
+                self._pixmaps_by_element[image_element] = pixmap
+                return pixmap
+            else:
+                print 'Warning: failed to load image "%(id)s": "%(path)s"' % \
+                    image_element.attributes
+        return None
+
+    def _on_element_about_to_be_removed(self, element, index_in_parent): #IGNORE:W0613
+        if element in self._pixmaps_by_element:
+            del self._pixmaps_by_element[element]
+
+    def _on_element_updated(self, element, name, new_value, old_value): #IGNORE:W0613
+        if element in self._pixmaps_by_element:
+            del self._pixmaps_by_element[element]
+    
+
 class GameModel(QtCore.QObject):
     def __init__( self, wog_path ):
         """Loads FX, material, text and global resources.
@@ -106,6 +147,7 @@ class GameModel(QtCore.QObject):
         louie.connect( self._onElementAdded, metaworld.ElementAdded )
         louie.connect( self._onElementAboutToBeRemoved, metaworld.ElementAboutToBeRemoved )
         louie.connect( self._onElementUpdated, metaworld.AttributeUpdated )
+        self.pixmap_cache = PixmapCache( self._wog_dir, self._universe )
 
     @property
     def is_dirty(self):
@@ -160,8 +202,8 @@ class GameModel(QtCore.QObject):
             ball_world = self.global_world.make_world( metawog.WORLD_BALL, ball_name, BallModel, self )
             ball_tree = self._loadTree( ball_world, metawog.TREE_BALL_MAIN,
                                         os.path.join(ball_dir, ball_name), 'balls.xml.bin' )
-            resource_tree = self._loadTree( ball_world, metawog.TREE_BALL_RESOURCE,
-                                            os.path.join(ball_dir, ball_name), 'resources.xml.bin' )
+            self._loadTree( ball_world, metawog.TREE_BALL_RESOURCE,
+                            os.path.join(ball_dir, ball_name), 'resources.xml.bin' )
             assert ball_tree.world == ball_world
             assert ball_tree.root.world == ball_world, ball_tree.root.world
 
@@ -215,7 +257,6 @@ class GameModel(QtCore.QObject):
                             level_dir, level_name + '.scene.bin' )
             self._loadTree( level_world, metawog.TREE_LEVEL_RESOURCE,
                             level_dir, level_name + '.resrc.bin' )
-            level_world.initializeLevelCache()
             
             self.level_models_by_name[level_name] = level_world
         level_model = self.level_models_by_name[level_name]
@@ -333,7 +374,6 @@ class LevelModel(metaworld.World):
                                              metawog.TREE_LEVEL_RESOURCE,
                                              metawog.TREE_LEVEL_SCENE) )
 
-        self.images_by_id = {}
 
     @property
     def level_name( self ):
@@ -358,24 +398,6 @@ class LevelModel(metaworld.World):
     def isReadOnlyLevel( self ):
         return self.level_name.lower() in 'ab3 beautyandthetentacle beautyschool blusteryday bulletinboardsystem burningman chain deliverance drool economicdivide fistyreachesout flyawaylittleones flyingmachine geneticsortingmachine goingup gracefulfailure grapevinevirus graphicprocessingunit hanglow helloworld htinnovationcommittee immigrationnaturalizationunit impalesticky incinerationdestination infestytheworm ivytower leaphole mapworldview mistyslongbonyroad mom observatoryobservationstation odetobridgebuilder productlauncher redcarpet regurgitationpumpingstation roadblocks secondhandsmoke superfusechallengetime theserver thirdwheel thrustertest towerofgoo tumbler uppershaft volcanicpercolatordayspa waterlock weathervane whistler youhavetoexplodethehead'.split()
 
-    def initializeLevelCache( self ):
-        # cache
-        for image_element in self.resource_tree.findall( './/Image' ):
-            self._loadImageFromElement( image_element )
-
-    def _loadImageFromElement( self, image_element ):
-        image_id, path = image_element.get('id'), image_element.get('path')
-        path = self.game_model.getResourcePath( path + '.png' )
-        if os.path.isfile( path ):
-            pixmap = QtGui.QPixmap()
-            if pixmap.load( path ):
-                self.images_by_id[image_id] = pixmap
-##                print 'Loaded', image_id, path
-            else:
-                print 'Failed to load image:', path
-        else:
-            print 'Invalid image path for "%s": "%s"' % (id,path)
-
     def saveModifiedElements( self ):
         """Save the modified scene, level, resource tree."""
         if self.isReadOnlyLevel():  # Discards change made on read-only level
@@ -395,19 +417,7 @@ class LevelModel(metaworld.World):
 
     def updateObjectPropertyValue( self, element_file, element, property_name, new_value ):
         """Changes the property value of an element (scene, level or resource)."""
-        reload_image = False
-        if element.tag == 'Image':
-            reload_image = True # reload image if path changed or image was not in cache
-            if property_name == 'id': # update pixmap cache
-                old_id = element.get('id')
-                old_pixmap = self.images_by_id.get(old_id)
-                if old_pixmap:
-                    self.images_by_id[new_value] = old_pixmap
-                    del self.images_by_id[old_id]
-                    reload_image = False
         element.set( property_name, new_value )
-        if reload_image:
-            self._loadImageFromElement( element )
         self.dirty_element_types.add( element_file )
         self.game_model.elementPropertyValueChanged( self.level_name,
                                                     element_file, element,
@@ -430,8 +440,6 @@ class LevelModel(metaworld.World):
         parent_element.insert( index, element )
         # Broadcast the insertion event
         self.dirty_element_types.add( element_file )
-        if element.tag == 'Image':  # @todo dirty hack, need to be cleaner
-            self._loadImageFromElement( element )
         self.game_model.elementAdded( self.level_name, element_file, parent_element, element, index )
 
     def removeElement( self, element_file, element ):
@@ -453,7 +461,13 @@ class LevelModel(metaworld.World):
         return True
 
     def getImagePixmap( self, image_id ):
-        return self.images_by_id.get(image_id)
+        image_element = self.resolve_reference( metawog.WORLD_LEVEL, 'image', image_id )
+        pixmap = None
+        if image_element is not None:
+            pixmap = self.game_model.pixmap_cache.get_pixmap( image_element )
+        else:
+            print 'Warning: invalid image reference: %(ref)s' % {'ref':image_id}
+        return pixmap or QtGui.QPixmap()
 
     def elementSelected( self, element_file, element ):
         """Indicates that the specified element has been selected.
@@ -1117,7 +1131,7 @@ def validate_xy_property( world, attribute_meta, text ):
 
 def validate_reference_property( world, attribute_meta, reference_value ):
     reference_value = unicode(reference_value)
-    if world.is_valid_reference( attribute_meta, reference_value ):
+    if world.is_valid_attribute_reference( attribute_meta, reference_value ):
         return QtGui.QValidator.Acceptable
     return QtGui.QValidator.Intermediate, '"%%1" is not a valid reference to an element of type %s' % attribute_meta.reference_family, reference_value
 
@@ -1634,7 +1648,7 @@ class MainWindow(QtGui.QMainWindow):
                     mandatory_attributes[attribute_name] = init_value
             # Creates and append to parent the new child element
             child_element = metaworld.Element( new_element_meta, mandatory_attributes )
-            # Notes: when the element is added, the elementAdded() signal will cause the
+            # Notes: when the element is added, the ElementAdded signal will cause the
             # corresponding item to be inserted into the tree.
             self.getCurrentLevelModel().addElement( element_file, parent_element, child_element )
             # Select new item in tree view

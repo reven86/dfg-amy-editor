@@ -513,54 +513,75 @@ class WorldsOwner:
         worlds_by_key = self._worlds.get( world_meta, {} )
         return worlds_by_key.keys()
 
+class ElementEventsSynthetizer(object):
+    """Generates element events for all tree root from world or tree events 
+       when they are attached/detached from the universe.
+    """
+    def __init__(self, universe, 
+                 added_handler = None, 
+                 updated_handler = None, 
+                 removed_handler = None ):
+        self.__universe = universe
+        self.__added_handler = added_handler
+        self.__updated_handler = updated_handler
+        self.__removed_handler = removed_handler
+        if added_handler is not None:
+            louie.connect( self.__on_tree_added, TreeAdded )
+            louie.connect( self.__on_world_added, WorldAdded )
+        if removed_handler is not None:
+            louie.connect( self.__on_tree_about_to_be_removed, TreeAboutToBeRemoved )
+            louie.connect( self.__on_world_about_to_be_removed, WorldAboutToBeRemoved )
+            
+    def __on_world_added(self, world):
+        if world.universe == self.__universe:
+            for tree in world.trees:
+                self.__on_tree_added(tree)
+            for world in world.all_child_worlds():
+                self.__on_world_added(world)
+    
+    def __on_world_about_to_be_removed(self, world):
+        if world.universe == self.__universe:
+            for tree in world.trees:
+                self.__on_tree_about_to_be_removed(tree)
+            for world in world.all_child_worlds():
+                self.__on_world_about_to_be_removed(world)
+
+    def __on_tree_added(self, tree):
+        if tree.universe == self.__universe:
+            self.__manage_tree_connections( tree, louie.connect )
+            if tree.root is not None:
+                self.__added_handler( tree.root, 0 )
+
+    def __on_tree_about_to_be_removed(self, tree):
+        if tree.universe == self.__universe:
+            self.__manage_tree_connections( tree, louie.disconnect )
+            if tree.root is not None:
+                self.__removed_handler( tree.root, 0 ) 
+            
+    def __manage_tree_connections(self, tree, connection_manager):
+        if self.__added_handler is not None:
+            connection_manager( self.__added_handler, ElementAdded, tree )
+        if self.__removed_handler is not None:
+            connection_manager( self.__removed_handler, 
+                                ElementAboutToBeRemoved, tree )
+        if self.__updated_handler is not None:
+            connection_manager( self.__updated_handler, AttributeUpdated, tree )
 
 class Universe(WorldsOwner):
     """Represents the universe where all elements, worlds and trees live in.
     """
     def __init__( self ):
         WorldsOwner.__init__( self )
-        louie.connect( self._on_tree_added, TreeAdded )
-        louie.connect( self._on_tree_about_to_be_removed, TreeAboutToBeRemoved )
-        louie.connect( self._on_world_added, WorldAdded )
-        louie.connect( self._on_world_about_to_be_removed, WorldAboutToBeRemoved )
         self.ref_by_world_and_family = {} # dict( (world,family): dict(id: element) )
         self.back_references = {} # dict( (family,identifier) : set(world,element,attribute_meta)] )
+        self.__event_synthetizer = ElementEventsSynthetizer(self,
+            self._on_element_added,
+            self._on_element_updated, 
+            self._on_element_about_to_be_removed )
 
     @property
     def universe( self ):
         return self
-            
-    def _on_world_added(self, world):
-        if world.universe == self:
-            for tree in world.trees:
-                self._on_tree_added(tree)
-            for world in world.all_child_worlds():
-                self._on_world_added(world)
-    
-    def _on_world_about_to_be_removed(self, world):
-        if world.universe == self:
-            for tree in world.trees:
-                self._on_tree_about_to_be_removed(tree)
-            for world in world.all_child_worlds():
-                self._on_world_about_to_be_removed(world)
-
-    def _on_tree_added(self, tree):
-        if tree.universe == self:
-            self._manage_tree_connections( tree, louie.connect )
-            if tree.root is not None:
-                self._on_element_added( tree.root, 0 )
-
-    def _on_tree_about_to_be_removed(self, tree):
-        if tree.universe == self:
-            self._manage_tree_connections( tree, louie.disconnect )
-            if tree.root is not None:
-                self._on_element_about_to_be_removed( tree.root, 0 ) 
-            
-    def _manage_tree_connections(self, tree, connection_manager):
-        connection_manager( self._on_element_added, ElementAdded, tree )
-        connection_manager( self._on_element_about_to_be_removed, 
-                            ElementAboutToBeRemoved, tree )
-        connection_manager( self._on_element_updated, AttributeUpdated, tree )
 
     def _on_element_added(self, element, index_in_parent): #IGNORE:W0613
         assert isinstance(element,Element)
@@ -662,40 +683,55 @@ class Universe(WorldsOwner):
 
     # Identifier/Reference queries
     
-    def is_valid_reference( self, world, attribute_meta, attribute_value ):
-        """Checks if the specified attribute reference is valid in the world world
-           specified by attribute_meta.
+    def resolve_reference(self, world, reference_world_meta, family, id_value ):
+        """Returns the element corresponding to the specified reference in the world.
+           Resolution only consider identifiers defined in world at the level or above 
+           the level of reference_world_meta in the hierarchy of world.
            @exception ValueError if world has no world matching 
-                      attribute_meta.reference_world in its hierarchy. 
+                      reference_world_meta in its hierarchy. 
         """
         # walk parents worlds until we find the right one.
         assert world is not None
         initial_world = world
-        while world.meta != attribute_meta.reference_world:
+        while world.meta != reference_world_meta:
             world = world.parent_world
             if world is None:
-                raise ValueError( "World '%(world)s' as no meta world '%(scope)s' in its hiearchy" % 
+                raise ValueError( "World '%(world)s' as no meta world '%(scope)s' in its hierarchy" % 
                                   {'world':initial_world, 
-                                   'scope':attribute_meta.reference_world } )
-        return self._is_valid_reference_in_world_or_parent( world, 
-                                                            attribute_meta, 
-                                                            attribute_value )
+                                   'scope':reference_world_meta } )
+        return self.__resolve_reference_in_world_or_parent( world, 
+                                                            family, 
+                                                            id_value )
 
-    def _is_valid_reference_in_world_or_parent(self, world, attribute_meta, attribute_value ):
-        """Checks if the world or one of its parent as the specified identifier in
-           the family specified by attribute_meta.
-           Implementation detail of is_valid_reference.
+    def __resolve_reference_in_world_or_parent(self, world, family, id_value ):
+        """Returns the element an id_value identifier for the specified family
+           in world or one of its parent world.
+           Implementation detail of resolve_reference.
         """
-        id_scope_key = (world,attribute_meta.reference_family)
+        id_scope_key = (world,family)
         references = self.ref_by_world_and_family.get( id_scope_key )
-        if references is None or attribute_value not in references:
-            world = world.parent_world
-            if world is not None:
-                return self._is_valid_reference_in_world_or_parent( world, 
-                                                                    attribute_meta, 
-                                                                    attribute_value )
-            return False
-        return True
+        if references is not None:
+            resolved_element = references.get(id_value)
+            if resolved_element is not None:
+                return resolved_element
+        world = world.parent_world
+        if world is not None:
+            return self.__resolve_reference_in_world_or_parent( world, 
+                                                                family, 
+                                                                id_value )
+        return None
+
+    
+    def is_valid_attribute_reference( self, world, attribute_meta, id_value ):
+        """Checks if the specified attribute reference is valid in the world,
+           for the reference world and family specified by attribute_meta.
+           @exception ValueError if world has no world matching 
+                      attribute_meta.reference_world in its hierarchy. 
+        """
+        return self.resolve_reference(world, 
+                                      attribute_meta.reference_world, 
+                                      attribute_meta.reference_family, 
+                                      id_value) is not None
 
     def list_identifiers( self, world, family ):
         """Returns a list all identifiers for the specified family in the specified world and its parent worlds."""
@@ -798,13 +834,22 @@ class World(WorldsOwner):
         """Returns a list all identifiers for the specified family in the specified world and its parent worlds."""
         return self.universe.list_identifiers(self, family)
 
-    def is_valid_reference( self, attribute_meta, attribute_value ):
+    def resolve_reference(self, reference_world_meta, family, id_value ):
+        """Returns the element corresponding to the specified reference in this world.
+           Resolution only consider identifiers defined in world at the level or above 
+           the level of reference_world_meta in the hierarchy of world.
+           @exception ValueError if world has no world matching 
+                      reference_world_meta in its hierarchy. 
+        """
+        return self.universe.resolve_reference(self, reference_world_meta, family, id_value)
+
+    def is_valid_attribute_reference( self, attribute_meta, attribute_value ):
         """Checks if the specified attribute reference is valid in the world scope
            specified by attribute_meta.
            @exception ValueError if world has no world matching 
                       attribute_meta.reference_world in its hierarchy. 
         """
-        return self.universe.is_valid_reference( self, attribute_meta, attribute_value )
+        return self.universe.is_valid_attribute_reference( self, attribute_meta, attribute_value )
 
     def _attached_to_parent_world( self, parent_world ):
         """Called when a sub-world is attached to the world."""
@@ -996,6 +1041,10 @@ class Element(_ElementBase):
     @property
     def meta( self ):
         return self._element_meta
+
+    @property
+    def attributes(self):
+        return self.attrib.copy()
 
     def make_child( self, element_meta, attributes = None, children = None ):
         """Makes a new child element and append it to the element."""
@@ -1287,11 +1336,11 @@ if __name__ == "__main__":
             def check_valid_sign_reference(world, value):
                 attribute_meta = LEVEL_SIGN.attributes_by_name['text']
                 assert world is not None
-                self.assert_( world.is_valid_reference(attribute_meta, value) ) 
+                self.assert_( world.is_valid_attribute_reference(attribute_meta, value) ) 
             def check_invalid_sign_reference(world, value):
                 attribute_meta = LEVEL_SIGN.attributes_by_name['text']
                 assert world is not None
-                self.failIf( world.is_valid_reference(attribute_meta, value) ) 
+                self.failIf( world.is_valid_attribute_reference(attribute_meta, value) ) 
             check_valid_sign_reference( self.world_level1, 'TEXT_HI')
             check_valid_sign_reference( self.world_level2, 'TEXT_HI')
             check_invalid_sign_reference( self.world_level1, 'TEXT_HO')
