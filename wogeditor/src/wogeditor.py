@@ -116,9 +116,6 @@ class GameModel(QtCore.QObject):
            The following signals are provided:
            QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)')
            QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
-           QtCore.SIGNAL('elementAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
-           QtCore.SIGNAL('elementPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
-           QtCore.SIGNAL('elementRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
         """
         QtCore.QObject.__init__( self )
         self._wog_path = wog_path
@@ -280,21 +277,6 @@ class GameModel(QtCore.QObject):
         
     def _onElementAboutToBeRemoved(self, element, index_in_parent): #IGNORE:W0613
         self.modified_worlds_to_check.add( element.world )
-
-    def elementAdded( self, level_name, element_file, parent_element, element, index_in_parent ):
-        """Signal that an element tree was inserted into another element."""
-        self.emit( QtCore.SIGNAL('elementAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                   level_name, element_file, parent_element, element, index_in_parent )
-
-    def elementRemoved( self, level_name, element_file, parent_elements, element, index_in_parent ):
-        """Signal that an element has been removed from its tree."""
-        self.emit( QtCore.SIGNAL('elementRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                   level_name, element_file, parent_elements, element, index_in_parent )
-
-    def elementPropertyValueChanged( self, level_name, element_file, element, property_name, value ):
-        """Signal that an element attribute value has changed."""
-        self.emit( QtCore.SIGNAL('elementPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                   level_name, element_file, element, property_name, value )
 
     def hasModifiedReadOnlyLevels( self ):
         """Checks if the user has modified read-only level."""
@@ -472,9 +454,6 @@ class LevelModel(metaworld.World):
     def updateObjectPropertyValue( self, element_file, element, property_name, new_value ):
         """Changes the property value of an element (scene, level or resource)."""
         element.set( property_name, new_value )
-        self.game_model.elementPropertyValueChanged( self.level_name,
-                                                    element_file, element,
-                                                    property_name, new_value )
 
     def getObjectFileRootElement( self, element_file ):
         root_by_world = { metawog.TREE_LEVEL_GAME: self.level_tree,
@@ -491,8 +470,6 @@ class LevelModel(metaworld.World):
         if index is None:
             index = len(parent_element)
         parent_element.insert( index, element )
-        # Broadcast the insertion event
-        self.game_model.elementAdded( self.level_name, element_file, parent_element, element, index )
 
     def removeElement( self, element_file, element ):
         """Removes the specified element and all its children from the level."""
@@ -507,8 +484,6 @@ class LevelModel(metaworld.World):
         parent_elements, index_in_parent = found
         # Remove the element from its parent
         del parent_elements[-1][index_in_parent]
-        # broadcast element removal event...
-        self.game_model.elementRemoved( self.level_name, element_file, parent_elements, element, index_in_parent )
         return True
 
     def getImagePixmap( self, image_id ):
@@ -527,7 +502,10 @@ class LevelModel(metaworld.World):
         self.game_model.elementSelected( self.level_name, element_file, element )
 
     def updateLevelResources( self ):
-        """Ensures all image/sound resource present in the level directory are in the resource tree."""
+        """Ensures all image/sound resource present in the level directory 
+           are in the resource tree.
+           Adds new resource to the resource tree if required.
+        """
         game_dir = os.path.normpath( self.game_model._wog_dir )
         level_dir = os.path.join( game_dir, 'res', 'levels', self.level_name )
         resource_element = self.resource_tree.find( './/Resources' )
@@ -590,15 +568,11 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.connect( self.__game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                       self._updateObjectSelection )
         self.setRenderHints( QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform )
-        self.connect( self.__game_model,
-                      QtCore.SIGNAL('elementPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                      self._refreshOnObjectPropertyValueChange )
-        self.connect( self.__game_model,
-                      QtCore.SIGNAL('elementRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                      self._refreshOnObjectRemoval )
-        self.connect( self.__game_model,
-                      QtCore.SIGNAL('elementAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                      self._refreshOnObjectInsertion )
+        # Subscribes to level element change to refresh the view
+        for tree in self.getLevelModel().trees:
+            tree.connect_to_element_events( self.__on_element_added,
+                                            self.__on_element_updated,
+                                            self.__on_element_about_to_be_removed )
 
     def selectLevelOnSubWindowActivation( self ):
         """Called when the user switched MDI window."""
@@ -671,33 +645,28 @@ class LevelGraphicView(QtGui.QGraphicsView):
     def getLevelModel( self ):
         return self.__game_model.getLevelModel( self.__level_name )
 
-    def _refreshOnObjectPropertyValueChange( self, level_name, element_file, element, property_name, value ):
-        """Refresh the view when an element property change (usually via the property list edition)."""
-        if level_name == self.__level_name:
-            # @todo be a bit smarter than this (e.g. refresh just the item)
-            # @todo avoid losing selection (should store selected element in level model)
-            self.refreshFromModel( self.getLevelModel() )
+    def __on_element_added(self, element, index_in_parent): #IGNORE:W0613
+        self.refreshFromModel( element.tree.world )
 
-    def _refreshOnObjectRemoval( self, level_name, element_file, parent_elements, element, index_in_parent ):
-        if level_name == self.__level_name:
-            # @todo be a bit smarter than this (e.g. refresh just the item)
-            # @todo avoid losing selection (should store selected element in level model)
-            self.refreshFromModel( self.getLevelModel() )
+    def __on_element_updated(self, element, name, new_value, old_value): #IGNORE:W0613
+        self.refreshFromModel( element.tree.world )
 
-    _refreshOnObjectInsertion = _refreshOnObjectRemoval
+    def __on_element_about_to_be_removed(self, element, index_in_parent): #IGNORE:W0613
+        self.refreshFromModel( element.tree.world, set([element]) )
 
-    def refreshFromModel( self, game_level_model ):
+    def refreshFromModel( self, game_level_model, elements_to_skip = None ):
+        elements_to_skip = elements_to_skip or set()
         scene = self.__scene
         scene.clear()
         self.__balls_by_id = {}
         self.__strands = []
         self.__lines = []
         level_element = game_level_model.level_tree
-        self._addElements( scene, level_element, self.__level_elements )
+        self._addElements( scene, level_element, self.__level_elements, elements_to_skip )
         self._addStrands( scene )
 
         scene_element = game_level_model.scene_tree
-        self._addElements( scene, scene_element, self.__scene_elements )
+        self._addElements( scene, scene_element, self.__scene_elements, elements_to_skip )
 
         for element in self.__lines:
             self._sceneLineBuilder( scene, element )
@@ -707,11 +676,13 @@ class LevelGraphicView(QtGui.QGraphicsView):
 ##        for item in self.items():
 ##            print 'Item:', item.boundingRect()
 
-    def _addElements( self, scene, element, element_set ):
+    def _addElements( self, scene, element, element_set, elements_to_skip ):
         """Adds graphic item for 'element' to the scene, and add the element to element_set.
            Recurses for child element.
            Return the graphic item created for the element if any (None otherwise).
         """
+        if element in elements_to_skip:
+            return None
         builders = {
             # .level.xml builders
             'signpost': self._levelSignPostBuilder,
@@ -746,7 +717,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
                     composite_item = item
             
         for child_element in element:
-            item = self._addElements( scene, child_element, element_set )
+            item = self._addElements( scene, child_element, element_set, elements_to_skip )
             if composite_item and item:
                 item.setParentItem( composite_item )
         element_set.add( element )
