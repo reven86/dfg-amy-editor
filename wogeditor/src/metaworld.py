@@ -4,19 +4,19 @@ Objects live in a given world. Worlds are organized as a hierarchy: world childr
 but the parent world can not see the child elements.
 
 Typically, their is a global world with resources common to all levels, and each level has its own world.
-This allows each level to define elements with identifiers that would conflict with object defined in other
+This allows each level to define elements with identifiers that would conflict with element defined in other
 levels if world were not used.
 
 While elements live in a world, they are attached to a given "file" in that world. A world can contain multiple
-files, but each file can only have one root object.
+files, but each file can only have one root element.
 
 The structure of the graph of elements is defined statically:
 - structure of the world kind hierarchy
 - kind of file attached to each kind of world
-- root object description attached to each file
-- for each object description, its possible child object description, and its attribute description.
+- root element description attached to each file
+- for each element description, its possible child element description, and its attribute description.
 
-Object description can define constraint such as the minimum or maximum number of occurrences of the object in its parent.
+Object description can define constraint such as the minimum or maximum number of occurrences of the element in its parent.
 Attribute description can indicate if the attribute is mandatory, its value domain, typical initial value, type...
 """
 import xml.etree.ElementTree
@@ -181,7 +181,7 @@ class ObjectsMetaOwner:
             assert element_meta.tag not in self.elements_by_tag, element_meta.tag
             self.elements_by_tag[element_meta.tag] = element_meta
             element_meta._set_world( self.__world )
-            self._object_added( element_meta )
+            self._element_added( element_meta )
 
     def find_element_meta_by_tag( self, tag ):
         """Returns the ElementMeta corresponding to the specified tag if found in the owner or its descendant.
@@ -202,22 +202,22 @@ class ObjectsMetaOwner:
         return self.elements_by_tag.get( tag )
 
     def all_descendant_element_metas( self ):
-        """Returns a dict of all object desc found in the owner and all its descendant keyed by tag."""
+        """Returns a dict of all element desc found in the owner and all its descendant keyed by tag."""
         element_metas_by_tag = self.elements_by_tag.copy()
         for element_meta in self.elements_by_tag.itervalues():
             element_metas_by_tag.update( element_meta.all_descendant_element_metas() )
         return element_metas_by_tag
 
-    def _object_added( self, element_meta ):
+    def _element_added( self, element_meta ):
         raise NotImplemented()
 
 
 class ElementMeta(ObjectsMetaOwner):
-    """A object description represents a tag that belong in a given file. Its main features are:
+    """A element description represents a tag that belong in a given file. Its main features are:
        - a tag name
        - a list of attribute description
-       - zero or more parent object description
-       - a minimum number of occurrences when it occurs in a parent object
+       - zero or more parent element description
+       - a minimum number of occurrences when it occurs in a parent element
        - a conceptual file it may appears in
     """
     def __init__( self, tag, elements_meta = None, attributes = None,
@@ -228,10 +228,10 @@ class ElementMeta(ObjectsMetaOwner):
         attributes = attributes or []
         self.attributes_order = []
         self.attributes_by_name = {}
-        self.parent_elements = set() # An object may be added as child of multiple elements if they are in the same file
+        self.parent_elements = set() # An element may be added as child of multiple elements if they are in the same file
         self.identifier_attribute = None
         self.reference_attributes = set()
-        self.file = None # initialized when object or parent object is added to a file
+        self.file = None # initialized when element or parent element is added to a file
         self.child_elements_by_tag = {}
         self.min_occurrence = min_occurrence or 0
         self.max_occurrence = max_occurrence or 2**32
@@ -260,7 +260,7 @@ class ElementMeta(ObjectsMetaOwner):
             for element_meta in self.elements_by_tag.itervalues():
                 element_meta._set_file( tree_meta )
 
-    def _object_added( self, element_meta ):
+    def _element_added( self, element_meta ):
         element_meta.parent_elements.add( self )
 
     def attribute_by_name( self, attribute_name ):
@@ -291,13 +291,13 @@ class TreeMeta(ObjectsMetaOwner):
         self.name = conceptual_file_name
         assert len(self.elements_by_tag) <= 1
 
-    def _object_added( self, element_meta ):
+    def _element_added( self, element_meta ):
         assert len(self.elements_by_tag) <= 1
         element_meta._set_file( self )
 
     @property
     def root_element_meta( self ):
-        """Returns the root object description of the file."""
+        """Returns the root element description of the file."""
         assert len(self.elements_by_tag) == 1
         return self.elements_by_tag.values()[0]
 
@@ -351,7 +351,7 @@ def print_world_meta( world ):
         print '  has child world:', child_world.world_name
     for tree in world.trees_meta_by_name:
         print '  contained file:', tree
-    print '  contains object:', ', '.join( sorted(world.elements_by_tag) )
+    print '  contains element:', ', '.join( sorted(world.elements_by_tag) )
     for child_world in world.child_worlds:
         print_world_meta( child_world )
         print
@@ -363,9 +363,9 @@ def print_tree_meta( tree_meta ):
     """Diagnostic function that print the full content of a TreeMeta, including its elements."""
     print '* File:', tree_meta.name
     print '  belong to world:', tree_meta.world.world_name
-    print '  root object:', tree_meta.root_element_meta.tag
-    print '  contains object:', ', '.join( sorted(tree_meta.all_descendant_element_metas()) )
-    print '  object tree:'
+    print '  root element:', tree_meta.root_element_meta.tag
+    print '  contains element:', ', '.join( sorted(tree_meta.all_descendant_element_metas()) )
+    print '  element tree:'
     print_element_meta_tree( tree_meta.root_element_meta, '        ' )
 
 def print_element_meta_tree( element, indent ):
@@ -384,8 +384,8 @@ def print_element_meta_tree( element, indent ):
     else:
         suffix = '{%d-%d}' % (element.min_occurrence, element.max_occurrence)
     print indent + element.tag + suffix
-    for child_object in element.elements_by_tag.itervalues():
-        print_element_meta_tree( child_object, indent + '    ' )
+    for child_element in element.elements_by_tag.itervalues():
+        print_element_meta_tree( child_element, indent + '    ' )
 
 
 
@@ -561,13 +561,13 @@ class Universe(WorldsOwner):
         assert isinstance(element,Element)
         assert index_in_parent >=0, index_in_parent
         
-        # Checks if the object has any identifier attribute
+        # Checks if the element has any identifier attribute
         identifier_meta = element.meta.identifier_attribute
         if identifier_meta:
             identifier_value = identifier_meta.get( element )
             self._register_element_identifier( element, identifier_meta, identifier_value )
 
-        # Checks object for all reference attributes
+        # Checks element for all reference attributes
         for attribute_meta in element.meta.reference_attributes:
             reference_value = attribute_meta.get( element )
             self._register_element_reference( element, attribute_meta, reference_value )
@@ -576,7 +576,7 @@ class Universe(WorldsOwner):
             self._on_element_added(child_element, index)
 
     def _register_element_identifier( self, element, id_meta, identifier_value ):
-##        print '=> registering "%s" with identifier: "%s"' % (object_key, repr(identifier_value))
+##        print '=> registering "%s" with identifier: "%s"' % (element_key, repr(identifier_value))
         assert element is not None
         if identifier_value is not None:
             # walk parents worlds until we find the right one.
@@ -603,13 +603,13 @@ class Universe(WorldsOwner):
         assert isinstance(element,Element)
         assert index_in_parent >= 0, index_in_parent
 
-        # Checks if the object has any identifier attribute
+        # Checks if the element has any identifier attribute
         id_meta = element.meta.identifier_attribute
         if id_meta:
             identifier_value = id_meta.get( element )
             self._unregister_element_identifier( element, id_meta, identifier_value )
             
-        # Checks object for all reference attributes
+        # Checks element for all reference attributes
         for attribute_meta in element.meta.reference_attributes:
             reference_value = attribute_meta.get( element )
             self._unregister_element_reference( element, attribute_meta, reference_value )
@@ -731,7 +731,7 @@ class Universe(WorldsOwner):
                     known_attributes[ attribute_meta.name ] = attribute_value
                     missing_attributes.remove( attribute_meta.name )
             if missing_attributes:
-                self._warning( u'Element %(tag)s, the following attributes are missing in the object description: %(attributes)s.',
+                self._warning( u'Element %(tag)s, the following attributes are missing in the element description: %(attributes)s.',
                                tag = xml_tree.tag,
                                attributes = ', '.join( sorted( missing_attributes ) ) )
             # Map element children
@@ -741,7 +741,7 @@ class Universe(WorldsOwner):
                 if child_element_meta:
                     children.append( _make_element_tree_from_xml( child_element_meta, xml_tree_child ) )
                 else:
-                    self._warning( u'Element %(tag)s, the following child tag missing in the object description: %(child)s.',
+                    self._warning( u'Element %(tag)s, the following child tag missing in the element description: %(child)s.',
                                    tag = xml_tree.tag,
                                    child = xml_tree_child.tag )
             return Element( element_meta, attributes = known_attributes, children = children )
@@ -977,7 +977,7 @@ class Element(_ElementBase):
     def append( self, element ):
         """Adds a subelement to the end of this element.
            @param element The element to add.
-           @exception AssertionError If a sequence member is not a valid object.
+           @exception AssertionError If a sequence member is not a valid element.
         """
         index = len(self)
         self._children.append( element )
@@ -989,7 +989,7 @@ class Element(_ElementBase):
     def insert( self, index, element ):
         """Inserts a subelement at the given position in this element.
            @param index Where to insert the new subelement.
-           @exception AssertionError If the element is not a valid object.
+           @exception AssertionError If the element is not a valid element.
         """
         self._children.insert( index, element )
         self._parent_element( element )
@@ -1002,7 +1002,7 @@ class Element(_ElementBase):
            @param index What subelement to replace.
            @param element The new element value.
            @exception IndexError If the given element does not exist.
-           @exception AssertionError If element is not a valid object.
+           @exception AssertionError If element is not a valid element.
         """
         tree = self.tree
         old_element = self._children[index]
@@ -1034,8 +1034,8 @@ class Element(_ElementBase):
         """Replaces a number of subelements with elements from a sequence.
            @param start The first subelement to replace.
            @param stop The first subelement that shouldn't be replaced.
-           @param elements A sequence object with zero or more elements.
-           @exception AssertionError If a sequence member is not a valid object.
+           @param elements A sequence element with zero or more elements.
+           @exception AssertionError If a sequence member is not a valid element.
         """
         if start < 0:
             start += len(self)
@@ -1097,7 +1097,7 @@ class Element(_ElementBase):
            value or contents.
            @param element What element to remove.
            @exception ValueError If a matching element could not be found.
-           @exception AssertionError If the element is not a valid object.
+           @exception AssertionError If the element is not a valid element.
         """
         index = self._children.index( element )
         tree = self.tree

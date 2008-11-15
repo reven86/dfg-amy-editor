@@ -153,14 +153,14 @@ TREE_LEVEL_GAME.add_elements( [
 
 def _describe_resource_file( tree_meta, resource_world, is_global = False ):
     if is_global:
-        resources_object = describe_element( 'Resources', min_occurrence = 1 )
+        resources_element = describe_element( 'Resources', min_occurrence = 1 )
     else:
-        resources_object = describe_element( 'Resources', exact_occurrence = 1 )
-    resources_object.add_attributes( [
+        resources_element = describe_element( 'Resources', exact_occurrence = 1 )
+    resources_element.add_attributes( [
         identifier_attribute( 'id', mandatory = True, reference_family = 'resources',
                               reference_world = resource_world ),
         ] )
-    resources_object.add_elements( [
+    resources_element.add_elements( [
         describe_element( 'Image', attributes = [
             identifier_attribute( 'id', mandatory = True, reference_family = 'image',
                                   reference_world = resource_world ),
@@ -177,7 +177,7 @@ def _describe_resource_file( tree_meta, resource_world, is_global = False ):
             ] )
         ] )
     if is_global:
-        resources_object.add_elements( [
+        resources_element.add_elements( [
             describe_element( 'font', attributes = [
                 identifier_attribute( 'id', mandatory = True, reference_family = 'font',
                                       reference_world = resource_world ),
@@ -188,7 +188,7 @@ def _describe_resource_file( tree_meta, resource_world, is_global = False ):
     tree_meta.add_elements( [
         # DUPLICATED FROM GLOBAL SCOPE => makes FACTORY function ?
         describe_element( 'ResourceManifest', exact_occurrence = 1, attributes = [], elements = [
-            resources_object
+            resources_element
             ] )
         ] )
 

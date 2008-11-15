@@ -7,12 +7,12 @@
 #   - level scene tree
 #   - level tree (a list in fact)
 #   - level resources tree (a list in fact)
-# 3) user select an object in one of the tree, related properties are displayed in
+# 3) user select an element in one of the tree, related properties are displayed in
 #    right-side-down-dock property list
 # 4) user edit properties in property list
 #
 # Later on, provides property edition via scene layout display
-# Add toolbar to create new object
+# Add toolbar to create new element
 #
 # In memory, we keep track of two things:
 # - updated level
@@ -75,9 +75,9 @@ class GameModel(QtCore.QObject):
            The following signals are provided:
            QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)')
            QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
-           QtCore.SIGNAL('objectAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
-           QtCore.SIGNAL('objectPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
-           QtCore.SIGNAL('objectRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
+           QtCore.SIGNAL('elementAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
+           QtCore.SIGNAL('elementPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
+           QtCore.SIGNAL('elementRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
         """
         QtCore.QObject.__init__( self )
         self._wog_path = wog_path
@@ -213,28 +213,28 @@ class GameModel(QtCore.QObject):
                    old_model,
                    level_model )
 
-    def objectSelected( self, level_name, object_file, element ):
-        """Signal that the specified object has been selected."""
+    def elementSelected( self, level_name, element_file, element ):
+        """Signal that the specified element has been selected."""
         self.emit( QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                   level_name, object_file, element )
+                   level_name, element_file, element )
 
-    def objectAdded( self, level_name, object_file, parent_element, element, index_in_parent ):
+    def elementAdded( self, level_name, element_file, parent_element, element, index_in_parent ):
         """Signal that an element tree was inserted into another element."""
         self.is_dirty = True
-        self.emit( QtCore.SIGNAL('objectAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                   level_name, object_file, parent_element, element, index_in_parent )
+        self.emit( QtCore.SIGNAL('elementAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                   level_name, element_file, parent_element, element, index_in_parent )
 
-    def objectRemoved( self, level_name, object_file, parent_elements, element, index_in_parent ):
+    def elementRemoved( self, level_name, element_file, parent_elements, element, index_in_parent ):
         """Signal that an element has been removed from its tree."""
         self.is_dirty = True
-        self.emit( QtCore.SIGNAL('objectRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                   level_name, object_file, parent_elements, element, index_in_parent )
+        self.emit( QtCore.SIGNAL('elementRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                   level_name, element_file, parent_elements, element, index_in_parent )
 
-    def objectPropertyValueChanged( self, level_name, object_file, element, property_name, value ):
+    def elementPropertyValueChanged( self, level_name, element_file, element, property_name, value ):
         """Signal that an element attribute value has changed."""
         self.is_dirty = True
-        self.emit( QtCore.SIGNAL('objectPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                   level_name, object_file, element, property_name, value )
+        self.emit( QtCore.SIGNAL('elementPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                   level_name, element_file, element, property_name, value )
 
     def hasModifiedReadOnlyLevels( self ):
         """Checks if the user has modified read-only level."""
@@ -271,8 +271,8 @@ class GameModel(QtCore.QObject):
     def cloneLevel( self, cloned_level_name, new_level_name ):
         """Clone an existing level and its resources."""
         level_model = self.getLevelModel( cloned_level_name )
-        def clone_level_tree( object_type ):
-            return level_model.find_tree( object_type ).clone()
+        def clone_level_tree( element_type ):
+            return level_model.find_tree( element_type ).clone()
         return self._addNewLevel( new_level_name,
                                   clone_level_tree( metawog.TREE_LEVEL_GAME ),
                                   clone_level_tree( metawog.TREE_LEVEL_SCENE ),
@@ -307,9 +307,9 @@ class LevelModel(metaworld.World):
     def __init__( self, universe, world_meta, level_name, game_model, is_dirty = False ):
         metaworld.World.__init__( self, universe, world_meta, level_name )
         self.game_model = game_model
-        self.dirty_object_types = set()
+        self.dirty_element_types = set()
         if is_dirty:
-            self.dirty_object_types |= set( (metawog.TREE_LEVEL_GAME,
+            self.dirty_element_types |= set( (metawog.TREE_LEVEL_GAME,
                                              metawog.TREE_LEVEL_RESOURCE,
                                              metawog.TREE_LEVEL_SCENE) )
 
@@ -332,7 +332,7 @@ class LevelModel(metaworld.World):
         return self.find_tree( metawog.TREE_LEVEL_RESOURCE ).root
 
     def isDirty( self ):
-        return len(self.dirty_object_types) != 0
+        return len(self.dirty_element_types) != 0
 
     def isReadOnlyLevel( self ):
         return self.level_name.lower() in 'ab3 beautyandthetentacle beautyschool blusteryday bulletinboardsystem burningman chain deliverance drool economicdivide fistyreachesout flyawaylittleones flyingmachine geneticsortingmachine goingup gracefulfailure grapevinevirus graphicprocessingunit hanglow helloworld htinnovationcommittee immigrationnaturalizationunit impalesticky incinerationdestination infestytheworm ivytower leaphole mapworldview mistyslongbonyroad mom observatoryobservationstation odetobridgebuilder productlauncher redcarpet regurgitationpumpingstation roadblocks secondhandsmoke superfusechallengetime theserver thirdwheel thrustertest towerofgoo tumbler uppershaft volcanicpercolatordayspa waterlock weathervane whistler youhavetoexplodethehead'.split()
@@ -360,22 +360,22 @@ class LevelModel(metaworld.World):
     def saveModifiedElements( self ):
         """Save the modified scene, level, resource tree."""
         if self.isReadOnlyLevel():  # Discards change made on read-only level
-            self.dirty_object_types = set()
+            self.dirty_element_types = set()
             return
         level_name = self.level_name
         level_dir = os.path.join( self.game_model._res_dir, 'levels', level_name )
-        if metawog.TREE_LEVEL_GAME in self.dirty_object_types:
+        if metawog.TREE_LEVEL_GAME in self.dirty_element_types:
             self.game_model._savePackedData( level_dir, level_name + '.level.bin', self.level_tree )
-            self.dirty_object_types.remove( metawog.TREE_LEVEL_GAME )
-        if metawog.TREE_LEVEL_RESOURCE in self.dirty_object_types:
+            self.dirty_element_types.remove( metawog.TREE_LEVEL_GAME )
+        if metawog.TREE_LEVEL_RESOURCE in self.dirty_element_types:
             self.game_model._savePackedData( level_dir, level_name + '.resrc.bin', self.resource_tree )
-            self.dirty_object_types.remove( metawog.TREE_LEVEL_RESOURCE )
-        if metawog.TREE_LEVEL_SCENE in self.dirty_object_types:
+            self.dirty_element_types.remove( metawog.TREE_LEVEL_RESOURCE )
+        if metawog.TREE_LEVEL_SCENE in self.dirty_element_types:
             self.game_model._savePackedData( level_dir, level_name + '.scene.bin', self.scene_tree )
-            self.dirty_object_types.remove( metawog.TREE_LEVEL_SCENE )
+            self.dirty_element_types.remove( metawog.TREE_LEVEL_SCENE )
 
-    def updateObjectPropertyValue( self, object_file, element, property_name, new_value ):
-        """Changes the property value of an object (scene, level or resource)."""
+    def updateObjectPropertyValue( self, element_file, element, property_name, new_value ):
+        """Changes the property value of an element (scene, level or resource)."""
         reload_image = False
         if element.tag == 'Image':
             reload_image = True # reload image if path changed or image was not in cache
@@ -388,18 +388,18 @@ class LevelModel(metaworld.World):
                     reload_image = False
         if reload_image:
             self._loadImageFromElement( element )
-        self.dirty_object_types.add( object_file )
-        self.game_model.objectPropertyValueChanged( self.level_name,
-                                                    object_file, element,
+        self.dirty_element_types.add( element_file )
+        self.game_model.elementPropertyValueChanged( self.level_name,
+                                                    element_file, element,
                                                     property_name, new_value )
 
-    def getObjectFileRootElement( self, object_file ):
+    def getObjectFileRootElement( self, element_file ):
         root_by_world = { metawog.TREE_LEVEL_GAME: self.level_tree,
                           metawog.TREE_LEVEL_SCENE: self.scene_tree,
                           metawog.TREE_LEVEL_RESOURCE: self.resource_tree }
-        return root_by_world[object_file]
+        return root_by_world[element_file]
 
-    def addElement( self, object_file, parent_element, element, index = None ):
+    def addElement( self, element_file, parent_element, element, index = None ):
         """Adds the specified element (tree) at the specified position in the parent element.
            If index is None, then the element is added after all the parent children.
            The element is inserted with all its children.
@@ -409,37 +409,37 @@ class LevelModel(metaworld.World):
             index = len(parent_element)
         parent_element.insert( index, element )
         # Broadcast the insertion event
-        self.dirty_object_types.add( object_file )
+        self.dirty_element_types.add( element_file )
         if element.tag == 'Image':  # @todo dirty hack, need to be cleaner
             self._loadImageFromElement( element )
-        self.game_model.objectAdded( self.level_name, object_file, parent_element, element, index )
+        self.game_model.elementAdded( self.level_name, element_file, parent_element, element, index )
 
-    def removeElement( self, object_file, element ):
+    def removeElement( self, element_file, element ):
         """Removes the specified element and all its children from the level."""
         if element in (self.scene_tree, self.level_tree, self.resource_tree):
             print 'Warning: attempted to remove root element, GUI should not allow that'
             return False # can not remove those elements
         # @todo makes tag look-up fails once model is complete
-        found = find_element_in_tree( self.getObjectFileRootElement(object_file), element )
+        found = find_element_in_tree( self.getObjectFileRootElement(element_file), element )
         if found is None:
-            print 'Warning: inconsistency, element to remove in not in the specified object_file', element
+            print 'Warning: inconsistency, element to remove in not in the specified element_file', element
             return False
         parent_elements, index_in_parent = found
         # Remove the element from its parent
         del parent_elements[-1][index_in_parent]
         # broadcast element removal event...
-        self.game_model.objectRemoved( self.level_name, object_file, parent_elements, element, index_in_parent )
-        self.dirty_object_types.add( object_file )
+        self.game_model.elementRemoved( self.level_name, element_file, parent_elements, element, index_in_parent )
+        self.dirty_element_types.add( element_file )
         return True
 
     def getImagePixmap( self, image_id ):
         return self.images_by_id.get(image_id)
 
-    def objectSelected( self, object_file, element ):
-        """Indicates that the specified object has been selected.
-           object_file: one of metawog.TREE_LEVEL_GAME, metawog.TREE_LEVEL_SCENE, metawog.TREE_LEVEL_RESOURCE
+    def elementSelected( self, element_file, element ):
+        """Indicates that the specified element has been selected.
+           element_file: one of metawog.TREE_LEVEL_GAME, metawog.TREE_LEVEL_SCENE, metawog.TREE_LEVEL_RESOURCE
         """
-        self.game_model.objectSelected( self.level_name, object_file, element )
+        self.game_model.elementSelected( self.level_name, element_file, element )
 
     def updateLevelResources( self ):
         """Ensures all image/sound resource present in the level directory are in the resource tree."""
@@ -504,13 +504,13 @@ class LevelGraphicView(QtGui.QGraphicsView):
                       self._updateObjectSelection )
         self.setRenderHints( QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform )
         self.connect( self.__game_model,
-                      QtCore.SIGNAL('objectPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                      QtCore.SIGNAL('elementPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                       self._refreshOnObjectPropertyValueChange )
         self.connect( self.__game_model,
-                      QtCore.SIGNAL('objectRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                      QtCore.SIGNAL('elementRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                       self._refreshOnObjectRemoval )
         self.connect( self.__game_model,
-                      QtCore.SIGNAL('objectAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+                      QtCore.SIGNAL('elementAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                       self._refreshOnObjectInsertion )
 
     def selectLevelOnSubWindowActivation( self ):
@@ -552,15 +552,15 @@ class LevelGraphicView(QtGui.QGraphicsView):
                 element = item.data(0).toPyObject()
                 assert element is not None, "Hmmm, forgot to associate a data to that item..."
                 if element in self.__scene_elements:
-                    self.getLevelModel().objectSelected( metawog.TREE_LEVEL_SCENE, element )
+                    self.getLevelModel().elementSelected( metawog.TREE_LEVEL_SCENE, element )
                 elif element in self.__level_elements:
-                    self.getLevelModel().objectSelected( metawog.TREE_LEVEL_GAME, element )
+                    self.getLevelModel().elementSelected( metawog.TREE_LEVEL_GAME, element )
                 else: # Should never get there
                     assert False
 
-    def _updateObjectSelection( self, level_name, object_file, selected_element ):
-        """Ensures that the selected object is seleted in the graphic view.
-           Called whenever an object is selected in the tree view or the graphic view.
+    def _updateObjectSelection( self, level_name, element_file, selected_element ):
+        """Ensures that the selected element is seleted in the graphic view.
+           Called whenever an element is selected in the tree view or the graphic view.
         """
         # Notes: we do not change selection if the item belong to an item group.
         # All selection events send to an item belonging to a group are forwarded
@@ -584,17 +584,17 @@ class LevelGraphicView(QtGui.QGraphicsView):
     def getLevelModel( self ):
         return self.__game_model.getLevelModel( self.__level_name )
 
-    def _refreshOnObjectPropertyValueChange( self, level_name, object_file, element, property_name, value ):
-        """Refresh the view when an object property change (usually via the property list edition)."""
+    def _refreshOnObjectPropertyValueChange( self, level_name, element_file, element, property_name, value ):
+        """Refresh the view when an element property change (usually via the property list edition)."""
         if level_name == self.__level_name:
             # @todo be a bit smarter than this (e.g. refresh just the item)
-            # @todo avoid losing selection (should store selected object in level model)
+            # @todo avoid losing selection (should store selected element in level model)
             self.refreshFromModel( self.getLevelModel() )
 
-    def _refreshOnObjectRemoval( self, level_name, object_file, parent_elements, element, index_in_parent ):
+    def _refreshOnObjectRemoval( self, level_name, element_file, parent_elements, element, index_in_parent ):
         if level_name == self.__level_name:
             # @todo be a bit smarter than this (e.g. refresh just the item)
-            # @todo avoid losing selection (should store selected object in level model)
+            # @todo avoid losing selection (should store selected element in level model)
             self.refreshFromModel( self.getLevelModel() )
 
     _refreshOnObjectInsertion = _refreshOnObjectRemoval
@@ -1097,7 +1097,7 @@ def validate_reference_property( world, attribute_meta, reference_value ):
     reference_value = unicode(reference_value)
     if world.is_valid_reference( attribute_meta, reference_value ):
         return QtGui.QValidator.Acceptable
-    return QtGui.QValidator.Intermediate, '"%%1" is not a valid reference to an object of type %s' % attribute_meta.reference_family, reference_value
+    return QtGui.QValidator.Intermediate, '"%%1" is not a valid reference to an element of type %s' % attribute_meta.reference_family, reference_value
 
 def complete_reference_property( world, attribute_meta ):
     return world.list_identifiers( attribute_meta.reference_family )
@@ -1164,7 +1164,7 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
     def createEditor( self, parent, option, index ):
         """Returns the widget used to edit the item specified by index for editing. The parent widget and style option are used to control how the editor widget appears."""
         # see QDefaultItemEditorFactory::createEditor for example of implementations
-        world_key, object_file, element, property_name, attribute_meta, handler_data = self._getHandlerData( index )
+        world_key, element_file, element, property_name, attribute_meta, handler_data = self._getHandlerData( index )
         need_specific_editor = handler_data and handler_data.get('editor')
         if need_specific_editor:
             class DefaultEditorFactory(object):
@@ -1193,30 +1193,30 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
 
     def _getHandlerData( self, index ):
         """Returns data related to item at the specified index.
-           Returns: tuple (world_key, object_file, element, property_name, attribute_meta, handler_data). 
+           Returns: tuple (world_key, element_file, element, property_name, attribute_meta, handler_data). 
            handler_data may be None if no specific handler is defined for the attribute_meta.
            attribute_meta may be None if metawog is missing some attribute declaration.
            """
         data =  index.data( QtCore.Qt.UserRole ).toPyObject()
         # if this fails, then we are trying to edit the property name or item was added incorrectly.
         assert data is not None
-        world_key, object_file, element_meta, element, property_name = data
+        world_key, element_file, element_meta, element, property_name = data
         if element_meta is None:
             handler_data = None
             attribute_meta = None
-            print 'Warning: metawog is incomplet, no attribute description for', object_file, element.tag, property_name
+            print 'Warning: metawog is incomplet, no attribute description for', element_file, element.tag, property_name
         else:
             attribute_meta = element_meta.attributes_by_name.get( property_name )
             if attribute_meta is None:
-                print 'Warning: metawog is incomplet, no attribute description for', object_file, element.tag, property_name
+                print 'Warning: metawog is incomplet, no attribute description for', element_file, element.tag, property_name
                 handler_data = None
             else:
                 handler_data = ATTRIBUTE_TYPE_EDITOR_HANDLERS.get( attribute_meta.type )
-        return (world_key, object_file, element, property_name, attribute_meta, handler_data)
+        return (world_key, element_file, element, property_name, attribute_meta, handler_data)
 
     def setEditorData( self, editor, index ):
         """Sets the data to be displayed and edited by the editor from the data model item specified by the model index."""
-        world_key, object_file, element, property_name, attribute_meta, handler_data = self._getHandlerData( index )
+        world_key, element_file, element, property_name, attribute_meta, handler_data = self._getHandlerData( index )
         editor.setText( element.get( property_name, u'' ) )
 #        QtGui.QStyledItemDelegate.setEditorData( self, editor, index )
 
@@ -1233,7 +1233,7 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
            Conclusion: we set the data into the model, only if they are valid as QLineEdit validation may have
            been by-passed on focus change or current item change.
         """
-        world_key, object_file, element, property_name, attribute_meta, handler_data = self._getHandlerData( index )
+        world_key, element_file, element, property_name, attribute_meta, handler_data = self._getHandlerData( index )
         if not editor.hasAcceptableInput(): # input is invalid, discard it
             return
         need_specific_converter = handler_data and handler_data.get('converter')
@@ -1304,28 +1304,28 @@ class MainWindow(QtGui.QMainWindow):
                           self._refreshLevel )
             self.connect( self._game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                           self._refreshOnSelectedObjectChange )
-            self.connect( self._game_model, QtCore.SIGNAL('objectAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+            self.connect( self._game_model, QtCore.SIGNAL('elementAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                           self._refreshOnObjectInsertion )
-            self.connect( self._game_model, QtCore.SIGNAL('objectRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
+            self.connect( self._game_model, QtCore.SIGNAL('elementRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                           self._refreshOnObjectRemoval )
         except GameModelException, e:
             QtGui.QMessageBox.warning(self, self.tr("Loading WOG levels"),
                                       unicode(e))
 
-    def _refreshOnObjectInsertion( self, level_name, object_file, parent_element, element, index ):
-        """Called when an object is added to the tree.
+    def _refreshOnObjectInsertion( self, level_name, element_file, parent_element, element, index ):
+        """Called when an element is added to the tree.
         """
-        tree_view = self.tree_view_by_object_world[object_file]
+        tree_view = self.tree_view_by_element_world[element_file]
         parent_item = self._findItemInTreeViewByElement( tree_view, parent_element )
         if parent_item:
             self._insertElementNodeInTree( parent_item, element, index )
         else:
             print 'Warning: parent_element not found in tree view', parent_element
 
-    def _refreshOnObjectRemoval( self, level_name, object_file, parent_elements, element, index_in_parent ):
-        """Called when an object is removed from its tree.
+    def _refreshOnObjectRemoval( self, level_name, element_file, parent_elements, element, index_in_parent ):
+        """Called when an element is removed from its tree.
         """
-        tree_view = self.tree_view_by_object_world[object_file]
+        tree_view = self.tree_view_by_element_world[element_file]
         item = self._findItemInTreeViewByElement( tree_view, element )
         if item:
             item_row = item.row()
@@ -1381,7 +1381,7 @@ class MainWindow(QtGui.QMainWindow):
             level_view = level_mdi.widget()
             level_view.refreshFromModel( game_level_model )
         
-    def _onElementTreeSelectionChange( self, tree_view, object_file, selected, deselected ):
+    def _onElementTreeSelectionChange( self, tree_view, element_file, selected, deselected ):
         """Called whenever the scene tree selection change."""
         selected_indexes = selected.indexes()
         if len( selected_indexes ) == 1: # Do not handle multiple selection yet
@@ -1389,11 +1389,11 @@ class MainWindow(QtGui.QMainWindow):
             element = item.data( QtCore.Qt.UserRole ).toPyObject()
             game_level_model = self.getCurrentLevelModel()
             if game_level_model:
-                game_level_model.objectSelected( object_file, element )
+                game_level_model.elementSelected( element_file, element )
 
-    def _refreshOnSelectedObjectChange( self, level_name, object_file, element ):
-        self._refreshPropertyListFromElement( object_file, element )
-        self._refreshSceneTreeSelection( object_file, element )
+    def _refreshOnSelectedObjectChange( self, level_name, element_file, element ):
+        self._refreshPropertyListFromElement( element_file, element )
+        self._refreshSceneTreeSelection( element_file, element )
 
     def _findItemInTreeViewByElement( self, tree_view, element ):
         for item in qthelper.standardModelTreeItems( tree_view.model() ):
@@ -1401,11 +1401,11 @@ class MainWindow(QtGui.QMainWindow):
                 return item
         return None
 
-    def _refreshSceneTreeSelection( self, object_file, element ):
+    def _refreshSceneTreeSelection( self, element_file, element ):
         """Select the item corresponding to element in the tree view.
         """
-        tree_view = self.tree_view_by_object_world[object_file]
-        for other_tree_view in self.tree_view_by_object_world.itervalues():  
+        tree_view = self.tree_view_by_element_world[element_file]
+        for other_tree_view in self.tree_view_by_element_world.itervalues():  
             if other_tree_view != tree_view: # unselect elements on all other tree views
                 other_tree_view.selectionModel().clear()
         selected_item = self._findItemInTreeViewByElement( tree_view, element )
@@ -1417,11 +1417,11 @@ class MainWindow(QtGui.QMainWindow):
             tree_view.parent().raise_() # Raise the dock windows associated to the tree view
             tree_view.scrollTo( selected_index )
         else:
-            print 'Warning: selected item not found in tree view.', tree_view, object_file, element
+            print 'Warning: selected item not found in tree view.', tree_view, element_file, element
 
-    def _refreshPropertyListFromElement( self, object_file, element ):
+    def _refreshPropertyListFromElement( self, element_file, element ):
         # Order the properties so that main attributes are at the beginning
-        element_meta = object_file.find_element_meta_by_tag(element.tag)
+        element_meta = element_file.find_element_meta_by_tag(element.tag)
         if element_meta is None:  # path for data without meta-model (to be removed)
             attribute_names = element.keys()
             attribute_order = ( 'id', 'name', 'x', 'y', 'depth', 'radius',
@@ -1443,9 +1443,9 @@ class MainWindow(QtGui.QMainWindow):
                 item_name.setEditable( False )
                 item_value = QtGui.QStandardItem( value )
                 # @todo element_meta & world_key should be parameters...
-                element_meta = object_file.find_element_meta_by_tag(element.tag)
+                element_meta = element_file.find_element_meta_by_tag(element.tag)
                 world_key = self.getCurrentLevelModel()
-                item_value.setData( QtCore.QVariant( (world_key, object_file, element_meta, element, name) ), QtCore.Qt.UserRole )
+                item_value.setData( QtCore.QVariant( (world_key, element_file, element_meta, element, name) ), QtCore.Qt.UserRole )
                 self.propertiesListModel.appendRow( [ item_name, item_value ] )
         else: # Update the property list using the model
             self._resetPropertyListModel( element )
@@ -1467,7 +1467,7 @@ class MainWindow(QtGui.QMainWindow):
                         font.setForeground( brush )
                     item_name.setFont( font )
                 item_value = QtGui.QStandardItem( attribute_value or '' )
-                item_value.setData( QtCore.QVariant( (world_key, object_file, element_meta, element, attribute_name) ),
+                item_value.setData( QtCore.QVariant( (world_key, element_file, element_meta, element, attribute_name) ),
                                     QtCore.Qt.UserRole )
                 self.propertiesListModel.appendRow( [ item_name, item_value ] )
             if missing_attributes:
@@ -1535,12 +1535,12 @@ class MainWindow(QtGui.QMainWindow):
         new_value = top_left_index.data( QtCore.Qt.DisplayRole ).toString()
         data = top_left_index.data( QtCore.Qt.UserRole ).toPyObject()
         if data:
-            world_key, object_file, element_meta, element, property_name = data
-            self.getCurrentLevelModel().updateObjectPropertyValue( object_file, element, property_name, str(new_value) )
+            world_key, element_file, element_meta, element, property_name = data
+            self.getCurrentLevelModel().updateObjectPropertyValue( element_file, element, property_name, str(new_value) )
         else:
             print 'Warning: no data on edited item!'
 
-    def _onTreeViewCustomContextMenu( self, tree_view, object_file, menu_pos ):
+    def _onTreeViewCustomContextMenu( self, tree_view, element_file, menu_pos ):
         # Select the right clicked item
         index = tree_view.indexAt(menu_pos)
         if index.isValid():
@@ -1558,7 +1558,7 @@ class MainWindow(QtGui.QMainWindow):
                 if index.parent() is None:
                     remove_action.setEnable( False )
                 child_element_meta_by_actions = {}
-                element_meta = object_file.find_element_meta_by_tag(element.tag)
+                element_meta = element_file.find_element_meta_by_tag(element.tag)
                 for tag in sorted(element_meta.elements_by_tag.iterkeys()):
                     child_element_meta = element_meta.find_immediate_child_by_tag(tag)
                     if not child_element_meta.read_only:
@@ -1567,12 +1567,12 @@ class MainWindow(QtGui.QMainWindow):
                 selected_action = menu.exec_( tree_view.viewport().mapToGlobal(menu_pos) )
                 selected_element_meta = child_element_meta_by_actions.get( selected_action )
                 if selected_element_meta:
-                    self._appendChildTag( tree_view, object_file, index, selected_element_meta )
+                    self._appendChildTag( tree_view, element_file, index, selected_element_meta )
                 elif selected_action is remove_action:
                     element_to_remove = tree_view.model().itemFromIndex( index ).data( QtCore.Qt.UserRole ).toPyObject()
-                    self.getCurrentLevelModel().removeElement( object_file, element_to_remove )
+                    self.getCurrentLevelModel().removeElement( element_file, element_to_remove )
 
-    def _appendChildTag( self, tree_view, object_file, parent_element_index, new_element_meta ):
+    def _appendChildTag( self, tree_view, element_file, parent_element_index, new_element_meta ):
         """Adds the specified child tag to the specified element and update the tree view."""
         parent_element = parent_element_index.data( QtCore.Qt.UserRole ).toPyObject()
         if parent_element is not None:
@@ -1586,9 +1586,9 @@ class MainWindow(QtGui.QMainWindow):
                     mandatory_attributes[attribute_name] = init_value
             # Creates and append to parent the new child element
             child_element = metaworld.Element( new_element_meta, mandatory_attributes )
-            # Notes: when the element is added, the objectAdded() signal will cause the
+            # Notes: when the element is added, the elementAdded() signal will cause the
             # corresponding item to be inserted into the tree.
-            self.getCurrentLevelModel().addElement( object_file, parent_element, child_element )
+            self.getCurrentLevelModel().addElement( element_file, parent_element, child_element )
             # Select new item in tree view
             item_child = self._findItemInTreeViewByElement( tree_view, child_element )
             selection_model = tree_view.selectionModel()
@@ -1681,7 +1681,7 @@ class MainWindow(QtGui.QMainWindow):
         if level_model:
             added_resource_elements = level_model.updateLevelResources()
             if added_resource_elements:
-                level_model.objectSelected( metawog.TREE_LEVEL_RESOURCE, added_resource_elements[0] )
+                level_model.elementSelected( metawog.TREE_LEVEL_RESOURCE, added_resource_elements[0] )
 
     def undo( self ):
         pass
@@ -1805,11 +1805,11 @@ class MainWindow(QtGui.QMainWindow):
         self._mousePositionLabel = QtGui.QLabel()
         self.statusBar().addPermanentWidget( self._mousePositionLabel )
 
-    def createElementTreeView(self, name, object_file, sibling_tabbed_dock = None ):
+    def createElementTreeView(self, name, element_file, sibling_tabbed_dock = None ):
         dock = QtGui.QDockWidget( self.tr( name ), self )
         dock.setAllowedAreas( QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea )
         element_tree_view = QtGui.QTreeView( dock )
-        tree_model = MetaWorldTreeViewModel(object_file, 0, 1, element_tree_view)  # nb rows, nb cols
+        tree_model = MetaWorldTreeViewModel(element_file, 0, 1, element_tree_view)  # nb rows, nb cols
         tree_model.setHorizontalHeaderLabels( [self.tr('Element')] )
         element_tree_view.setModel( tree_model )
         dock.setWidget( element_tree_view )
@@ -1817,26 +1817,26 @@ class MainWindow(QtGui.QMainWindow):
         if sibling_tabbed_dock: # Stacks the dock widget together
             self.tabifyDockWidget( sibling_tabbed_dock, dock )
         class TreeBinder(object):
-            def __init__( self, tree_view, object_file, handler ):
+            def __init__( self, tree_view, element_file, handler ):
                 self.__tree_view = tree_view
-                self.__object_type = object_file
+                self.__element_type = element_file
                 self.__handler = handler
 
             def __call__( self, *args ):
-                self.__handler( self.__tree_view, self.__object_type, *args )
+                self.__handler( self.__tree_view, self.__element_type, *args )
         # On tree node selection change
         selection_model = element_tree_view.selectionModel()
         self.connect( selection_model, QtCore.SIGNAL("selectionChanged(QItemSelection,QItemSelection)"),
-                      TreeBinder( element_tree_view, object_file, self._onElementTreeSelectionChange) )
+                      TreeBinder( element_tree_view, element_file, self._onElementTreeSelectionChange) )
         # Hook context menu popup signal
         element_tree_view.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
         self.connect( element_tree_view, QtCore.SIGNAL("customContextMenuRequested(QPoint)"),
-                      TreeBinder( element_tree_view, object_file, self._onTreeViewCustomContextMenu) )
-        self.tree_view_by_object_world[object_file] = element_tree_view
+                      TreeBinder( element_tree_view, element_file, self._onTreeViewCustomContextMenu) )
+        self.tree_view_by_element_world[element_file] = element_tree_view
         return dock, element_tree_view
         
     def createDockWindows(self):
-        self.tree_view_by_object_world = {} # map of all tree views
+        self.tree_view_by_element_world = {} # map of all tree views
         scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', metawog.TREE_LEVEL_SCENE )
         level_dock, self.levelTree = self.createElementTreeView( 'Level', metawog.TREE_LEVEL_GAME, scene_dock )
         resource_dock, self.levelResourceTree = self.createElementTreeView( 'Resource',
