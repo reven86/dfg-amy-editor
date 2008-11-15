@@ -1200,13 +1200,13 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
         data =  index.data( QtCore.Qt.UserRole ).toPyObject()
         # if this fails, then we are trying to edit the property name or item was added incorrectly.
         assert data is not None
-        scope_key, object_file, object_desc, element, property_name = data
-        if object_desc is None:
+        scope_key, object_file, element_meta, element, property_name = data
+        if element_meta is None:
             handler_data = None
             attribute_desc = None
             print 'Warning: metawog is incomplet, no attribute description for', object_file, element.tag, property_name
         else:
-            attribute_desc = object_desc.attributes_by_name.get( property_name )
+            attribute_desc = element_meta.attributes_by_name.get( property_name )
             if attribute_desc is None:
                 print 'Warning: metawog is incomplet, no attribute description for', object_file, element.tag, property_name
                 handler_data = None
@@ -1421,8 +1421,8 @@ class MainWindow(QtGui.QMainWindow):
 
     def _refreshPropertyListFromElement( self, object_file, element ):
         # Order the properties so that main attributes are at the beginning
-        object_desc = object_file.find_object_desc_by_tag(element.tag)
-        if object_desc is None:  # path for data without meta-model (to be removed)
+        element_meta = object_file.find_object_desc_by_tag(element.tag)
+        if element_meta is None:  # path for data without meta-model (to be removed)
             attribute_names = element.keys()
             attribute_order = ( 'id', 'name', 'x', 'y', 'depth', 'radius',
                                 'rotation', 'scalex', 'scaley', 'image', 'alpha' )
@@ -1442,16 +1442,16 @@ class MainWindow(QtGui.QMainWindow):
                 item_name = QtGui.QStandardItem( name )
                 item_name.setEditable( False )
                 item_value = QtGui.QStandardItem( value )
-                # @todo object_desc & scope_key should be parameters...
-                object_desc = object_file.find_object_desc_by_tag(element.tag)
+                # @todo element_meta & scope_key should be parameters...
+                element_meta = object_file.find_object_desc_by_tag(element.tag)
                 scope_key = self.getCurrentLevelModel()
-                item_value.setData( QtCore.QVariant( (scope_key, object_file, object_desc, element, name) ), QtCore.Qt.UserRole )
+                item_value.setData( QtCore.QVariant( (scope_key, object_file, element_meta, element, name) ), QtCore.Qt.UserRole )
                 self.propertiesListModel.appendRow( [ item_name, item_value ] )
         else: # Update the property list using the model
             self._resetPropertyListModel( element )
             scope_key = self.getCurrentLevelModel()
             missing_attributes = set( element.keys() )
-            for attribute_desc in object_desc.attributes_order:
+            for attribute_desc in element_meta.attributes_order:
                 attribute_name = attribute_desc.name
                 if attribute_name in missing_attributes:
                     missing_attributes.remove( attribute_name )
@@ -1467,7 +1467,7 @@ class MainWindow(QtGui.QMainWindow):
                         font.setForeground( brush )
                     item_name.setFont( font )
                 item_value = QtGui.QStandardItem( attribute_value or '' )
-                item_value.setData( QtCore.QVariant( (scope_key, object_file, object_desc, element, attribute_name) ),
+                item_value.setData( QtCore.QVariant( (scope_key, object_file, element_meta, element, attribute_name) ),
                                     QtCore.Qt.UserRole )
                 self.propertiesListModel.appendRow( [ item_name, item_value ] )
             if missing_attributes:
@@ -1535,7 +1535,7 @@ class MainWindow(QtGui.QMainWindow):
         new_value = top_left_index.data( QtCore.Qt.DisplayRole ).toString()
         data = top_left_index.data( QtCore.Qt.UserRole ).toPyObject()
         if data:
-            scope_key, object_file, object_desc, element, property_name = data
+            scope_key, object_file, element_meta, element, property_name = data
             self.getCurrentLevelModel().updateObjectPropertyValue( object_file, element, property_name, str(new_value) )
         else:
             print 'Warning: no data on edited item!'
@@ -1558,9 +1558,9 @@ class MainWindow(QtGui.QMainWindow):
                 if index.parent() is None:
                     remove_action.setEnable( False )
                 child_object_desc_by_actions = {}
-                object_desc = object_file.find_object_desc_by_tag(element.tag)
-                for tag in sorted(object_desc.objects_by_tag.iterkeys()):
-                    child_object_desc = object_desc.find_immediate_child_by_tag(tag)
+                element_meta = object_file.find_object_desc_by_tag(element.tag)
+                for tag in sorted(element_meta.objects_by_tag.iterkeys()):
+                    child_object_desc = element_meta.find_immediate_child_by_tag(tag)
                     if not child_object_desc.read_only:
                         action = menu.addAction( self.tr("Add child %1").arg(tag) )
                         child_object_desc_by_actions[action] = child_object_desc

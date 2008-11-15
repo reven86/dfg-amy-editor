@@ -53,10 +53,10 @@ class AttributeMeta(object):
         self.default = default
         self.allow_empty = allow_empty
         self.mandatory = mandatory
-        self.object_desc = None
+        self.element_meta = None
 
-    def attach_to_element_desc( self, object_desc ):
-        self.object_desc = object_desc
+    def attach_to_element_desc( self, element_meta ):
+        self.element_meta = element_meta
 
     def get( self, element ):
         return element.get( self.name )
@@ -98,9 +98,9 @@ class ReferenceAttributeMeta(AttributeMeta):
         self.reference_family = reference_family
         self.reference_scope = reference_scope
 
-    def attach_to_element_desc( self, object_desc ):
-        AttributeMeta.attach_to_element_desc( self, object_desc )
-        object_desc._add_reference_attribute( self )
+    def attach_to_element_desc( self, element_meta ):
+        AttributeMeta.attach_to_element_desc( self, element_meta )
+        element_meta._add_reference_attribute( self )
 
 class IdentifierAttributeMeta(AttributeMeta):
     def __init__( self, name, reference_family, reference_scope, **kwargs ):
@@ -108,9 +108,9 @@ class IdentifierAttributeMeta(AttributeMeta):
         self.reference_family = reference_family
         self.reference_scope = reference_scope
 
-    def attach_to_element_desc( self, object_desc ):
-        AttributeMeta.attach_to_element_desc( self, object_desc )
-        object_desc._set_identifier_attribute( self )
+    def attach_to_element_desc( self, element_meta ):
+        AttributeMeta.attach_to_element_desc( self, element_meta )
+        element_meta._set_identifier_attribute( self )
 
 class PathAttributeMeta(AttributeMeta):
     def __init__( self, name, strip_extension = None, **kwargs ):
@@ -172,15 +172,15 @@ class ObjectsMetaOwner:
     def _set_scope( self, parent_scope ):
         if self.__scope is not parent_scope: # avoid cycle
             self.__scope = parent_scope
-            for object_desc in self.objects_by_tag.itervalues():
-                object_desc._set_scope( parent_scope )
+            for element_meta in self.objects_by_tag.itervalues():
+                element_meta._set_scope( parent_scope )
 
     def add_objects( self, objects_desc ):
-        for object_desc in objects_desc:
-            assert object_desc.tag not in self.objects_by_tag, object_desc.tag
-            self.objects_by_tag[object_desc.tag] = object_desc
-            object_desc._set_scope( self.__scope )
-            self._object_added( object_desc )
+        for element_meta in objects_desc:
+            assert element_meta.tag not in self.objects_by_tag, element_meta.tag
+            self.objects_by_tag[element_meta.tag] = element_meta
+            element_meta._set_scope( self.__scope )
+            self._object_added( element_meta )
 
     def find_object_desc_by_tag( self, tag ):
         """Returns the ElementMeta corresponding to the specified tag if found in the owner or its descendant.
@@ -188,8 +188,8 @@ class ObjectsMetaOwner:
         """
         found_object_desc = self.objects_by_tag.get( tag )
         if not found_object_desc:
-            for object_desc in self.objects_by_tag.itervalues():
-                found_object_desc = object_desc.find_object_desc_by_tag( tag )
+            for element_meta in self.objects_by_tag.itervalues():
+                found_object_desc = element_meta.find_object_desc_by_tag( tag )
                 if found_object_desc:
                     break
         return found_object_desc
@@ -203,11 +203,11 @@ class ObjectsMetaOwner:
     def all_descendant_object_descs( self ):
         """Returns a dict of all object desc found in the owner and all its descendant keyed by tag."""
         object_descs_by_tag = self.objects_by_tag.copy()
-        for object_desc in self.objects_by_tag.itervalues():
-            object_descs_by_tag.update( object_desc.all_descendant_object_descs() )
+        for element_meta in self.objects_by_tag.itervalues():
+            object_descs_by_tag.update( element_meta.all_descendant_object_descs() )
         return object_descs_by_tag
 
-    def _object_added( self, object_desc ):
+    def _object_added( self, element_meta ):
         raise NotImplemented()
 
 
@@ -256,11 +256,11 @@ class ElementMeta(ObjectsMetaOwner):
     def _set_file( self, file_desc ):
         if self.file is not file_desc: # avoid cycle
             self.file = file_desc
-            for object_desc in self.objects_by_tag.itervalues():
-                object_desc._set_file( file_desc )
+            for element_meta in self.objects_by_tag.itervalues():
+                element_meta._set_file( file_desc )
 
-    def _object_added( self, object_desc ):
-        object_desc.parent_objects.add( self )
+    def _object_added( self, element_meta ):
+        element_meta.parent_objects.add( self )
 
     def attribute_by_name( self, attribute_name ):
         """Retrieves the attribute description for the specified attribute_name.
@@ -290,9 +290,9 @@ class TreeMeta(ObjectsMetaOwner):
         self.name = conceptual_file_name
         assert len(self.objects_by_tag) <= 1
 
-    def _object_added( self, object_desc ):
+    def _object_added( self, element_meta ):
         assert len(self.objects_by_tag) <= 1
-        object_desc._set_file( self )
+        element_meta._set_file( self )
 
     @property
     def root_object_desc( self ):
@@ -403,14 +403,14 @@ class ReferenceTracker(object):
 ##        print 'REF: object_about_to_be_removed', element
         scope_key = element.world
         assert scope_key is not None
-        object_desc = element.meta
+        element_meta = element.meta
         # Checks if the object has any identifier attribute
-        identifier_desc = object_desc.identifier_attribute
+        identifier_desc = element_meta.identifier_attribute
         if identifier_desc:
             identifier_value = identifier_desc.get( element )
             self._unregister_object_identifier( scope_key, element, identifier_desc, identifier_value )
         # Checks object for all reference attributes
-        for attribute_desc in object_desc.reference_attributes:
+        for attribute_desc in element_meta.reference_attributes:
             reference_value = attribute_desc.get( element )
             self._unregister_object_reference( scope_key, element, attribute_desc, reference_value )
 
@@ -434,12 +434,12 @@ class ReferenceTracker(object):
     def attribute_updated( self, object_key, attribute_desc, old_value, new_value ):
         scope_key = object_key.world
         assert scope_key is not None
-        object_desc = attribute_desc.object_desc
-        identifier_desc = object_desc.identifier_attribute
+        element_meta = attribute_desc.element_meta
+        identifier_desc = element_meta.identifier_attribute
         if identifier_desc is attribute_desc:
             self._unregister_object_identifier( scope_key, object_key, identifier_desc, old_value )
             self._register_object_identifier( scope_key, object_key, identifier_desc, new_value )
-        if attribute_desc in object_desc.reference_attributes:
+        if attribute_desc in element_meta.reference_attributes:
             self._unregister_object_reference( scope_key, object_key, attribute_desc, old_value )
             self._register_object_reference( scope_key, object_key, attribute_desc, new_value )
 
@@ -845,11 +845,11 @@ class Universe(WorldsOwner):
         if file_desc.root_object_desc.tag != xml_tree.tag:
             raise WorldException( u'Expected root tag "%(root)s", but got "%(actual)s" instead.' % {
                 'root': file_desc.root_object_desc.tag, 'actual': xml_tree.tag } )
-        def _make_element_tree_from_xml( object_desc, xml_tree ):
+        def _make_element_tree_from_xml( element_meta, xml_tree ):
             # Map element attributes
             known_attributes = {}
             missing_attributes = set( xml_tree.keys() )
-            for attribute_desc in object_desc.attributes_by_name.itervalues():
+            for attribute_desc in element_meta.attributes_by_name.itervalues():
                 attribute_value = xml_tree.get( attribute_desc.name )
                 if attribute_value is not None:
                     # @todo Warning if attribute already in dict
@@ -862,14 +862,14 @@ class Universe(WorldsOwner):
             # Map element children
             children = []
             for xml_tree_child in xml_tree:
-                child_object_desc = object_desc.find_immediate_child_by_tag( xml_tree_child.tag )
+                child_object_desc = element_meta.find_immediate_child_by_tag( xml_tree_child.tag )
                 if child_object_desc:
                     children.append( _make_element_tree_from_xml( child_object_desc, xml_tree_child ) )
                 else:
                     self._warning( u'Element %(tag)s, the following child tag missing in the object description: %(child)s.',
                                    tag = xml_tree.tag,
                                    child = xml_tree_child.tag )
-            return Element( object_desc, attributes = known_attributes, children = children )
+            return Element( element_meta, attributes = known_attributes, children = children )
         root_element = _make_element_tree_from_xml( file_desc.root_object_desc, xml_tree )
         return Tree( self, file_desc, root_element = root_element )
 
@@ -1041,15 +1041,15 @@ class Element(_ElementBase):
        The Element's description associates it with a given kind of Tree and restricts
        the kind of parent and child elements it may have.
     """
-    def __init__( self, object_desc, attributes = None, children = None ):
+    def __init__( self, element_meta, attributes = None, children = None ):
         """Initializes the element of type object_descwith the specified attributes.
-           object_desc: an ElementMeta instance
+           element_meta: an ElementMeta instance
            attributes: a dictionary of (name, value) of attributes values
            children: an iterable (list) of child elements not attached to any tree to be attached as child of this element.
         """
-        _ElementBase.__init__( self, object_desc.tag, attributes and attributes.copy() or {} )
-        assert object_desc is not None
-        self._object_desc = object_desc
+        _ElementBase.__init__( self, element_meta.tag, attributes and attributes.copy() or {} )
+        assert element_meta is not None
+        self._object_desc = element_meta
         self._parent = None
         self._tree = None # only set for the root element
         for child in children or ():
@@ -1332,10 +1332,10 @@ if __name__ == "__main__":
         def test_descriptions( self ):
             self.assertEqual( sorted(['text', 'sign', 'inline']), sorted(WORLD_TEST_LEVEL.objects_by_tag.keys()) )
             for scope in (WORLD_TEST_LEVEL, WORLD_TEST_GLOBAL):
-                for object_desc in scope.objects_by_tag.itervalues():
-                    self.assertEqual( scope, object_desc.scope )
+                for element_meta in scope.objects_by_tag.itervalues():
+                    self.assertEqual( scope, element_meta.scope )
 #                for file_desc in scope.files_desc_by_name.itervalues():
-#                    self.assertEqual( scope, object_desc.scope )
+#                    self.assertEqual( scope, element_meta.scope )
             self.assertEqual( sorted([LEVEL_SIGN, LEVEL_INLINE]), sorted(LEVEL_TEXT.parent_objects) )
             for tree, objects in { TREE_TEST_GLOBAL: [GLOBAL_TEXT],
                                    TREE_TEST_LEVEL: [LEVEL_TEXT, LEVEL_SIGN] }.iteritems():
@@ -1356,8 +1356,8 @@ if __name__ == "__main__":
             self.world_level2 = self.world.make_world( WORLD_TEST_LEVEL, 'level2' )
             self.level2 = self.world_level2.make_tree( TREE_TEST_LEVEL )
 
-        def _make_element(self, object_desc, **attributes ):
-            return Element( object_desc, attributes = attributes )
+        def _make_element(self, element_meta, **attributes ):
+            return Element( element_meta, attributes = attributes )
 
         def test_identifiers(self):
             universe = self.universe
