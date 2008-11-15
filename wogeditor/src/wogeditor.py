@@ -1406,7 +1406,7 @@ class MainWindow(QtGui.QMainWindow):
         """
         tree_view = self.tree_view_by_object_world[object_file]
         for other_tree_view in self.tree_view_by_object_world.itervalues():  
-            if other_tree_view != tree_view: # unselect objects on all other tree views
+            if other_tree_view != tree_view: # unselect elements on all other tree views
                 other_tree_view.selectionModel().clear()
         selected_item = self._findItemInTreeViewByElement( tree_view, element )
         if selected_item:
@@ -1559,7 +1559,7 @@ class MainWindow(QtGui.QMainWindow):
                     remove_action.setEnable( False )
                 child_element_meta_by_actions = {}
                 element_meta = object_file.find_element_meta_by_tag(element.tag)
-                for tag in sorted(element_meta.objects_by_tag.iterkeys()):
+                for tag in sorted(element_meta.elements_by_tag.iterkeys()):
                     child_element_meta = element_meta.find_immediate_child_by_tag(tag)
                     if not child_element_meta.read_only:
                         action = menu.addAction( self.tr("Add child %1").arg(tag) )

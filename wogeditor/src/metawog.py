@@ -1,4 +1,4 @@
-"""Describes the structure and constraints of objects used in data file of WOG."""
+"""Describes the structure and constraints of elements used in data file of WOG."""
 from metaworld import *
 
 # Declares all file types
@@ -40,7 +40,7 @@ WORLD_GLOBAL = describe_world( 'global',
     ] )
 
 
-TREE_LEVEL_GAME.add_objects( [
+TREE_LEVEL_GAME.add_elements( [
     describe_element( 'level', exact_occurrence = 1, attributes = [
         int_attribute( 'ballsrequired', default = 0, allow_empty = True, mandatory = True, min_value = 0 ),
         bool_attribute( 'letterboxed', init = False, mandatory = True ),
@@ -56,12 +56,12 @@ TREE_LEVEL_GAME.add_objects( [
         rgb_attribute( 'cursor3color', default = (255,255,255) ),
         rgb_attribute( 'cursor4color', default = (255,255,255) ),
         ],
-        objects = [
+        elements = [
         describe_element( 'camera', exact_occurrence = 2, attributes = [
             enum_attribute( 'aspect', values = ('widescreen', 'normal'), default = 'normal' ),
             xy_attribute( 'endpos' ),
             real_attribute( 'endzoom', min_value = 0.00001 ),
-            ], objects = [
+            ], elements = [
             describe_element( 'poi', min_occurrence = 1, attributes = [
                 real_attribute( 'pause', min_value = 0, init = 0 ),
                 xy_attribute( 'pos', init = (0,0) ),
@@ -92,7 +92,7 @@ TREE_LEVEL_GAME.add_objects( [
             real_attribute( 'depth', init = 0, mandatory = True ),
             enum_attribute( 'type', values = ('BEAUTY', 'BLACK', 'ISH') )
             ],
-            objects = [
+            elements = [
             describe_element( 'Vertex', min_occurrence = 2, attributes = [
                 # @todo makes x,y a composite attribute
                 real_attribute( 'x', init = 0, mandatory = True ),
@@ -160,7 +160,7 @@ def _describe_resource_file( tree_meta, resource_world, is_global = False ):
         identifier_attribute( 'id', mandatory = True, reference_family = 'resources',
                               reference_world = resource_world ),
         ] )
-    resources_object.add_objects( [
+    resources_object.add_elements( [
         describe_element( 'Image', attributes = [
             identifier_attribute( 'id', mandatory = True, reference_family = 'image',
                                   reference_world = resource_world ),
@@ -177,7 +177,7 @@ def _describe_resource_file( tree_meta, resource_world, is_global = False ):
             ] )
         ] )
     if is_global:
-        resources_object.add_objects( [
+        resources_object.add_elements( [
             describe_element( 'font', attributes = [
                 identifier_attribute( 'id', mandatory = True, reference_family = 'font',
                                       reference_world = resource_world ),
@@ -185,9 +185,9 @@ def _describe_resource_file( tree_meta, resource_world, is_global = False ):
                 ] )
         ] )
     
-    tree_meta.add_objects( [
+    tree_meta.add_elements( [
         # DUPLICATED FROM GLOBAL SCOPE => makes FACTORY function ?
-        describe_element( 'ResourceManifest', exact_occurrence = 1, attributes = [], objects = [
+        describe_element( 'ResourceManifest', exact_occurrence = 1, attributes = [], elements = [
             resources_object
             ] )
         ] )
@@ -265,7 +265,7 @@ ELEMENT_CIRCLE = describe_element( 'circle', attributes = [
     ] )
 
 
-TREE_LEVEL_SCENE.add_objects( [
+TREE_LEVEL_SCENE.add_elements( [
     describe_element( 'scene', exact_occurrence = 1, attributes = [
         rgb_attribute( 'backgroundcolor', mandatory = True, init = '0,0,0' ),
         real_attribute( 'minx', init='-500' ),
@@ -273,7 +273,7 @@ TREE_LEVEL_SCENE.add_objects( [
         real_attribute( 'maxx', init='500' ),
         real_attribute( 'maxy', init='500' )
         ],
-        objects = [
+        elements = [
         describe_element( 'SceneLayer', attributes = [
             real_attribute( 'x', mandatory = True, init='0' ),
             real_attribute( 'y', mandatory = True, init='0' ),
@@ -298,7 +298,7 @@ TREE_LEVEL_SCENE.add_objects( [
             string_attribute( 'id', mandatory = True ),
             xy_attribute( 'osx', mandatory = True )
             ],
-            objects = [
+            elements = [
                 ELEMENT_BUTTON
             ] ),
         describe_element( 'label', attributes = [
@@ -332,7 +332,7 @@ TREE_LEVEL_SCENE.add_objects( [
             real_attribute( 'rotspeed' ),
             bool_attribute( 'nogeomcollisions' )
             ],
-            objects = [
+            elements = [
                 ELEMENT_RECTANGLE,
                 ELEMENT_CIRCLE
             ] ),
@@ -394,8 +394,8 @@ TREE_LEVEL_SCENE.add_objects( [
     ] )
 
 
-TREE_GLOBAL_TEXT.add_objects( [
-    describe_element( 'strings', exact_occurrence = 1, attributes = [], objects = [
+TREE_GLOBAL_TEXT.add_elements( [
+    describe_element( 'strings', exact_occurrence = 1, attributes = [], elements = [
         describe_element( 'string', min_occurrence = 1, attributes = [
             identifier_attribute( 'id', mandatory = True, reference_family = 'text',
                                   reference_world = WORLD_GLOBAL ),
@@ -431,7 +431,7 @@ ELEMENT_PARTICLE = describe_element( 'particle', min_occurrence = 1, attributes 
     xy_attribute( 'rotation' ), # @todo TYPE OPTIONAL INTERVAL (e.g. 1 or 1,2 are ok)?
     xy_attribute( 'rotspeed' ) # @todo TYPE OPTIONAL INTERVAL (e.g. 1 or 1,2 are ok)?
     ],
-    objects = [
+    elements = [
         describe_element( 'axialsinoffset', min_occurrence = 1, max_occurrence = 2, attributes = [
             xy_attribute( 'amp', mandatory = True, init = '5,10' ), # @todo just 2 reals (interval)
             enum_attribute( 'axis', ('x','y'), mandatory = True, init = 'x' ),
@@ -440,15 +440,15 @@ ELEMENT_PARTICLE = describe_element( 'particle', min_occurrence = 1, attributes 
         ] )
     ] )
     
-TREE_GLOBAL_FX.add_objects( [
-    describe_element( 'effects', exact_occurrence = 1, attributes = [], objects = [
+TREE_GLOBAL_FX.add_elements( [
+    describe_element( 'effects', exact_occurrence = 1, attributes = [], elements = [
         describe_element( 'ambientparticleeffect', attributes = [
             identifier_attribute( 'name', mandatory = True, reference_family = 'effect',
                                   reference_world = WORLD_GLOBAL ),
             int_attribute( 'maxparticles', min_value = 1, mandatory = True, init = '1' ),
             int_attribute( 'margin' ) # ???
             ],
-            objects = [
+            elements = [
                 ELEMENT_PARTICLE
             ] ),
         describe_element( 'particleeffect', attributes = [
@@ -458,7 +458,7 @@ TREE_GLOBAL_FX.add_objects( [
             real_attribute( 'rate', min_value = 0.00001 ),
             int_attribute( 'margin' ) # ???
             ],
-            objects = [
+            elements = [
                 ELEMENT_PARTICLE
             ] )
         ])
@@ -466,8 +466,8 @@ TREE_GLOBAL_FX.add_objects( [
 
 
 
-TREE_GLOBAL_MATERIALS.add_objects( [
-    describe_element( 'materials', exact_occurrence = 1, attributes = [], objects = [
+TREE_GLOBAL_MATERIALS.add_elements( [
+    describe_element( 'materials', exact_occurrence = 1, attributes = [], elements = [
         describe_element( 'material', attributes = [
             identifier_attribute( 'id', mandatory = True, reference_family = 'material',
                                   reference_world = WORLD_GLOBAL ),
@@ -483,7 +483,7 @@ TREE_GLOBAL_MATERIALS.add_objects( [
 _describe_resource_file( TREE_BALL_RESOURCE, WORLD_BALL )
 
 # NOTES: this has been generated from scanxmlfile with -w options. Need a lot of clean up.
-TREE_BALL_MAIN.add_objects( [
+TREE_BALL_MAIN.add_elements( [
         describe_element( 'ball', min_occurrence=1, max_occurrence=1, attributes = [
             identifier_attribute( 'name', mandatory = True, reference_family = 'ball',
                                   reference_world = WORLD_GLOBAL ),
@@ -547,7 +547,7 @@ TREE_BALL_MAIN.add_objects( [
             bool_attribute( 'distantsounds', init = 'false'),
             bool_attribute( 'fallingattachment', init = 'false'),
             bool_attribute( 'flammable', init = 'false'),
-        ], objects = [
+        ], elements = [
             describe_element( 'detachstrand', min_occurrence=0, max_occurrence=1, attributes = [
                 int_attribute( 'maxlen', min_value=0.00001, mandatory = True, init = '60'),  # [60-160] Median:60 Samples: 60 | 160 | 70
                 unknown_attribute( 'image', init = 'IMAGE_BALL_BALLOON_SPLAT1'),  # Samples: IMAGE_BALL_BALLOON_SPLAT1 | IMAGE_BALL_COMMON_BLACK_DSTRAND | IMAGE_BALL_WATER_DSTRAND | IMAGE_BALL_POKEY_DSTRAND | IMAGE_BALL_PILOT_ARROW
@@ -586,7 +586,7 @@ TREE_BALL_MAIN.add_objects( [
                 real_attribute( 'amp', min_value=0, mandatory = True, init = '0.1'),  # [0.0-1.0] Median:0.1 Samples: 0.1 | 0.02 | 0.03 | 0.5 | 0.05
                 real_attribute( 'freq', min_value=0, mandatory = True, init = '1.2'),  # [0.0-2.0] Median:0.8 Samples: 1.2 | 0.3 | 1.5 | 0.4 | 0.8
                 real_attribute( 'shift', min_value=0, mandatory = True, init = '0.0'),  # [0.0-0.8] Median:0.0 Samples: 0.0 | 0 | 0.5 | 0.8
-            ], objects = [
+            ], elements = [
                 describe_element( 'sinanim', min_occurrence=1, max_occurrence=8, attributes = [
                     real_attribute( 'amp', mandatory = True, init = '0.1'),  # [-3.0-12.0] Median:0.1 Samples: 0.1 | 2 | 0.5 | 0.2 | 0.06
                     unknown_attribute( 'axis', mandatory = True, init = 'y'),  # Samples: y | x
@@ -628,12 +628,12 @@ TREE_BALL_MAIN.add_objects( [
         ] )
     ] )
 
-TREE_ISLAND.add_objects( [
+TREE_ISLAND.add_elements( [
         describe_element( 'island', exact_occurrence = 1, attributes = [
             reference_attribute( 'icon', reference_family = 'image', reference_world = WORLD_GLOBAL, mandatory = True ),
             string_attribute( 'map', mandatory = True, init = 'island5'),
             string_attribute( 'name', mandatory = True, init = 'Cog in the Machine'),  # Samples: Cog in the Machine | The Goo Filled Hills | Information Superhighay | Little Miss World of Goo | End of the World
-        ], objects = [
+        ], elements = [
             describe_element( 'level', min_occurrence=1, attributes = [
                 identifier_attribute( 'id', mandatory = True, reference_family = 'level',
                                       reference_world = WORLD_ISLAND ),

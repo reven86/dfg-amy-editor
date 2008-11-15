@@ -1,16 +1,16 @@
-"""Provides a way to describe a graph of objects, that may be linked together.
+"""Provides a way to describe a graph of elements, that may be linked together.
 
-Objects live in a given world. Worlds are organized as a hierarchy: world children may see their parent objects,
-but the parent world can not see the child objects.
+Objects live in a given world. Worlds are organized as a hierarchy: world children may see their parent elements,
+but the parent world can not see the child elements.
 
 Typically, their is a global world with resources common to all levels, and each level has its own world.
-This allows each level to define objects with identifiers that would conflict with object defined in other
+This allows each level to define elements with identifiers that would conflict with object defined in other
 levels if world were not used.
 
-While objects live in a world, they are attached to a given "file" in that world. A world can contain multiple
+While elements live in a world, they are attached to a given "file" in that world. A world can contain multiple
 files, but each file can only have one root object.
 
-The structure of the graph of objects is defined statically:
+The structure of the graph of elements is defined statically:
 - structure of the world kind hierarchy
 - kind of file attached to each kind of world
 - root object description attached to each file
@@ -163,8 +163,8 @@ class ObjectsMetaOwner:
     def __init__( self, elements_meta = None ):
         elements_meta = elements_meta or []
         self.__world = None
-        self.objects_by_tag = {}
-        self.add_objects( elements_meta )
+        self.elements_by_tag = {}
+        self.add_elements( elements_meta )
 
     @property
     def world( self ):
@@ -173,13 +173,13 @@ class ObjectsMetaOwner:
     def _set_world( self, parent_world ):
         if self.__world is not parent_world: # avoid cycle
             self.__world = parent_world
-            for element_meta in self.objects_by_tag.itervalues():
+            for element_meta in self.elements_by_tag.itervalues():
                 element_meta._set_world( parent_world )
 
-    def add_objects( self, elements_meta ):
+    def add_elements( self, elements_meta ):
         for element_meta in elements_meta:
-            assert element_meta.tag not in self.objects_by_tag, element_meta.tag
-            self.objects_by_tag[element_meta.tag] = element_meta
+            assert element_meta.tag not in self.elements_by_tag, element_meta.tag
+            self.elements_by_tag[element_meta.tag] = element_meta
             element_meta._set_world( self.__world )
             self._object_added( element_meta )
 
@@ -187,9 +187,9 @@ class ObjectsMetaOwner:
         """Returns the ElementMeta corresponding to the specified tag if found in the owner or its descendant.
            None if not found.
         """
-        found_element_meta = self.objects_by_tag.get( tag )
+        found_element_meta = self.elements_by_tag.get( tag )
         if not found_element_meta:
-            for element_meta in self.objects_by_tag.itervalues():
+            for element_meta in self.elements_by_tag.itervalues():
                 found_element_meta = element_meta.find_element_meta_by_tag( tag )
                 if found_element_meta:
                     break
@@ -199,12 +199,12 @@ class ObjectsMetaOwner:
         """Returns the ElementMeta corresponding to the specified tag if found, otherwise returns None.
            Notes: only direct child are inspected. Grand-children will not be examined.
         """
-        return self.objects_by_tag.get( tag )
+        return self.elements_by_tag.get( tag )
 
     def all_descendant_element_metas( self ):
         """Returns a dict of all object desc found in the owner and all its descendant keyed by tag."""
-        element_metas_by_tag = self.objects_by_tag.copy()
-        for element_meta in self.objects_by_tag.itervalues():
+        element_metas_by_tag = self.elements_by_tag.copy()
+        for element_meta in self.elements_by_tag.itervalues():
             element_metas_by_tag.update( element_meta.all_descendant_element_metas() )
         return element_metas_by_tag
 
@@ -228,11 +228,11 @@ class ElementMeta(ObjectsMetaOwner):
         attributes = attributes or []
         self.attributes_order = []
         self.attributes_by_name = {}
-        self.parent_objects = set() # An object may be added as child of multiple objects if they are in the same file
+        self.parent_elements = set() # An object may be added as child of multiple elements if they are in the same file
         self.identifier_attribute = None
         self.reference_attributes = set()
         self.file = None # initialized when object or parent object is added to a file
-        self.child_objects_by_tag = {}
+        self.child_elements_by_tag = {}
         self.min_occurrence = min_occurrence or 0
         self.max_occurrence = max_occurrence or 2**32
         assert self.min_occurrence <= self.max_occurrence
@@ -257,11 +257,11 @@ class ElementMeta(ObjectsMetaOwner):
     def _set_file( self, tree_meta ):
         if self.file is not tree_meta: # avoid cycle
             self.file = tree_meta
-            for element_meta in self.objects_by_tag.itervalues():
+            for element_meta in self.elements_by_tag.itervalues():
                 element_meta._set_file( tree_meta )
 
     def _object_added( self, element_meta ):
-        element_meta.parent_objects.add( self )
+        element_meta.parent_elements.add( self )
 
     def attribute_by_name( self, attribute_name ):
         """Retrieves the attribute description for the specified attribute_name.
@@ -271,41 +271,41 @@ class ElementMeta(ObjectsMetaOwner):
 
 
     def __repr__( self ):
-        return '%s(tag=%s, attributes=[%s], objects=[%s])' % (
+        return '%s(tag=%s, attributes=[%s], elements=[%s])' % (
             self.__class__.__name__, self.tag, ','.join([a.name for a in self.attributes_order]),
-            ','.join(self.objects_by_tag.keys()))
+            ','.join(self.elements_by_tag.keys()))
 
-def describe_element( tag, attributes = None, objects = None,
+def describe_element( tag, attributes = None, elements = None,
                      min_occurrence = None, max_occurrence = None, exact_occurrence = None,
                      read_only = False ):
     if exact_occurrence is not None:
         min_occurrence = exact_occurrence
         max_occurrence = exact_occurrence
-    return ElementMeta( tag, attributes = attributes, elements_meta = objects,
+    return ElementMeta( tag, attributes = attributes, elements_meta = elements,
                        min_occurrence = min_occurrence, max_occurrence = max_occurrence,
                        read_only = read_only )
 
 class TreeMeta(ObjectsMetaOwner):
-    def __init__( self, conceptual_file_name, objects = None ):
-        ObjectsMetaOwner.__init__( self, elements_meta = objects or [] )
+    def __init__( self, conceptual_file_name, elements = None ):
+        ObjectsMetaOwner.__init__( self, elements_meta = elements or [] )
         self.name = conceptual_file_name
-        assert len(self.objects_by_tag) <= 1
+        assert len(self.elements_by_tag) <= 1
 
     def _object_added( self, element_meta ):
-        assert len(self.objects_by_tag) <= 1
+        assert len(self.elements_by_tag) <= 1
         element_meta._set_file( self )
 
     @property
     def root_element_meta( self ):
         """Returns the root object description of the file."""
-        assert len(self.objects_by_tag) == 1
-        return self.objects_by_tag.values()[0]
+        assert len(self.elements_by_tag) == 1
+        return self.elements_by_tag.values()[0]
 
     def __repr__( self ):
-        return '%s(name=%s, objects=[%s])' % (self.__class__.__name__, self.name, ','.join(self.objects_by_tag.keys()))
+        return '%s(name=%s, elements=[%s])' % (self.__class__.__name__, self.name, ','.join(self.elements_by_tag.keys()))
 
-def describe_tree( conceptual_file_name, objects = None ):
-    return TreeMeta( conceptual_file_name, objects = objects )
+def describe_tree( conceptual_file_name, elements = None ):
+    return TreeMeta( conceptual_file_name, elements = elements )
 
 class WorldMeta(object):
     def __init__( self, world_name, trees_meta = None, child_worlds = None ):
@@ -314,17 +314,17 @@ class WorldMeta(object):
         self.parent_world = None
         self.child_worlds = []
         self.trees_meta_by_name = {}
-        self.__objects_by_tag = None
+        self.__elements_by_tag = None
         self.add_child_worlds( child_worlds )
         self.add_trees_meta( trees_meta )
 
     @property
-    def objects_by_tag( self ):
-        if self.__objects_by_tag is None:
-            self.__objects_by_tag = {}
+    def elements_by_tag( self ):
+        if self.__elements_by_tag is None:
+            self.__elements_by_tag = {}
             for tree_meta in self.trees_meta_by_name.itervalues():
-                self.__objects_by_tag.update( tree_meta.all_descendant_element_metas() )
-        return self.__objects_by_tag
+                self.__elements_by_tag.update( tree_meta.all_descendant_element_metas() )
+        return self.__elements_by_tag
 
     def add_child_worlds( self, child_worlds ):
         self.child_worlds.extend( child_worlds )
@@ -345,13 +345,13 @@ def describe_world( world_name, trees_meta = None, child_worlds = None ):
 
 
 def print_world_meta( world ):
-    """Diagnostic function that print the full content of a World, including its files and objects."""
+    """Diagnostic function that print the full content of a World, including its files and elements."""
     print '* World:', world.world_name
     for child_world in world.child_worlds:
         print '  has child world:', child_world.world_name
     for tree in world.trees_meta_by_name:
         print '  contained file:', tree
-    print '  contains object:', ', '.join( sorted(world.objects_by_tag) )
+    print '  contains object:', ', '.join( sorted(world.elements_by_tag) )
     for child_world in world.child_worlds:
         print_world_meta( child_world )
         print
@@ -360,7 +360,7 @@ def print_world_meta( world ):
         print
 
 def print_tree_meta( tree_meta ):
-    """Diagnostic function that print the full content of a TreeMeta, including its objects."""
+    """Diagnostic function that print the full content of a TreeMeta, including its elements."""
     print '* File:', tree_meta.name
     print '  belong to world:', tree_meta.world.world_name
     print '  root object:', tree_meta.root_element_meta.tag
@@ -384,7 +384,7 @@ def print_element_meta_tree( element, indent ):
     else:
         suffix = '{%d-%d}' % (element.min_occurrence, element.max_occurrence)
     print indent + element.tag + suffix
-    for child_object in element.objects_by_tag.itervalues():
+    for child_object in element.elements_by_tag.itervalues():
         print_element_meta_tree( child_object, indent + '    ' )
 
 
@@ -1182,7 +1182,7 @@ if __name__ == "__main__":
         ] )
 
 
-    TREE_TEST_GLOBAL.add_objects( [ GLOBAL_TEXT ] )
+    TREE_TEST_GLOBAL.add_elements( [ GLOBAL_TEXT ] )
 
     LEVEL_TEXT = describe_element( 'text', attributes = [
         identifier_attribute( 'id', mandatory = True, reference_family = 'text',
@@ -1195,30 +1195,30 @@ if __name__ == "__main__":
                              reference_world = WORLD_TEST_LEVEL, init = '', mandatory = True ),
         reference_attribute( 'alt_text', reference_family = 'text',
                              reference_world = WORLD_TEST_LEVEL )
-        ], objects = [ LEVEL_TEXT ] )
+        ], elements = [ LEVEL_TEXT ] )
 
-    LEVEL_INLINE = describe_element( 'inline', objects= [ LEVEL_SIGN, LEVEL_TEXT ] )
+    LEVEL_INLINE = describe_element( 'inline', elements= [ LEVEL_SIGN, LEVEL_TEXT ] )
 
-    TREE_TEST_LEVEL.add_objects( [ LEVEL_INLINE ] )
+    TREE_TEST_LEVEL.add_elements( [ LEVEL_INLINE ] )
 
 
     class MetaTest(unittest.TestCase):
 
         def test_descriptions( self ):
-            self.assertEqual( sorted(['text', 'sign', 'inline']), sorted(WORLD_TEST_LEVEL.objects_by_tag.keys()) )
+            self.assertEqual( sorted(['text', 'sign', 'inline']), sorted(WORLD_TEST_LEVEL.elements_by_tag.keys()) )
             for world in (WORLD_TEST_LEVEL, WORLD_TEST_GLOBAL):
-                for element_meta in world.objects_by_tag.itervalues():
+                for element_meta in world.elements_by_tag.itervalues():
                     self.assertEqual( world, element_meta.world )
 #                for tree_meta in world.trees_meta_by_name.itervalues():
 #                    self.assertEqual( world, element_meta.world )
-            self.assertEqual( sorted([LEVEL_SIGN, LEVEL_INLINE]), sorted(LEVEL_TEXT.parent_objects) )
-            for tree, objects in { TREE_TEST_GLOBAL: [GLOBAL_TEXT],
+            self.assertEqual( sorted([LEVEL_SIGN, LEVEL_INLINE]), sorted(LEVEL_TEXT.parent_elements) )
+            for tree, elements in { TREE_TEST_GLOBAL: [GLOBAL_TEXT],
                                    TREE_TEST_LEVEL: [LEVEL_TEXT, LEVEL_SIGN] }.iteritems():
-                for element in objects:
+                for element in elements:
                     self.assertEqual( tree, element.file )
                     self.assert_( element in tree.all_descendant_element_metas().values() )
                     self.assert_( element.tag in tree.all_descendant_element_metas() )
-                    self.assert_( element.tag in tree.world.objects_by_tag )
+                    self.assert_( element.tag in tree.world.elements_by_tag )
 
     class UniverseTest(unittest.TestCase):
 
@@ -1238,7 +1238,7 @@ if __name__ == "__main__":
             universe = self.universe
             self.assertEqual( set([]), universe.list_identifiers(self.world, 'text') )
             self.failIf(universe.list_references('text', 'TEXT_HI'))
-            # add objects
+            # add elements
             gt1 = self._make_element( GLOBAL_TEXT, id = 'TEXT_HI', fr = 'Salut' )
             global_tree = self.world.make_tree( TREE_TEST_GLOBAL, gt1 )
             assert global_tree.universe == universe
