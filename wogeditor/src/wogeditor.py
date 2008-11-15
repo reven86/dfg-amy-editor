@@ -465,7 +465,7 @@ class LevelModel(metaworld.World):
                     existing_path = os.path.split( existing_path )[1]
                     id = id_prefix + ''.join( c for c in existing_path if c.upper() in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789' )
                     resource_path = 'res/levels/%s/%s' % (self.level_name,existing_path)
-                    meta_element = metawog.TREE_LEVEL_RESOURCE.find_object_desc_by_tag( tag )
+                    meta_element = metawog.TREE_LEVEL_RESOURCE.find_element_meta_by_tag( tag )
                     new_resource = metaworld.Element( meta_element, {'id':id.upper(),
                                                                      'path':resource_path} )
                     self.addElement( metawog.TREE_LEVEL_RESOURCE, resource_element, new_resource )
@@ -1421,7 +1421,7 @@ class MainWindow(QtGui.QMainWindow):
 
     def _refreshPropertyListFromElement( self, object_file, element ):
         # Order the properties so that main attributes are at the beginning
-        element_meta = object_file.find_object_desc_by_tag(element.tag)
+        element_meta = object_file.find_element_meta_by_tag(element.tag)
         if element_meta is None:  # path for data without meta-model (to be removed)
             attribute_names = element.keys()
             attribute_order = ( 'id', 'name', 'x', 'y', 'depth', 'radius',
@@ -1443,7 +1443,7 @@ class MainWindow(QtGui.QMainWindow):
                 item_name.setEditable( False )
                 item_value = QtGui.QStandardItem( value )
                 # @todo element_meta & scope_key should be parameters...
-                element_meta = object_file.find_object_desc_by_tag(element.tag)
+                element_meta = object_file.find_element_meta_by_tag(element.tag)
                 scope_key = self.getCurrentLevelModel()
                 item_value.setData( QtCore.QVariant( (scope_key, object_file, element_meta, element, name) ), QtCore.Qt.UserRole )
                 self.propertiesListModel.appendRow( [ item_name, item_value ] )
@@ -1557,35 +1557,35 @@ class MainWindow(QtGui.QMainWindow):
                 menu.addSeparator()
                 if index.parent() is None:
                     remove_action.setEnable( False )
-                child_object_desc_by_actions = {}
-                element_meta = object_file.find_object_desc_by_tag(element.tag)
+                child_element_meta_by_actions = {}
+                element_meta = object_file.find_element_meta_by_tag(element.tag)
                 for tag in sorted(element_meta.objects_by_tag.iterkeys()):
-                    child_object_desc = element_meta.find_immediate_child_by_tag(tag)
-                    if not child_object_desc.read_only:
+                    child_element_meta = element_meta.find_immediate_child_by_tag(tag)
+                    if not child_element_meta.read_only:
                         action = menu.addAction( self.tr("Add child %1").arg(tag) )
-                        child_object_desc_by_actions[action] = child_object_desc
+                        child_element_meta_by_actions[action] = child_element_meta
                 selected_action = menu.exec_( tree_view.viewport().mapToGlobal(menu_pos) )
-                selected_object_desc = child_object_desc_by_actions.get( selected_action )
-                if selected_object_desc:
-                    self._appendChildTag( tree_view, object_file, index, selected_object_desc )
+                selected_element_meta = child_element_meta_by_actions.get( selected_action )
+                if selected_element_meta:
+                    self._appendChildTag( tree_view, object_file, index, selected_element_meta )
                 elif selected_action is remove_action:
                     element_to_remove = tree_view.model().itemFromIndex( index ).data( QtCore.Qt.UserRole ).toPyObject()
                     self.getCurrentLevelModel().removeElement( object_file, element_to_remove )
 
-    def _appendChildTag( self, tree_view, object_file, parent_element_index, new_object_desc ):
+    def _appendChildTag( self, tree_view, object_file, parent_element_index, new_element_meta ):
         """Adds the specified child tag to the specified element and update the tree view."""
         parent_element = parent_element_index.data( QtCore.Qt.UserRole ).toPyObject()
         if parent_element is not None:
             # build the list of attributes with their initial values.
             mandatory_attributes = {}
-            for attribute_name, attribute_desc in new_object_desc.attributes_by_name.iteritems():
+            for attribute_name, attribute_desc in new_element_meta.attributes_by_name.iteritems():
                 if attribute_desc.mandatory:
                     init_value = attribute_desc.init
                     if init_value is None:
                         init_value = ''
                     mandatory_attributes[attribute_name] = init_value
             # Creates and append to parent the new child element
-            child_element = metaworld.Element( new_object_desc, mandatory_attributes )
+            child_element = metaworld.Element( new_element_meta, mandatory_attributes )
             # Notes: when the element is added, the objectAdded() signal will cause the
             # corresponding item to be inserted into the tree.
             self.getCurrentLevelModel().addElement( object_file, parent_element, child_element )

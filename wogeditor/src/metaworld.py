@@ -182,17 +182,17 @@ class ObjectsMetaOwner:
             element_meta._set_scope( self.__scope )
             self._object_added( element_meta )
 
-    def find_object_desc_by_tag( self, tag ):
+    def find_element_meta_by_tag( self, tag ):
         """Returns the ElementMeta corresponding to the specified tag if found in the owner or its descendant.
            None if not found.
         """
-        found_object_desc = self.objects_by_tag.get( tag )
-        if not found_object_desc:
+        found_element_meta = self.objects_by_tag.get( tag )
+        if not found_element_meta:
             for element_meta in self.objects_by_tag.itervalues():
-                found_object_desc = element_meta.find_object_desc_by_tag( tag )
-                if found_object_desc:
+                found_element_meta = element_meta.find_element_meta_by_tag( tag )
+                if found_element_meta:
                     break
-        return found_object_desc
+        return found_element_meta
 
     def find_immediate_child_by_tag( self, tag ):
         """Returns the ElementMeta corresponding to the specified tag if found, otherwise returns None.
@@ -200,12 +200,12 @@ class ObjectsMetaOwner:
         """
         return self.objects_by_tag.get( tag )
 
-    def all_descendant_object_descs( self ):
+    def all_descendant_element_metas( self ):
         """Returns a dict of all object desc found in the owner and all its descendant keyed by tag."""
-        object_descs_by_tag = self.objects_by_tag.copy()
+        element_metas_by_tag = self.objects_by_tag.copy()
         for element_meta in self.objects_by_tag.itervalues():
-            object_descs_by_tag.update( element_meta.all_descendant_object_descs() )
-        return object_descs_by_tag
+            element_metas_by_tag.update( element_meta.all_descendant_element_metas() )
+        return element_metas_by_tag
 
     def _object_added( self, element_meta ):
         raise NotImplemented()
@@ -295,7 +295,7 @@ class TreeMeta(ObjectsMetaOwner):
         element_meta._set_file( self )
 
     @property
-    def root_object_desc( self ):
+    def root_element_meta( self ):
         """Returns the root object description of the file."""
         assert len(self.objects_by_tag) == 1
         return self.objects_by_tag.values()[0]
@@ -322,7 +322,7 @@ class WorldMeta(object):
         if self.__objects_by_tag is None:
             self.__objects_by_tag = {}
             for file_desc in self.files_desc_by_name.itervalues():
-                self.__objects_by_tag.update( file_desc.all_descendant_object_descs() )
+                self.__objects_by_tag.update( file_desc.all_descendant_element_metas() )
         return self.__objects_by_tag
 
     def add_child_scopes( self, child_scopes ):
@@ -488,10 +488,10 @@ def print_tree_meta( file_desc ):
     """Diagnostic function that print the full content of a TreeMeta, including its objects."""
     print '* File:', file_desc.name
     print '  belong to scope:', file_desc.scope.scope_name
-    print '  root object:', file_desc.root_object_desc.tag
-    print '  contains object:', ', '.join( sorted(file_desc.all_descendant_object_descs()) )
+    print '  root object:', file_desc.root_element_meta.tag
+    print '  contains object:', ', '.join( sorted(file_desc.all_descendant_element_metas()) )
     print '  object tree:'
-    print_element_meta_tree( file_desc.root_object_desc, '        ' )
+    print_element_meta_tree( file_desc.root_element_meta, '        ' )
 
 def print_element_meta_tree( element, indent ):
     """Diagnostic function that print the hierarchy of an ElementMeta and its children."""
@@ -842,9 +842,9 @@ class Universe(WorldsOwner):
            xml_data: raw XML data.
         """
         xml_tree = xml.etree.ElementTree.fromstring( xml_data )
-        if file_desc.root_object_desc.tag != xml_tree.tag:
+        if file_desc.root_element_meta.tag != xml_tree.tag:
             raise WorldException( u'Expected root tag "%(root)s", but got "%(actual)s" instead.' % {
-                'root': file_desc.root_object_desc.tag, 'actual': xml_tree.tag } )
+                'root': file_desc.root_element_meta.tag, 'actual': xml_tree.tag } )
         def _make_element_tree_from_xml( element_meta, xml_tree ):
             # Map element attributes
             known_attributes = {}
@@ -862,15 +862,15 @@ class Universe(WorldsOwner):
             # Map element children
             children = []
             for xml_tree_child in xml_tree:
-                child_object_desc = element_meta.find_immediate_child_by_tag( xml_tree_child.tag )
-                if child_object_desc:
-                    children.append( _make_element_tree_from_xml( child_object_desc, xml_tree_child ) )
+                child_element_meta = element_meta.find_immediate_child_by_tag( xml_tree_child.tag )
+                if child_element_meta:
+                    children.append( _make_element_tree_from_xml( child_element_meta, xml_tree_child ) )
                 else:
                     self._warning( u'Element %(tag)s, the following child tag missing in the object description: %(child)s.',
                                    tag = xml_tree.tag,
                                    child = xml_tree_child.tag )
             return Element( element_meta, attributes = known_attributes, children = children )
-        root_element = _make_element_tree_from_xml( file_desc.root_object_desc, xml_tree )
+        root_element = _make_element_tree_from_xml( file_desc.root_element_meta, xml_tree )
         return Tree( self, file_desc, root_element = root_element )
 
 
@@ -1042,14 +1042,14 @@ class Element(_ElementBase):
        the kind of parent and child elements it may have.
     """
     def __init__( self, element_meta, attributes = None, children = None ):
-        """Initializes the element of type object_descwith the specified attributes.
+        """Initializes the element of type element_meta with the specified attributes.
            element_meta: an ElementMeta instance
            attributes: a dictionary of (name, value) of attributes values
            children: an iterable (list) of child elements not attached to any tree to be attached as child of this element.
         """
         _ElementBase.__init__( self, element_meta.tag, attributes and attributes.copy() or {} )
         assert element_meta is not None
-        self._object_desc = element_meta
+        self._element_meta = element_meta
         self._parent = None
         self._tree = None # only set for the root element
         for child in children or ():
@@ -1085,7 +1085,7 @@ class Element(_ElementBase):
 
     @property
     def meta( self ):
-        return self._object_desc
+        return self._element_meta
 
     def make_child( self, element_meta, attributes = None, children = None ):
         """Makes a new child element and append it to the element."""
@@ -1097,7 +1097,7 @@ class Element(_ElementBase):
         """Returns the AttributeMeta for the specified attribute.
            @exception KeyError if attribute not found.
         """
-        return self._object_desc.attributes_by_name[attribute_name]
+        return self._element_meta.attributes_by_name[attribute_name]
 
     def append( self, element ):
         """Adds a subelement to the end of this element.
@@ -1252,7 +1252,7 @@ class Element(_ElementBase):
         """
         # @todo check that value is string-like
         assert new_value is not None
-        if key not in self._object_desc.attributes_by_name:
+        if key not in self._element_meta.attributes_by_name:
             raise KeyError( 'element %(tag)s has no attribute %(name)s' % {
                 'tag': self.meta.tag,
                 'name': key } )
@@ -1341,8 +1341,8 @@ if __name__ == "__main__":
                                    TREE_TEST_LEVEL: [LEVEL_TEXT, LEVEL_SIGN] }.iteritems():
                 for element in objects:
                     self.assertEqual( tree, element.file )
-                    self.assert_( element in tree.all_descendant_object_descs().values() )
-                    self.assert_( element.tag in tree.all_descendant_object_descs() )
+                    self.assert_( element in tree.all_descendant_element_metas().values() )
+                    self.assert_( element.tag in tree.all_descendant_element_metas() )
                     self.assert_( element.tag in tree.scope.objects_by_tag )
 
     class UniverseTest(unittest.TestCase):
