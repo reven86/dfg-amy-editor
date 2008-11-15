@@ -42,7 +42,7 @@ IDENTIFIER_TYPE = 'identifier'
 PATH_TYPE = 'path'
 
 
-class AttributeDesc(object):
+class AttributeMeta(object):
     def __init__( self, name, attribute_type, init = None, default = None, 
                   allow_empty = False, mandatory = False ):
         self.name = name
@@ -55,7 +55,7 @@ class AttributeDesc(object):
         self.mandatory = mandatory
         self.object_desc = None
 
-    def attach_to_object_desc( self, object_desc ):
+    def attach_to_element_desc( self, object_desc ):
         self.object_desc = object_desc
 
     def get( self, element ):
@@ -67,98 +67,98 @@ class AttributeDesc(object):
     def __repr__( self ):
         return '%s(name=%s, type=%s, mandatory=%s)' % (self.__class__.__name__, self.name, self.type, self.mandatory)
 
-class NumericAttributeDesc(AttributeDesc):
+class NumericAttributeMeta(AttributeMeta):
     def __init__( self, name, attribute_type, min_value = None, max_value = None, **kwargs ):
-        AttributeDesc.__init__( self, name, attribute_type, **kwargs )
+        AttributeMeta.__init__( self, name, attribute_type, **kwargs )
         self.min_value = min_value
         self.max_value = max_value
 
-class ColorAttributeDesc(AttributeDesc):
+class ColorAttributeMeta(AttributeMeta):
     def __init__( self, name, attribute_type, components, **kwargs ):
-        AttributeDesc.__init__( self, name, attribute_type, **kwargs )
+        AttributeMeta.__init__( self, name, attribute_type, **kwargs )
         self.nb_components = components
 
-class Vector2DAttributeDesc(AttributeDesc):
+class Vector2DAttributeMeta(AttributeMeta):
     def __init__( self, name, attribute_type, **kwargs ):
-        AttributeDesc.__init__( self, name, attribute_type, **kwargs )
+        AttributeMeta.__init__( self, name, attribute_type, **kwargs )
 
-class EnumeratedAttributeDesc(AttributeDesc):
+class EnumeratedAttributeMeta(AttributeMeta):
     def __init__( self, name, values, is_list = False, **kwargs ):
-        AttributeDesc.__init__( self, name, ENUMERATED_TYPE, **kwargs )
+        AttributeMeta.__init__( self, name, ENUMERATED_TYPE, **kwargs )
         self.values = set( values )
         self.is_list = is_list
 
-class BooleanAttributeDesc(EnumeratedAttributeDesc):
+class BooleanAttributeMeta(EnumeratedAttributeMeta):
     def __init__( self, name, **kwargs ):
-        EnumeratedAttributeDesc.__init__( self, name, ('true','false'), BOOLEAN_TYPE, **kwargs )
+        EnumeratedAttributeMeta.__init__( self, name, ('true','false'), BOOLEAN_TYPE, **kwargs )
 
-class ReferenceAttributeDesc(AttributeDesc):
+class ReferenceAttributeMeta(AttributeMeta):
     def __init__( self, name, reference_family, reference_scope, **kwargs ):
-        AttributeDesc.__init__( self, name, REFERENCE_TYPE, **kwargs )
+        AttributeMeta.__init__( self, name, REFERENCE_TYPE, **kwargs )
         self.reference_family = reference_family
         self.reference_scope = reference_scope
 
-    def attach_to_object_desc( self, object_desc ):
-        AttributeDesc.attach_to_object_desc( self, object_desc )
+    def attach_to_element_desc( self, object_desc ):
+        AttributeMeta.attach_to_element_desc( self, object_desc )
         object_desc._add_reference_attribute( self )
 
-class IdentifierAttributeDesc(AttributeDesc):
+class IdentifierAttributeMeta(AttributeMeta):
     def __init__( self, name, reference_family, reference_scope, **kwargs ):
-        AttributeDesc.__init__( self, name, IDENTIFIER_TYPE, **kwargs )
+        AttributeMeta.__init__( self, name, IDENTIFIER_TYPE, **kwargs )
         self.reference_family = reference_family
         self.reference_scope = reference_scope
 
-    def attach_to_object_desc( self, object_desc ):
-        AttributeDesc.attach_to_object_desc( self, object_desc )
+    def attach_to_element_desc( self, object_desc ):
+        AttributeMeta.attach_to_element_desc( self, object_desc )
         object_desc._set_identifier_attribute( self )
 
-class PathAttributeDesc(AttributeDesc):
+class PathAttributeMeta(AttributeMeta):
     def __init__( self, name, strip_extension = None, **kwargs ):
-        AttributeDesc.__init__( self, name, PATH_TYPE, **kwargs )
+        AttributeMeta.__init__( self, name, PATH_TYPE, **kwargs )
         self.strip_extension = strip_extension
 
 def bool_attribute( name, **kwargs ):
-    return BooleanAttributeDesc( name, **kwargs )
+    return BooleanAttributeMeta( name, **kwargs )
 
 def int_attribute( name, min_value = None, **kwargs ):
-    return NumericAttributeDesc( name, INTEGER_TYPE, min_value = min_value, **kwargs )
+    return NumericAttributeMeta( name, INTEGER_TYPE, min_value = min_value, **kwargs )
 
 def real_attribute( name, min_value = None, max_value = None, **kwargs ):
-    return NumericAttributeDesc( name, REAL_TYPE, min_value = min_value, max_value = max_value, **kwargs )
+    return NumericAttributeMeta( name, REAL_TYPE, min_value = min_value, max_value = max_value, **kwargs )
 
 def rgb_attribute( name, **kwargs ):
-    return ColorAttributeDesc( name, RGB_COLOR_TYPE, components = 3, **kwargs )
+    return ColorAttributeMeta( name, RGB_COLOR_TYPE, components = 3, **kwargs )
 
 def argb_attribute( name, **kwargs ):
-    return ColorAttributeDesc( name, ARGB_COLOR_TYPE, components = 4, **kwargs )
+    return ColorAttributeMeta( name, ARGB_COLOR_TYPE, components = 4, **kwargs )
 
 def xy_attribute( name, **kwargs ):
-    return Vector2DAttributeDesc( name, XY_TYPE, **kwargs )
+    return Vector2DAttributeMeta( name, XY_TYPE, **kwargs )
 
 def enum_attribute( name, values, **kwargs ):
-    return EnumeratedAttributeDesc( name, values, **kwargs )
+    return EnumeratedAttributeMeta( name, values, **kwargs )
 
 def string_attribute( name, **kwargs ):
-    return AttributeDesc( name, STRING_TYPE, **kwargs )
+    return AttributeMeta( name, STRING_TYPE, **kwargs )
 
 def angle_degrees_attribute( name, min_value = None, max_value = None, **kwargs ):
-    return NumericAttributeDesc( name, ANGLE_DEGREES_TYPE, min_value = min_value, max_value = max_value, **kwargs )
+    return NumericAttributeMeta( name, ANGLE_DEGREES_TYPE, min_value = min_value, max_value = max_value, **kwargs )
 
 def angle_radians_attribute( name, min_value = None, max_value = None, **kwargs ):
-    return NumericAttributeDesc( name, ANGLE_RADIANS_TYPE, min_value = min_value, max_value = max_value, **kwargs )
+    return NumericAttributeMeta( name, ANGLE_RADIANS_TYPE, min_value = min_value, max_value = max_value, **kwargs )
 
 def reference_attribute( name, reference_family, reference_scope, **kwargs ):
-    return ReferenceAttributeDesc( name, reference_family = reference_family, reference_scope = reference_scope, **kwargs )
+    return ReferenceAttributeMeta( name, reference_family = reference_family, reference_scope = reference_scope, **kwargs )
 
 def identifier_attribute( name, reference_family, reference_scope, **kwargs ):
-    return IdentifierAttributeDesc( name, reference_family, reference_scope, **kwargs )
+    return IdentifierAttributeMeta( name, reference_family, reference_scope, **kwargs )
 
 def path_attribute( name, **kwargs ):
-    return PathAttributeDesc( name, **kwargs )
+    return PathAttributeMeta( name, **kwargs )
 
 unknown_attribute = string_attribute # to help with generated model
 
-class ObjectsDescOwner:
+class ObjectsMetaOwner:
     def __init__( self, objects_desc = None ):
         objects_desc = objects_desc or []
         self.__scope = None
@@ -183,7 +183,7 @@ class ObjectsDescOwner:
             self._object_added( object_desc )
 
     def find_object_desc_by_tag( self, tag ):
-        """Returns the ObjectDesc corresponding to the specified tag if found in the owner or its descendant.
+        """Returns the ElementMeta corresponding to the specified tag if found in the owner or its descendant.
            None if not found.
         """
         found_object_desc = self.objects_by_tag.get( tag )
@@ -195,7 +195,7 @@ class ObjectsDescOwner:
         return found_object_desc
 
     def find_immediate_child_by_tag( self, tag ):
-        """Returns the ObjectDesc corresponding to the specified tag if found, otherwise returns None.
+        """Returns the ElementMeta corresponding to the specified tag if found, otherwise returns None.
            Notes: only direct child are inspected. Grand-children will not be examined.
         """
         return self.objects_by_tag.get( tag )
@@ -211,7 +211,7 @@ class ObjectsDescOwner:
         raise NotImplemented()
 
 
-class ObjectDesc(ObjectsDescOwner):
+class ElementMeta(ObjectsMetaOwner):
     """A object description represents a tag that belong in a given file. Its main features are:
        - a tag name
        - a list of attribute description
@@ -222,7 +222,7 @@ class ObjectDesc(ObjectsDescOwner):
     def __init__( self, tag, objects_desc = None, attributes = None,
                   min_occurrence = None, max_occurrence = None,
                   read_only = False ):
-        ObjectsDescOwner.__init__( self, objects_desc = objects_desc or [] )
+        ObjectsMetaOwner.__init__( self, objects_desc = objects_desc or [] )
         self.tag = tag
         attributes = attributes or []
         self.attributes_order = []
@@ -242,7 +242,7 @@ class ObjectDesc(ObjectsDescOwner):
         for attribute in attributes:
             assert attribute.name not in self.attributes_by_name, attribute.name
             self.attributes_by_name[attribute.name] = attribute
-            attribute.attach_to_object_desc( self )
+            attribute.attach_to_element_desc( self )
         self.attributes_order.extend( attributes )
 
     def _add_reference_attribute( self, attribute_desc ):
@@ -274,19 +274,19 @@ class ObjectDesc(ObjectsDescOwner):
             self.__class__.__name__, self.tag, ','.join([a.name for a in self.attributes_order]),
             ','.join(self.objects_by_tag.keys()))
 
-def describe_object( tag, attributes = None, objects = None,
+def describe_element( tag, attributes = None, objects = None,
                      min_occurrence = None, max_occurrence = None, exact_occurrence = None,
                      read_only = False ):
     if exact_occurrence is not None:
         min_occurrence = exact_occurrence
         max_occurrence = exact_occurrence
-    return ObjectDesc( tag, attributes = attributes, objects_desc = objects,
+    return ElementMeta( tag, attributes = attributes, objects_desc = objects,
                        min_occurrence = min_occurrence, max_occurrence = max_occurrence,
                        read_only = read_only )
 
-class FileDesc(ObjectsDescOwner):
+class TreeMeta(ObjectsMetaOwner):
     def __init__( self, conceptual_file_name, objects = None ):
-        ObjectsDescOwner.__init__( self, objects_desc = objects or [] )
+        ObjectsMetaOwner.__init__( self, objects_desc = objects or [] )
         self.name = conceptual_file_name
         assert len(self.objects_by_tag) <= 1
 
@@ -303,10 +303,10 @@ class FileDesc(ObjectsDescOwner):
     def __repr__( self ):
         return '%s(name=%s, objects=[%s])' % (self.__class__.__name__, self.name, ','.join(self.objects_by_tag.keys()))
 
-def describe_file( conceptual_file_name, objects = None ):
-    return FileDesc( conceptual_file_name, objects = objects )
+def describe_tree( conceptual_file_name, objects = None ):
+    return TreeMeta( conceptual_file_name, objects = objects )
 
-class ScopeDesc(object):
+class WorldMeta(object):
     def __init__( self, scope_name, files_desc = None, child_scopes = None ):
         child_scopes = child_scopes or []
         self.scope_name = scope_name
@@ -339,8 +339,8 @@ class ScopeDesc(object):
     def __repr__( self ):
         return '%s(name=%s, files=[%s])' % (self.__class__.__name__, self.scope_name, ','.join(self.files_desc_by_name.keys()))
 
-def describe_scope( scope_name, files_desc = None, child_scopes = None ):
-    return ScopeDesc( scope_name, files_desc = files_desc, child_scopes = child_scopes )
+def describe_world( scope_name, files_desc = None, child_scopes = None ):
+    return WorldMeta( scope_name, files_desc = files_desc, child_scopes = child_scopes )
 
 class ReferenceTracker(object):
     """The reference trackers keep that of all object identifiers to check for reference validity and identifier unicity.
@@ -469,7 +469,7 @@ class ReferenceTracker(object):
         return list( self.back_references.get( (family, identifier), [] ) )
         
 
-def print_scope( scope ):
+def print_world_meta( scope ):
     """Diagnostic function that print the full content of a Scope, including its files and objects."""
     print '* Scope:', scope.scope_name
     for child_scope in scope.child_scopes:
@@ -478,23 +478,23 @@ def print_scope( scope ):
         print '  contained file:', tree
     print '  contains object:', ', '.join( sorted(scope.objects_by_tag) )
     for child_scope in scope.child_scopes:
-        print_scope( child_scope )
+        print_world_meta( child_scope )
         print
     for file_desc in scope.files_desc_by_name.itervalues():
-        print_file_desc( file_desc )
+        print_tree_meta( file_desc )
         print
 
-def print_file_desc( file_desc ):
-    """Diagnostic function that print the full content of a FileDesc, including its objects."""
+def print_tree_meta( file_desc ):
+    """Diagnostic function that print the full content of a TreeMeta, including its objects."""
     print '* File:', file_desc.name
     print '  belong to scope:', file_desc.scope.scope_name
     print '  root object:', file_desc.root_object_desc.tag
     print '  contains object:', ', '.join( sorted(file_desc.all_descendant_object_descs()) )
     print '  object tree:'
-    print_object_desc_tree( file_desc.root_object_desc, '        ' )
+    print_element_meta_tree( file_desc.root_object_desc, '        ' )
 
-def print_object_desc_tree( element, indent ):
-    """Diagnostic function that print the hierarchy of an ObjectDesc and its children."""
+def print_element_meta_tree( element, indent ):
+    """Diagnostic function that print the hierarchy of an ElementMeta and its children."""
     suffix = ''
     if element.min_occurrence == element.max_occurrence:
         if element.min_occurrence > 1:
@@ -510,7 +510,7 @@ def print_object_desc_tree( element, indent ):
         suffix = '{%d-%d}' % (element.min_occurrence, element.max_occurrence)
     print indent + element.tag + suffix
     for child_object in element.objects_by_tag.itervalues():
-        print_object_desc_tree( child_object, indent + '    ' )
+        print_element_meta_tree( child_object, indent + '    ' )
 
 
 
@@ -878,7 +878,7 @@ class WorldException(Exception):
     pass
 
 class World(WorldsOwner):
-    """Represents a part of the universe unknown to other worlds, described by a ScopeDesc.
+    """Represents a part of the universe unknown to other worlds, described by a WorldMeta.
 
        The elements attached to a world are unknown to other World.    
     """
@@ -979,7 +979,7 @@ class World(WorldsOwner):
         
 
 class Tree:
-    """Represents a part of the world elements live in, described by a FileDesc.
+    """Represents a part of the world elements live in, described by a TreeMeta.
     """
     def __init__( self, universe, file_desc, root_element = None ):
         self._universe = universe
@@ -1037,13 +1037,13 @@ class Tree:
 _ElementBase = xml.etree.ElementTree._ElementInterface
 
 class Element(_ElementBase):
-    """Represents a tree that live in a World on a given Tree, described by an ObjectDesc.
+    """Represents a tree that live in a World on a given Tree, described by an ElementMeta.
        The Element's description associates it with a given kind of Tree and restricts
        the kind of parent and child elements it may have.
     """
     def __init__( self, object_desc, attributes = None, children = None ):
         """Initializes the element of type object_descwith the specified attributes.
-           object_desc: an ObjectDesc instance
+           object_desc: an ElementMeta instance
            attributes: a dictionary of (name, value) of attributes values
            children: an iterable (list) of child elements not attached to any tree to be attached as child of this element.
         """
@@ -1094,7 +1094,7 @@ class Element(_ElementBase):
         return child_element
 
     def attribute_meta( self, attribute_name ):
-        """Returns the AttributeDesc for the specified attribute.
+        """Returns the AttributeMeta for the specified attribute.
            @exception KeyError if attribute not found.
         """
         return self._object_desc.attributes_by_name[attribute_name]
@@ -1291,16 +1291,16 @@ class Element(_ElementBase):
 if __name__ == "__main__":
     import unittest
 
-    TREE_TEST_GLOBAL = describe_file( 'testglobal' )
-    TREE_TEST_LEVEL = describe_file( 'testlevel' )
+    TREE_TEST_GLOBAL = describe_tree( 'testglobal' )
+    TREE_TEST_LEVEL = describe_tree( 'testlevel' )
 
-    WORLD_TEST_LEVEL = describe_scope( 'testscope.level', files_desc = [TREE_TEST_LEVEL] )
+    WORLD_TEST_LEVEL = describe_world( 'testscope.level', files_desc = [TREE_TEST_LEVEL] )
 
-    WORLD_TEST_GLOBAL = describe_scope( 'testscope',
+    WORLD_TEST_GLOBAL = describe_world( 'testscope',
                                         files_desc = [TREE_TEST_GLOBAL],
                                         child_scopes = [WORLD_TEST_LEVEL] )
 
-    GLOBAL_TEXT = describe_object( 'text', attributes = [
+    GLOBAL_TEXT = describe_element( 'text', attributes = [
         identifier_attribute( 'id', mandatory = True, reference_family = 'text',
                               reference_scope = WORLD_TEST_GLOBAL ),
         string_attribute( 'fr' )
@@ -1309,20 +1309,20 @@ if __name__ == "__main__":
 
     TREE_TEST_GLOBAL.add_objects( [ GLOBAL_TEXT ] )
 
-    LEVEL_TEXT = describe_object( 'text', attributes = [
+    LEVEL_TEXT = describe_element( 'text', attributes = [
         identifier_attribute( 'id', mandatory = True, reference_family = 'text',
                               reference_scope = WORLD_TEST_LEVEL ),
         string_attribute( 'fr' )
         ] )
     
-    LEVEL_SIGN = describe_object( 'sign', attributes = [
+    LEVEL_SIGN = describe_element( 'sign', attributes = [
         reference_attribute( 'text', reference_family = 'text',
                              reference_scope = WORLD_TEST_LEVEL, init = '', mandatory = True ),
         reference_attribute( 'alt_text', reference_family = 'text',
                              reference_scope = WORLD_TEST_LEVEL )
         ], objects = [ LEVEL_TEXT ] )
 
-    LEVEL_INLINE = describe_object( 'inline', objects= [ LEVEL_SIGN, LEVEL_TEXT ] )
+    LEVEL_INLINE = describe_element( 'inline', objects= [ LEVEL_SIGN, LEVEL_TEXT ] )
 
     TREE_TEST_LEVEL.add_objects( [ LEVEL_INLINE ] )
 

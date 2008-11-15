@@ -290,7 +290,7 @@ Will dump all the value of the attribute "letterboxed" found in node "level"
         
         def describe_object( node_name, min_occurrences = 1, max_occurrences = 1, indent = None ):
             attributes_data, child_nodes_data = find_node_structure( xml_dir, node_name )
-            print indent + "describe_object( '%(node_name)s', min_occurrence=%(min_occurrences)d, max_occurrence=%(max_occurrences)d, attributes = [" % locals()
+            print indent + "describe_element( '%(node_name)s', min_occurrence=%(min_occurrences)d, max_occurrence=%(max_occurrences)d, attributes = [" % locals()
             attributes_data.sort( lambda x,y: cmp(y[2], x[2] ) ) # sort by mandatory/optional
             for attribute_data in attributes_data:
                 describe_object_attribute( node_name, indent + '    ', *attribute_data )
