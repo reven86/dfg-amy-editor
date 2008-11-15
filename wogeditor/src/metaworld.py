@@ -1,18 +1,18 @@
 """Provides a way to describe a graph of objects, that may be linked together.
 
-Objects live in a given scope. Scopes are organized as a hierarchy: scope children may see their parent objects,
-but the parent scope can not see the child objects.
+Objects live in a given world. Scopes are organized as a hierarchy: world children may see their parent objects,
+but the parent world can not see the child objects.
 
-Typically, their is a global scope with resources common to all levels, and each level has its own scope.
+Typically, their is a global world with resources common to all levels, and each level has its own world.
 This allows each level to define objects with identifiers that would conflict with object defined in other
-levels if scope were not used.
+levels if world were not used.
 
-While objects live in a scope, they are attached to a given "file" in that scope. A scope can contain multiple
+While objects live in a world, they are attached to a given "file" in that world. A world can contain multiple
 files, but each file can only have one root object.
 
 The structure of the graph of objects is defined statically:
-- structure of the scope kind hierarchy
-- kind of file attached to each kind of scope
+- structure of the world kind hierarchy
+- kind of file attached to each kind of world
 - root object description attached to each file
 - for each object description, its possible child object description, and its attribute description.
 
@@ -93,20 +93,20 @@ class BooleanAttributeMeta(EnumeratedAttributeMeta):
         EnumeratedAttributeMeta.__init__( self, name, ('true','false'), BOOLEAN_TYPE, **kwargs )
 
 class ReferenceAttributeMeta(AttributeMeta):
-    def __init__( self, name, reference_family, reference_scope, **kwargs ):
+    def __init__( self, name, reference_family, reference_world, **kwargs ):
         AttributeMeta.__init__( self, name, REFERENCE_TYPE, **kwargs )
         self.reference_family = reference_family
-        self.reference_scope = reference_scope
+        self.reference_world = reference_world
 
     def attach_to_element_desc( self, element_meta ):
         AttributeMeta.attach_to_element_desc( self, element_meta )
         element_meta._add_reference_attribute( self )
 
 class IdentifierAttributeMeta(AttributeMeta):
-    def __init__( self, name, reference_family, reference_scope, **kwargs ):
+    def __init__( self, name, reference_family, reference_world, **kwargs ):
         AttributeMeta.__init__( self, name, IDENTIFIER_TYPE, **kwargs )
         self.reference_family = reference_family
-        self.reference_scope = reference_scope
+        self.reference_world = reference_world
 
     def attach_to_element_desc( self, element_meta ):
         AttributeMeta.attach_to_element_desc( self, element_meta )
@@ -147,11 +147,12 @@ def angle_degrees_attribute( name, min_value = None, max_value = None, **kwargs 
 def angle_radians_attribute( name, min_value = None, max_value = None, **kwargs ):
     return NumericAttributeMeta( name, ANGLE_RADIANS_TYPE, min_value = min_value, max_value = max_value, **kwargs )
 
-def reference_attribute( name, reference_family, reference_scope, **kwargs ):
-    return ReferenceAttributeMeta( name, reference_family = reference_family, reference_scope = reference_scope, **kwargs )
+def reference_attribute( name, reference_family, reference_world, **kwargs ):
+    return ReferenceAttributeMeta( name, reference_family = reference_family, 
+                                   reference_world = reference_world, **kwargs )
 
-def identifier_attribute( name, reference_family, reference_scope, **kwargs ):
-    return IdentifierAttributeMeta( name, reference_family, reference_scope, **kwargs )
+def identifier_attribute( name, reference_family, reference_world, **kwargs ):
+    return IdentifierAttributeMeta( name, reference_family, reference_world, **kwargs )
 
 def path_attribute( name, **kwargs ):
     return PathAttributeMeta( name, **kwargs )
@@ -161,25 +162,25 @@ unknown_attribute = string_attribute # to help with generated model
 class ObjectsMetaOwner:
     def __init__( self, objects_desc = None ):
         objects_desc = objects_desc or []
-        self.__scope = None
+        self.__world = None
         self.objects_by_tag = {}
         self.add_objects( objects_desc )
 
     @property
-    def scope( self ):
-        return self.__scope
+    def world( self ):
+        return self.__world
 
-    def _set_scope( self, parent_scope ):
-        if self.__scope is not parent_scope: # avoid cycle
-            self.__scope = parent_scope
+    def _set_world( self, parent_world ):
+        if self.__world is not parent_world: # avoid cycle
+            self.__world = parent_world
             for element_meta in self.objects_by_tag.itervalues():
-                element_meta._set_scope( parent_scope )
+                element_meta._set_world( parent_world )
 
     def add_objects( self, objects_desc ):
         for element_meta in objects_desc:
             assert element_meta.tag not in self.objects_by_tag, element_meta.tag
             self.objects_by_tag[element_meta.tag] = element_meta
-            element_meta._set_scope( self.__scope )
+            element_meta._set_world( self.__world )
             self._object_added( element_meta )
 
     def find_element_meta_by_tag( self, tag ):
@@ -307,14 +308,14 @@ def describe_tree( conceptual_file_name, objects = None ):
     return TreeMeta( conceptual_file_name, objects = objects )
 
 class WorldMeta(object):
-    def __init__( self, scope_name, files_desc = None, child_scopes = None ):
-        child_scopes = child_scopes or []
-        self.scope_name = scope_name
-        self.parent_scope = None
-        self.child_scopes = []
+    def __init__( self, world_name, files_desc = None, child_worlds = None ):
+        child_worlds = child_worlds or []
+        self.world_name = world_name
+        self.parent_world = None
+        self.child_worlds = []
         self.files_desc_by_name = {}
         self.__objects_by_tag = None
-        self.add_child_scopes( child_scopes )
+        self.add_child_worlds( child_worlds )
         self.add_files_desc( files_desc )
 
     @property
@@ -325,40 +326,40 @@ class WorldMeta(object):
                 self.__objects_by_tag.update( file_desc.all_descendant_element_metas() )
         return self.__objects_by_tag
 
-    def add_child_scopes( self, child_scopes ):
-        self.child_scopes.extend( child_scopes )
-        for scope in child_scopes:
-            scope.parent_scope = self
+    def add_child_worlds( self, child_worlds ):
+        self.child_worlds.extend( child_worlds )
+        for world in child_worlds:
+            world.parent_world = self
 
     def add_files_desc( self, files_desc ):
         for file_desc in files_desc:
             assert file_desc.name not in self.files_desc_by_name
             self.files_desc_by_name[file_desc.name] = file_desc
-            file_desc._set_scope( self )
+            file_desc._set_world( self )
 
     def __repr__( self ):
-        return '%s(name=%s, files=[%s])' % (self.__class__.__name__, self.scope_name, ','.join(self.files_desc_by_name.keys()))
+        return '%s(name=%s, files=[%s])' % (self.__class__.__name__, self.world_name, ','.join(self.files_desc_by_name.keys()))
 
-def describe_world( scope_name, files_desc = None, child_scopes = None ):
-    return WorldMeta( scope_name, files_desc = files_desc, child_scopes = child_scopes )
+def describe_world( world_name, files_desc = None, child_worlds = None ):
+    return WorldMeta( world_name, files_desc = files_desc, child_worlds = child_worlds )
 
 class ReferenceTracker(object):
     """The reference trackers keep that of all object identifiers to check for reference validity and identifier unicity.
-       It keeps track of all object identifiers per family and scope.
+       It keeps track of all object identifiers per family and world.
        It keeps track of all references on a given object family/identifier (to easily rename for example).
     """
     def __init__( self ):
-        self.scopes_by_world = {} # (scope_desc, parent_scope_key) by scope_key
-        self.ref_by_scope_and_family = {} # dict( (scope_key,family): dict(id: object_key) )
-        self.back_references = {} # dict( (family,identifier) : set(scope_key,object_key,attribute_desc)] )
+        self.worlds_by_world = {} # (world_desc, parent_world_key) by world_key
+        self.ref_by_world_and_family = {} # dict( (world_key,family): dict(id: object_key) )
+        self.back_references = {} # dict( (family,identifier) : set(world_key,object_key,attribute_desc)] )
 
     # Mutators
-    def scope_added( self, world ):
-        assert world not in self.scopes_by_world
-        self.scopes_by_world[world] = (world.meta, world.parent_world)
+    def world_added( self, world ):
+        assert world not in self.worlds_by_world
+        self.worlds_by_world[world] = (world.meta, world.parent_world)
     
-    def scope_about_to_be_removed( self, world ):
-        del self.scopes_by_world[world]
+    def world_about_to_be_removed( self, world ):
+        del self.worlds_by_world[world]
 
     def object_added( self, element ):
         """Declares object identifier and track referenced objects."""
@@ -376,118 +377,118 @@ class ReferenceTracker(object):
             reference_value = attribute_desc.get( element )
             self._register_object_reference( world, element, attribute_desc, reference_value )
 
-    def _register_object_identifier( self, scope_key, object_key, identifier_desc, identifier_value ):
+    def _register_object_identifier( self, world_key, object_key, identifier_desc, identifier_value ):
 ##        print '=> registering "%s" with identifier: "%s"' % (object_key, repr(identifier_value))
-        assert scope_key is not None
+        assert world_key is not None
         assert object_key is not None
         if identifier_value is not None:
-            # walk parents scopes until we find the right one.
-            while self.scopes_by_world[scope_key][0] != identifier_desc.reference_scope:
-                scope_key = self.scopes_by_world[scope_key][1]
-            references = self.ref_by_scope_and_family.get( (scope_key,identifier_desc.reference_family) )
+            # walk parents worlds until we find the right one.
+            while self.worlds_by_world[world_key][0] != identifier_desc.reference_world:
+                world_key = self.worlds_by_world[world_key][1]
+            references = self.ref_by_world_and_family.get( (world_key,identifier_desc.reference_family) )
             if references is None:
                 references = {}
-                self.ref_by_scope_and_family[ (scope_key,identifier_desc.reference_family) ] = references
+                self.ref_by_world_and_family[ (world_key,identifier_desc.reference_family) ] = references
             references[identifier_value] = object_key
 
-    def _register_object_reference( self, scope_key, object_key, attribute_desc, reference_value ):
+    def _register_object_reference( self, world_key, object_key, attribute_desc, reference_value ):
         if reference_value is not None:
             back_reference_key = (attribute_desc.reference_family, reference_value)
             back_references = self.back_references.get( back_reference_key )
             if back_references is None:
                 back_references = set()
                 self.back_references[back_reference_key] = back_references
-            back_references.add( (scope_key, object_key, attribute_desc) )
+            back_references.add( (world_key, object_key, attribute_desc) )
 
     def object_about_to_be_removed( self, element ):
 ##        print 'REF: object_about_to_be_removed', element
-        scope_key = element.world
-        assert scope_key is not None
+        world_key = element.world
+        assert world_key is not None
         element_meta = element.meta
         # Checks if the object has any identifier attribute
         identifier_desc = element_meta.identifier_attribute
         if identifier_desc:
             identifier_value = identifier_desc.get( element )
-            self._unregister_object_identifier( scope_key, element, identifier_desc, identifier_value )
+            self._unregister_object_identifier( world_key, element, identifier_desc, identifier_value )
         # Checks object for all reference attributes
         for attribute_desc in element_meta.reference_attributes:
             reference_value = attribute_desc.get( element )
-            self._unregister_object_reference( scope_key, element, attribute_desc, reference_value )
+            self._unregister_object_reference( world_key, element, attribute_desc, reference_value )
 
-    def _unregister_object_identifier( self, scope_key, object_key, identifier_desc, identifier_value ):
+    def _unregister_object_identifier( self, world_key, object_key, identifier_desc, identifier_value ):
 ##        print '=> unregistering "%s" with identifier: "%s"' % (object_key, repr(identifier_value))
         if identifier_value is not None:
-            references = self.ref_by_scope_and_family.get( (scope_key,identifier_desc.reference_family) )
+            references = self.ref_by_world_and_family.get( (world_key,identifier_desc.reference_family) )
             if references:
                 try:
                     del references[identifier_value]
                 except KeyError:    # May happens in case of multiple image with same identifier (usually blank)
                     pass            # since unicity is not validated yet
 
-    def _unregister_object_reference( self, scope_key, object_key, attribute_desc, reference_value ):
+    def _unregister_object_reference( self, world_key, object_key, attribute_desc, reference_value ):
         if reference_value is not None:
             back_reference_key = (attribute_desc.reference_family, reference_value)
             back_references = self.back_references.get( back_reference_key )
             if back_references:
-                back_references.remove( (scope_key, object_key, attribute_desc) )
+                back_references.remove( (world_key, object_key, attribute_desc) )
 
     def attribute_updated( self, object_key, attribute_desc, old_value, new_value ):
-        scope_key = object_key.world
-        assert scope_key is not None
+        world_key = object_key.world
+        assert world_key is not None
         element_meta = attribute_desc.element_meta
         identifier_desc = element_meta.identifier_attribute
         if identifier_desc is attribute_desc:
-            self._unregister_object_identifier( scope_key, object_key, identifier_desc, old_value )
-            self._register_object_identifier( scope_key, object_key, identifier_desc, new_value )
+            self._unregister_object_identifier( world_key, object_key, identifier_desc, old_value )
+            self._register_object_identifier( world_key, object_key, identifier_desc, new_value )
         if attribute_desc in element_meta.reference_attributes:
-            self._unregister_object_reference( scope_key, object_key, attribute_desc, old_value )
-            self._register_object_reference( scope_key, object_key, attribute_desc, new_value )
+            self._unregister_object_reference( world_key, object_key, attribute_desc, old_value )
+            self._register_object_reference( world_key, object_key, attribute_desc, new_value )
 
     # Queries
-    def is_valid_reference( self, scope_key, attribute_desc, attribute_value ):
-        references = self.ref_by_scope_and_family.get( (scope_key,attribute_desc.reference_family) )
+    def is_valid_reference( self, world_key, attribute_desc, attribute_value ):
+        references = self.ref_by_world_and_family.get( (world_key,attribute_desc.reference_family) )
         if references is None or attribute_value not in references:
-            scope_desc, parent_scope_key = self.scopes_by_world[scope_key]
-            if parent_scope_key is not None:
-                return self.is_valid_reference( parent_scope_key, attribute_desc, attribute_value )
+            world_desc, parent_world_key = self.worlds_by_world[world_key]
+            if parent_world_key is not None:
+                return self.is_valid_reference( parent_world_key, attribute_desc, attribute_value )
             return False
         return True
 
-    def list_identifiers( self, scope_key, family ):
-        """Returns a list all identifiers for the specified family in the specified scope and its parent scopes."""
-        identifiers = self.ref_by_scope_and_family.get( (scope_key, family), {} ).keys()
-        scope_desc, parent_scope_key = self.scopes_by_world[scope_key]
-        if parent_scope_key is not None:
-            identifiers.extend( self.list_identifiers( parent_scope_key, family ) )
+    def list_identifiers( self, world_key, family ):
+        """Returns a list all identifiers for the specified family in the specified world and its parent worlds."""
+        identifiers = self.ref_by_world_and_family.get( (world_key, family), {} ).keys()
+        world_desc, parent_world_key = self.worlds_by_world[world_key]
+        if parent_world_key is not None:
+            identifiers.extend( self.list_identifiers( parent_world_key, family ) )
         return identifiers
 
     def list_references( self, family, identifier ):
-        """Returns a list of (scope_key,object_key,attribute_desc) object attributes that reference the specified identifier."""
+        """Returns a list of (world_key,object_key,attribute_desc) object attributes that reference the specified identifier."""
 ##        import pprint
 ##        pprint.pprint( self.back_references )
 ##        print 'Searching', family, identifier
         return list( self.back_references.get( (family, identifier), [] ) )
         
 
-def print_world_meta( scope ):
+def print_world_meta( world ):
     """Diagnostic function that print the full content of a Scope, including its files and objects."""
-    print '* Scope:', scope.scope_name
-    for child_scope in scope.child_scopes:
-        print '  has child scope:', child_scope.scope_name
-    for tree in scope.files_desc_by_name:
+    print '* Scope:', world.world_name
+    for child_world in world.child_worlds:
+        print '  has child world:', child_world.world_name
+    for tree in world.files_desc_by_name:
         print '  contained file:', tree
-    print '  contains object:', ', '.join( sorted(scope.objects_by_tag) )
-    for child_scope in scope.child_scopes:
-        print_world_meta( child_scope )
+    print '  contains object:', ', '.join( sorted(world.objects_by_tag) )
+    for child_world in world.child_worlds:
+        print_world_meta( child_world )
         print
-    for file_desc in scope.files_desc_by_name.itervalues():
+    for file_desc in world.files_desc_by_name.itervalues():
         print_tree_meta( file_desc )
         print
 
 def print_tree_meta( file_desc ):
     """Diagnostic function that print the full content of a TreeMeta, including its objects."""
     print '* File:', file_desc.name
-    print '  belong to scope:', file_desc.scope.scope_name
+    print '  belong to world:', file_desc.world.world_name
     print '  root object:', file_desc.root_element_meta.tag
     print '  contains object:', ', '.join( sorted(file_desc.all_descendant_element_metas()) )
     print '  object tree:'
@@ -591,22 +592,22 @@ class WorldsOwner:
             worlds.append( world_data.values() )
         return worlds
         
-    def make_world( self, scope_desc, world_key = None, factory = None, *args, **kwargs ):
-        """Creates a child World using the specified scoped_desc description and associating it with world_key.
-           scope_desc: description of the world to instantiate.
-           workd_key: a unique identifier for the world within the scope for worlds of the same kind.
+    def make_world( self, world_desc, world_key = None, factory = None, *args, **kwargs ):
+        """Creates a child World using the specified world_desc description and associating it with world_key.
+           world_desc: description of the world to instantiate.
+           workd_key: a unique identifier for the world within the world for worlds of the same kind.
            factory: Type to instantiate. Must be a subclass of World. Default is World.
-                    Factory parameters are: (universe, scope_desc, key)
+                    Factory parameters are: (universe, world_desc, key)
                     It will also be passed any extra parameters provided to the function.
         """
-        #@todo check that scope_desc is an allowed child scope
+        #@todo check that world_desc is an allowed child world
         factory = factory or World
-        world = factory( self.universe, scope_desc, world_key, #IGNORE:E1101 
+        world = factory( self.universe, world_desc, world_key, #IGNORE:E1101 
                          *args, **kwargs ) 
-        if scope_desc not in self._worlds:
-            self._worlds[scope_desc] = {}
-        assert world.key not in self._worlds[scope_desc]
-        self._worlds[scope_desc][world.key] = world
+        if world_desc not in self._worlds:
+            self._worlds[world_desc] = {}
+        assert world.key not in self._worlds[world_desc]
+        self._worlds[world_desc][world.key] = world
         parent_world = self.universe != self and self or None #IGNORE:E1101
         world._attached_to_parent_world(parent_world)
         return world
@@ -621,16 +622,16 @@ class WorldsOwner:
         world._about_to_be_detached_from_parent_world(parent_world)
         del self._worlds[world.meta][world.key]
 
-    def find_world( self, scope_desc, world_key ):
-        worlds_by_key = self._worlds.get( scope_desc, {} )
+    def find_world( self, world_desc, world_key ):
+        worlds_by_key = self._worlds.get( world_desc, {} )
         return worlds_by_key.get( world_key )
 
-    def list_worlds_of_type( self, scope_desc ):
-        worlds_by_key = self._worlds.get( scope_desc, {} )
+    def list_worlds_of_type( self, world_desc ):
+        worlds_by_key = self._worlds.get( world_desc, {} )
         return worlds_by_key.values()
 
-    def list_world_keys( self, scope_desc ):
-        worlds_by_key = self._worlds.get( scope_desc, {} )
+    def list_world_keys( self, world_desc ):
+        worlds_by_key = self._worlds.get( world_desc, {} )
         return worlds_by_key.keys()
 
 
@@ -704,15 +705,15 @@ class Universe(WorldsOwner):
 ##        print '=> registering "%s" with identifier: "%s"' % (object_key, repr(identifier_value))
         assert element is not None
         if identifier_value is not None:
-            # walk parents scopes until we find the right one.
+            # walk parents worlds until we find the right one.
             world = element.world
-            while world.meta != id_meta.reference_scope:
+            while world.meta != id_meta.reference_world:
                 world = world.parent_world
-            id_scope_key = (world,id_meta.reference_family)
-            references = self.ref_by_world_and_family.get( id_scope_key )
+            id_world_key = (world,id_meta.reference_family)
+            references = self.ref_by_world_and_family.get( id_world_key )
             if references is None:
                 references = {}
-                self.ref_by_world_and_family[ id_scope_key ] = references
+                self.ref_by_world_and_family[ id_world_key ] = references
             references[identifier_value] = element
 
     def _register_element_reference( self, element, attribute_meta, reference_value ):
@@ -745,13 +746,13 @@ class Universe(WorldsOwner):
     def _unregister_element_identifier( self, element, id_meta, identifier_value ):
 ##        print '=> unregistering "%s" with identifier: "%s"' % (element, repr(identifier_value))
         if identifier_value is not None:
-            # walk parents scopes until we find the right one.
+            # walk parents worlds until we find the right one.
             world = element.world
-            while world.meta != id_meta.reference_scope:
+            while world.meta != id_meta.reference_world:
                 world = world.parent_world
             # unregister the reference
-            id_scope_key = (world,id_meta.reference_family)
-            references = self.ref_by_world_and_family.get( id_scope_key )
+            id_world_key = (world,id_meta.reference_family)
+            references = self.ref_by_world_and_family.get( id_world_key )
             if references:
                 try:
                     del references[identifier_value]
@@ -783,20 +784,20 @@ class Universe(WorldsOwner):
     # Identifier/Reference queries
     
     def is_valid_reference( self, world, attribute_meta, attribute_value ):
-        """Checks if the specified attribute reference is valid in the world scope
+        """Checks if the specified attribute reference is valid in the world world
            specified by attribute_meta.
            @exception ValueError if world has no world matching 
-                      attribute_meta.reference_scope in its hierarchy. 
+                      attribute_meta.reference_world in its hierarchy. 
         """
-        # walk parents scopes until we find the right one.
+        # walk parents worlds until we find the right one.
         assert world is not None
         initial_world = world
-        while world.meta != attribute_meta.reference_scope:
+        while world.meta != attribute_meta.reference_world:
             world = world.parent_world
             if world is None:
                 raise ValueError( "World '%(world)s' as no meta world '%(scope)s' in its hiearchy" % 
                                   {'world':initial_world, 
-                                   'scope':attribute_meta.reference_scope } )
+                                   'scope':attribute_meta.reference_world } )
         return self._is_valid_reference_in_world_or_parent( world, 
                                                             attribute_meta, 
                                                             attribute_value )
@@ -818,7 +819,7 @@ class Universe(WorldsOwner):
         return True
 
     def list_identifiers( self, world, family ):
-        """Returns a list all identifiers for the specified family in the specified scope and its parent scopes."""
+        """Returns a list all identifiers for the specified family in the specified world and its parent worlds."""
         id_scope_key = (world, family)
         identifiers = set(self.ref_by_world_and_family.get( id_scope_key, {} ).keys())
         if world.parent_world is not None:
@@ -882,10 +883,10 @@ class World(WorldsOwner):
 
        The elements attached to a world are unknown to other World.    
     """
-    def __init__( self, universe, scope_desc, key = None ):
+    def __init__( self, universe, world_desc, key = None ):
         WorldsOwner.__init__( self )
         self._universe = universe
-        self._scope_desc = scope_desc
+        self._world_desc = world_desc
         self._trees = {}
         self._key = key
         self._parent_world = None
@@ -908,21 +909,21 @@ class World(WorldsOwner):
 
     @property
     def meta( self ):
-        return self._scope_desc
+        return self._world_desc
 
     @property
     def trees(self):
         return self._trees.values()
 
     def list_identifiers( self, family ):
-        """Returns a list all identifiers for the specified family in the specified scope and its parent scopes."""
+        """Returns a list all identifiers for the specified family in the specified world and its parent worlds."""
         return self.universe.list_identifiers(self, family)
 
     def is_valid_reference( self, attribute_meta, attribute_value ):
         """Checks if the specified attribute reference is valid in the world scope
            specified by attribute_meta.
            @exception ValueError if world has no world matching 
-                      attribute_meta.reference_scope in its hierarchy. 
+                      attribute_meta.reference_world in its hierarchy. 
         """
         return self.universe.is_valid_reference( self, attribute_meta, attribute_value )
 
@@ -1294,15 +1295,15 @@ if __name__ == "__main__":
     TREE_TEST_GLOBAL = describe_tree( 'testglobal' )
     TREE_TEST_LEVEL = describe_tree( 'testlevel' )
 
-    WORLD_TEST_LEVEL = describe_world( 'testscope.level', files_desc = [TREE_TEST_LEVEL] )
+    WORLD_TEST_LEVEL = describe_world( 'testworld.level', files_desc = [TREE_TEST_LEVEL] )
 
-    WORLD_TEST_GLOBAL = describe_world( 'testscope',
+    WORLD_TEST_GLOBAL = describe_world( 'testworld',
                                         files_desc = [TREE_TEST_GLOBAL],
-                                        child_scopes = [WORLD_TEST_LEVEL] )
+                                        child_worlds = [WORLD_TEST_LEVEL] )
 
     GLOBAL_TEXT = describe_element( 'text', attributes = [
         identifier_attribute( 'id', mandatory = True, reference_family = 'text',
-                              reference_scope = WORLD_TEST_GLOBAL ),
+                              reference_world = WORLD_TEST_GLOBAL ),
         string_attribute( 'fr' )
         ] )
 
@@ -1311,15 +1312,15 @@ if __name__ == "__main__":
 
     LEVEL_TEXT = describe_element( 'text', attributes = [
         identifier_attribute( 'id', mandatory = True, reference_family = 'text',
-                              reference_scope = WORLD_TEST_LEVEL ),
+                              reference_world = WORLD_TEST_LEVEL ),
         string_attribute( 'fr' )
         ] )
     
     LEVEL_SIGN = describe_element( 'sign', attributes = [
         reference_attribute( 'text', reference_family = 'text',
-                             reference_scope = WORLD_TEST_LEVEL, init = '', mandatory = True ),
+                             reference_world = WORLD_TEST_LEVEL, init = '', mandatory = True ),
         reference_attribute( 'alt_text', reference_family = 'text',
-                             reference_scope = WORLD_TEST_LEVEL )
+                             reference_world = WORLD_TEST_LEVEL )
         ], objects = [ LEVEL_TEXT ] )
 
     LEVEL_INLINE = describe_element( 'inline', objects= [ LEVEL_SIGN, LEVEL_TEXT ] )
@@ -1331,11 +1332,11 @@ if __name__ == "__main__":
 
         def test_descriptions( self ):
             self.assertEqual( sorted(['text', 'sign', 'inline']), sorted(WORLD_TEST_LEVEL.objects_by_tag.keys()) )
-            for scope in (WORLD_TEST_LEVEL, WORLD_TEST_GLOBAL):
-                for element_meta in scope.objects_by_tag.itervalues():
-                    self.assertEqual( scope, element_meta.scope )
-#                for file_desc in scope.files_desc_by_name.itervalues():
-#                    self.assertEqual( scope, element_meta.scope )
+            for world in (WORLD_TEST_LEVEL, WORLD_TEST_GLOBAL):
+                for element_meta in world.objects_by_tag.itervalues():
+                    self.assertEqual( world, element_meta.world )
+#                for file_desc in world.files_desc_by_name.itervalues():
+#                    self.assertEqual( world, element_meta.world )
             self.assertEqual( sorted([LEVEL_SIGN, LEVEL_INLINE]), sorted(LEVEL_TEXT.parent_objects) )
             for tree, objects in { TREE_TEST_GLOBAL: [GLOBAL_TEXT],
                                    TREE_TEST_LEVEL: [LEVEL_TEXT, LEVEL_SIGN] }.iteritems():
@@ -1343,7 +1344,7 @@ if __name__ == "__main__":
                     self.assertEqual( tree, element.file )
                     self.assert_( element in tree.all_descendant_element_metas().values() )
                     self.assert_( element.tag in tree.all_descendant_element_metas() )
-                    self.assert_( element.tag in tree.scope.objects_by_tag )
+                    self.assert_( element.tag in tree.world.objects_by_tag )
 
     class UniverseTest(unittest.TestCase):
 
@@ -1386,7 +1387,7 @@ if __name__ == "__main__":
             check_valid_sign_reference( self.world_level2, 'TEXT_HI')
             check_invalid_sign_reference( self.world_level1, 'TEXT_HO')
             check_invalid_sign_reference( self.world_level2, 'TEXT_HO')
-            # add identifiers specific to level1 scope
+            # add identifiers specific to level1 world
             l1root = self._make_element( LEVEL_INLINE )
             l2root = self._make_element( LEVEL_INLINE )
             self.level1.set_root( l1root )
@@ -1398,7 +1399,7 @@ if __name__ == "__main__":
             check_text_ids( self.world, 'TEXT_HI' )
             check_text_ids( self.world_level1, 'TEXT_HI', 'TEXT_HO' )
             check_text_ids( self.world_level2, 'TEXT_HI' )
-            # add identifier specified to level2 scope
+            # add identifier specified to level2 world
             l2_ho = l2root.make_child(LEVEL_TEXT, {'id':'TEXT_HO', 'fr':'Oooh'})
             check_valid_sign_reference( self.world_level2, 'TEXT_HO')
             check_text_ids( self.world_level1, 'TEXT_HI', 'TEXT_HO' )

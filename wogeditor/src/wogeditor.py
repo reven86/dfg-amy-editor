@@ -299,13 +299,13 @@ class GameModel(QtCore.QObject):
         self.is_dirty = True
 
 class BallModel(metaworld.World):
-    def __init__( self, universe, scope_desc, ball_name, game_model ):
-        metaworld.World.__init__( self, universe, scope_desc, ball_name )
+    def __init__( self, universe, world_desc, ball_name, game_model ):
+        metaworld.World.__init__( self, universe, world_desc, ball_name )
         self.game_model = game_model
 
 class LevelModel(metaworld.World):
-    def __init__( self, universe, scope_desc, level_name, game_model, is_dirty = False ):
-        metaworld.World.__init__( self, universe, scope_desc, level_name )
+    def __init__( self, universe, world_desc, level_name, game_model, is_dirty = False ):
+        metaworld.World.__init__( self, universe, world_desc, level_name )
         self.game_model = game_model
         self.dirty_object_types = set()
         if is_dirty:
@@ -338,8 +338,8 @@ class LevelModel(metaworld.World):
         return self.level_name.lower() in 'ab3 beautyandthetentacle beautyschool blusteryday bulletinboardsystem burningman chain deliverance drool economicdivide fistyreachesout flyawaylittleones flyingmachine geneticsortingmachine goingup gracefulfailure grapevinevirus graphicprocessingunit hanglow helloworld htinnovationcommittee immigrationnaturalizationunit impalesticky incinerationdestination infestytheworm ivytower leaphole mapworldview mistyslongbonyroad mom observatoryobservationstation odetobridgebuilder productlauncher redcarpet regurgitationpumpingstation roadblocks secondhandsmoke superfusechallengetime theserver thirdwheel thrustertest towerofgoo tumbler uppershaft volcanicpercolatordayspa waterlock weathervane whistler youhavetoexplodethehead'.split()
 
     def initializeLevelReferencesAndCache( self ):
-        level_scope = self
-        parent_scope = self.game_model
+        level_world = self
+        parent_world = self.game_model
         # cache
         for image_element in self.resource_tree.findall( './/Image' ):
             self._loadImageFromElement( image_element )
@@ -394,10 +394,10 @@ class LevelModel(metaworld.World):
                                                     property_name, new_value )
 
     def getObjectFileRootElement( self, object_file ):
-        root_by_scope = { metawog.TREE_LEVEL_GAME: self.level_tree,
+        root_by_world = { metawog.TREE_LEVEL_GAME: self.level_tree,
                           metawog.TREE_LEVEL_SCENE: self.scene_tree,
                           metawog.TREE_LEVEL_RESOURCE: self.resource_tree }
-        return root_by_scope[object_file]
+        return root_by_world[object_file]
 
     def addElement( self, object_file, parent_element, element, index = None ):
         """Adds the specified element (tree) at the specified position in the parent element.
@@ -1030,7 +1030,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
 
 
-def validate_enumerated_property( scope_key, attribute_desc, input ):
+def validate_enumerated_property( world_key, attribute_desc, input ):
     type_name = attribute_desc.name
     is_list = attribute_desc.is_list
     input = unicode( input )
@@ -1047,7 +1047,7 @@ def validate_enumerated_property( scope_key, attribute_desc, input ):
                      input_value, ','.join(attribute_desc.values) )
     return QtGui.QValidator.Acceptable
 
-def complete_enumerated_property( scope_key, attribute_desc ):
+def complete_enumerated_property( world_key, attribute_desc ):
     return sorted(attribute_desc.values)
 
 def do_validate_numeric_property( attribute_desc, input, value_type, error_message ):
@@ -1061,13 +1061,13 @@ def do_validate_numeric_property( attribute_desc, input, value_type, error_messa
     except ValueError:
         return QtGui.QValidator.Intermediate, error_message
 
-def validate_integer_property( scope_key, attribute_desc, input ):
+def validate_integer_property( world_key, attribute_desc, input ):
     return do_validate_numeric_property( attribute_desc, input, int, 'Value must be an integer' )
 
-def validate_real_property( scope_key, attribute_desc, input ):
+def validate_real_property( world_key, attribute_desc, input ):
     return do_validate_numeric_property( attribute_desc, input, float, 'Value must be a real number' )
 
-def validate_rgb_property( scope_key, attribute_desc, input ):
+def validate_rgb_property( world_key, attribute_desc, input ):
     input = unicode(input)
     values = input.split(',')
     if len(values) != 3:
@@ -1081,7 +1081,7 @@ def validate_rgb_property( scope_key, attribute_desc, input ):
             return QtGui.QValidator.Intermediate, 'RGB color must be of the form "R,G,B" were R,G,B are integer in range [0-255].'
     return QtGui.QValidator.Acceptable
 
-def validate_xy_property( scope_key, attribute_desc, input ):
+def validate_xy_property( world_key, attribute_desc, input ):
     input = unicode(input)
     values = input.split(',')
     if len(values) != 2:
@@ -1133,19 +1133,19 @@ ATTRIBUTE_TYPE_EDITOR_HANDLERS = {
     }
 
 class PropertyValidator(QtGui.QValidator):
-    def __init__( self, parent, main_window, scope_key, attribute_desc, validator ):
+    def __init__( self, parent, main_window, world_key, attribute_desc, validator ):
         QtGui.QValidator.__init__( self, parent )
         self.main_window = main_window
         self.attribute_desc = attribute_desc
         self.validator = validator
-        self.scope_key = scope_key
+        self.world_key = world_key
 
     def validate( self, input, pos ):
         """Returns state & pos.
            Valid values for state are: QtGui.QValidator.Invalid, QtGui.QValidator.Acceptable, QtGui.QValidator.Intermediate.
            Returning Invalid actually prevent the user from inputing that a value that would make the input invalid. It is
            better to avoid returning this at it prevent temporary invalid value (when using cut'n'paste for example)."""
-        status = self.validator( self.scope_key, self.attribute_desc, input )
+        status = self.validator( self.world_key, self.attribute_desc, input )
         if type(status) == tuple:
             message = status[1]
             args = status[2:]
@@ -1164,7 +1164,7 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
     def createEditor( self, parent, option, index ):
         """Returns the widget used to edit the item specified by index for editing. The parent widget and style option are used to control how the editor widget appears."""
         # see QDefaultItemEditorFactory::createEditor for example of implementations
-        scope_key, object_file, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
+        world_key, object_file, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
         need_specific_editor = handler_data and handler_data.get('editor')
         if need_specific_editor:
             class DefaultEditorFactory(object):
@@ -1176,12 +1176,12 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
         else: # No specific, use default QLineEditor
             editor = QtGui.QStyledItemDelegate.createEditor( self, parent, option, index )
         if handler_data and handler_data.get('validator'):
-            validator = PropertyValidator( editor, self.main_window, scope_key, attribute_desc, handler_data['validator'] )
+            validator = PropertyValidator( editor, self.main_window, world_key, attribute_desc, handler_data['validator'] )
             editor.setValidator( validator )
         if handler_data and handler_data.get('completer'):
             word_list = QtCore.QStringList()
             completer = handler_data['completer'] 
-            sorted_word_list = list( completer( scope_key, attribute_desc ) )
+            sorted_word_list = list( completer( world_key, attribute_desc ) )
             sorted_word_list.sort( lambda x,y: cmp(x.lower(), y.lower()) )
             for word in sorted_word_list:
                 word_list.append( word )
@@ -1193,14 +1193,14 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
 
     def _getHandlerData( self, index ):
         """Returns data related to item at the specified index.
-           Returns: tuple (scope_key, object_file, element, property_name, attribute_desc, handler_data). 
+           Returns: tuple (world_key, object_file, element, property_name, attribute_desc, handler_data). 
            handler_data may be None if no specific handler is defined for the attribute_desc.
            attribute_desc may be None if metawog is missing some attribute declaration.
            """
         data =  index.data( QtCore.Qt.UserRole ).toPyObject()
         # if this fails, then we are trying to edit the property name or item was added incorrectly.
         assert data is not None
-        scope_key, object_file, element_meta, element, property_name = data
+        world_key, object_file, element_meta, element, property_name = data
         if element_meta is None:
             handler_data = None
             attribute_desc = None
@@ -1212,11 +1212,11 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
                 handler_data = None
             else:
                 handler_data = ATTRIBUTE_TYPE_EDITOR_HANDLERS.get( attribute_desc.type )
-        return (scope_key, object_file, element, property_name, attribute_desc, handler_data)
+        return (world_key, object_file, element, property_name, attribute_desc, handler_data)
 
     def setEditorData( self, editor, index ):
         """Sets the data to be displayed and edited by the editor from the data model item specified by the model index."""
-        scope_key, object_file, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
+        world_key, object_file, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
         editor.setText( element.get( property_name, u'' ) )
 #        QtGui.QStyledItemDelegate.setEditorData( self, editor, index )
 
@@ -1233,7 +1233,7 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
            Conclusion: we set the data into the model, only if they are valid as QLineEdit validation may have
            been by-passed on focus change or current item change.
         """
-        scope_key, object_file, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
+        world_key, object_file, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
         if not editor.hasAcceptableInput(): # input is invalid, discard it
             return
         need_specific_converter = handler_data and handler_data.get('converter')
@@ -1315,7 +1315,7 @@ class MainWindow(QtGui.QMainWindow):
     def _refreshOnObjectInsertion( self, level_name, object_file, parent_element, element, index ):
         """Called when an object is added to the tree.
         """
-        tree_view = self.tree_view_by_object_scope[object_file]
+        tree_view = self.tree_view_by_object_world[object_file]
         parent_item = self._findItemInTreeViewByElement( tree_view, parent_element )
         if parent_item:
             self._insertElementNodeInTree( parent_item, element, index )
@@ -1325,7 +1325,7 @@ class MainWindow(QtGui.QMainWindow):
     def _refreshOnObjectRemoval( self, level_name, object_file, parent_elements, element, index_in_parent ):
         """Called when an object is removed from its tree.
         """
-        tree_view = self.tree_view_by_object_scope[object_file]
+        tree_view = self.tree_view_by_object_world[object_file]
         item = self._findItemInTreeViewByElement( tree_view, element )
         if item:
             item_row = item.row()
@@ -1404,8 +1404,8 @@ class MainWindow(QtGui.QMainWindow):
     def _refreshSceneTreeSelection( self, object_file, element ):
         """Select the item corresponding to element in the tree view.
         """
-        tree_view = self.tree_view_by_object_scope[object_file]
-        for other_tree_view in self.tree_view_by_object_scope.itervalues():  
+        tree_view = self.tree_view_by_object_world[object_file]
+        for other_tree_view in self.tree_view_by_object_world.itervalues():  
             if other_tree_view != tree_view: # unselect objects on all other tree views
                 other_tree_view.selectionModel().clear()
         selected_item = self._findItemInTreeViewByElement( tree_view, element )
@@ -1442,14 +1442,14 @@ class MainWindow(QtGui.QMainWindow):
                 item_name = QtGui.QStandardItem( name )
                 item_name.setEditable( False )
                 item_value = QtGui.QStandardItem( value )
-                # @todo element_meta & scope_key should be parameters...
+                # @todo element_meta & world_key should be parameters...
                 element_meta = object_file.find_element_meta_by_tag(element.tag)
-                scope_key = self.getCurrentLevelModel()
-                item_value.setData( QtCore.QVariant( (scope_key, object_file, element_meta, element, name) ), QtCore.Qt.UserRole )
+                world_key = self.getCurrentLevelModel()
+                item_value.setData( QtCore.QVariant( (world_key, object_file, element_meta, element, name) ), QtCore.Qt.UserRole )
                 self.propertiesListModel.appendRow( [ item_name, item_value ] )
         else: # Update the property list using the model
             self._resetPropertyListModel( element )
-            scope_key = self.getCurrentLevelModel()
+            world_key = self.getCurrentLevelModel()
             missing_attributes = set( element.keys() )
             for attribute_desc in element_meta.attributes_order:
                 attribute_name = attribute_desc.name
@@ -1467,7 +1467,7 @@ class MainWindow(QtGui.QMainWindow):
                         font.setForeground( brush )
                     item_name.setFont( font )
                 item_value = QtGui.QStandardItem( attribute_value or '' )
-                item_value.setData( QtCore.QVariant( (scope_key, object_file, element_meta, element, attribute_name) ),
+                item_value.setData( QtCore.QVariant( (world_key, object_file, element_meta, element, attribute_name) ),
                                     QtCore.Qt.UserRole )
                 self.propertiesListModel.appendRow( [ item_name, item_value ] )
             if missing_attributes:
@@ -1535,7 +1535,7 @@ class MainWindow(QtGui.QMainWindow):
         new_value = top_left_index.data( QtCore.Qt.DisplayRole ).toString()
         data = top_left_index.data( QtCore.Qt.UserRole ).toPyObject()
         if data:
-            scope_key, object_file, element_meta, element, property_name = data
+            world_key, object_file, element_meta, element, property_name = data
             self.getCurrentLevelModel().updateObjectPropertyValue( object_file, element, property_name, str(new_value) )
         else:
             print 'Warning: no data on edited item!'
@@ -1832,11 +1832,11 @@ class MainWindow(QtGui.QMainWindow):
         element_tree_view.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
         self.connect( element_tree_view, QtCore.SIGNAL("customContextMenuRequested(QPoint)"),
                       TreeBinder( element_tree_view, object_file, self._onTreeViewCustomContextMenu) )
-        self.tree_view_by_object_scope[object_file] = element_tree_view
+        self.tree_view_by_object_world[object_file] = element_tree_view
         return dock, element_tree_view
         
     def createDockWindows(self):
-        self.tree_view_by_object_scope = {} # map of all tree views
+        self.tree_view_by_object_world = {} # map of all tree views
         scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', metawog.TREE_LEVEL_SCENE )
         level_dock, self.levelTree = self.createElementTreeView( 'Level', metawog.TREE_LEVEL_GAME, scene_dock )
         resource_dock, self.levelResourceTree = self.createElementTreeView( 'Resource',
