@@ -23,7 +23,6 @@ import os
 import os.path
 import glob
 import math
-import itertools
 import subprocess
 import wogfile
 import metaworld
@@ -33,7 +32,7 @@ from PyQt4 import QtCore, QtGui
 import qthelper
 import editleveldialog_ui
 import newleveldialog_ui
-import wogeditor_rc
+import wogeditor_rc #IGNORE:W0611
 
 def tr( context, message ):
     return QtCore.QCoreApplication.translate( context, message )
@@ -196,13 +195,13 @@ class GameModel(QtCore.QObject):
             level_dir = os.path.join( self._res_dir, 'levels', level_name )
 
             level_world = self.global_world.make_world( metawog.WORLD_LEVEL, level_name, LevelModel, self )
-            level_tree = self._loadTree( level_world, metawog.TREE_LEVEL_GAME,
-                                         level_dir, level_name + '.level.bin' )
-            scene_tree = self._loadTree( level_world, metawog.TREE_LEVEL_SCENE,
-                                         level_dir, level_name + '.scene.bin' )
-            resource_tree = self._loadTree( level_world, metawog.TREE_LEVEL_RESOURCE,
-                                            level_dir, level_name + '.resrc.bin' )
-            level_world.initializeLevelReferencesAndCache()
+            self._loadTree( level_world, metawog.TREE_LEVEL_GAME,
+                            level_dir, level_name + '.level.bin' )
+            self._loadTree( level_world, metawog.TREE_LEVEL_SCENE,
+                            level_dir, level_name + '.scene.bin' )
+            self._loadTree( level_world, metawog.TREE_LEVEL_RESOURCE,
+                            level_dir, level_name + '.resrc.bin' )
+            level_world.initializeLevelCache()
             
             self.level_models_by_name[level_name] = level_world
         level_model = self.level_models_by_name[level_name]
@@ -337,21 +336,19 @@ class LevelModel(metaworld.World):
     def isReadOnlyLevel( self ):
         return self.level_name.lower() in 'ab3 beautyandthetentacle beautyschool blusteryday bulletinboardsystem burningman chain deliverance drool economicdivide fistyreachesout flyawaylittleones flyingmachine geneticsortingmachine goingup gracefulfailure grapevinevirus graphicprocessingunit hanglow helloworld htinnovationcommittee immigrationnaturalizationunit impalesticky incinerationdestination infestytheworm ivytower leaphole mapworldview mistyslongbonyroad mom observatoryobservationstation odetobridgebuilder productlauncher redcarpet regurgitationpumpingstation roadblocks secondhandsmoke superfusechallengetime theserver thirdwheel thrustertest towerofgoo tumbler uppershaft volcanicpercolatordayspa waterlock weathervane whistler youhavetoexplodethehead'.split()
 
-    def initializeLevelReferencesAndCache( self ):
-        level_world = self
-        parent_world = self.game_model
+    def initializeLevelCache( self ):
         # cache
         for image_element in self.resource_tree.findall( './/Image' ):
             self._loadImageFromElement( image_element )
 
     def _loadImageFromElement( self, image_element ):
-        id, path = image_element.get('id'), image_element.get('path')
+        image_id, path = image_element.get('id'), image_element.get('path')
         path = self.game_model.getResourcePath( path + '.png' )
         if os.path.isfile( path ):
             pixmap = QtGui.QPixmap()
             if pixmap.load( path ):
-                self.images_by_id[id] = pixmap
-##                print 'Loaded', id, path
+                self.images_by_id[image_id] = pixmap
+##                print 'Loaded', image_id, path
             else:
                 print 'Failed to load image:', path
         else:
@@ -463,10 +460,12 @@ class LevelModel(metaworld.World):
                 path = os.path.normpath( existing_path ).lower()
                 if path not in known_paths:
                     existing_path = os.path.split( existing_path )[1]
-                    id = id_prefix + ''.join( c for c in existing_path if c.upper() in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789' )
+                    ALLOWED_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789'
+                    resource_id = id_prefix + ''.join( c for c in existing_path 
+                                                       if c.upper() in ALLOWED_CHARS )
                     resource_path = 'res/levels/%s/%s' % (self.level_name,existing_path)
                     meta_element = metawog.TREE_LEVEL_RESOURCE.find_element_meta_by_tag( tag )
-                    new_resource = metaworld.Element( meta_element, {'id':id.upper(),
+                    new_resource = metaworld.Element( meta_element, {'id':resource_id.upper(),
                                                                      'path':resource_path} )
                     self.addElement( metawog.TREE_LEVEL_RESOURCE, resource_element, new_resource )
                     added_elements.append( new_resource )
@@ -741,7 +740,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
         return None
 
     def _levelSignPostBuilder( self, scene, element ):
-        image = element.get('image')
+#        image = element.get('image')
 ##        pixmap = self.getImagePixmap( image )
 ##        if pixmap:
         x, y = self._elementXY( element )
@@ -780,7 +779,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.__balls_by_id[ ball_id ] = item
         return item
 
-    def _addlevelStrand( self, scene, element ):
+    def _addlevelStrand( self, scene, element ): #IGNORE:W0613
         """Strands are rendered once everything has been rendered because they refer other items (balls)."""
         id1, id2 = element.get('gb1'), element.get('gb2')
         self.__strands.append( (id1, id2, element) )
@@ -796,7 +795,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
                 strand_item = scene.addLine( p1.x(), p1.y(), p2.x(), p2.y(), pen )
                 strand_item.setData( 0, QtCore.QVariant( element ) )
 
-    def _levelStrandBuilder( self, scene, element ):
+    def _levelStrandBuilder( self, scene, element ): #IGNORE:W0613
         pen = QtGui.QPen()
         pen.setWidth( 10 )
 
@@ -811,7 +810,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
     def _sceneSceneLayerBuilder( self, scene, element ):
         x, y, depth = self._elementXYDepth( element )
         image = element.get('image')
-        alpha = self._elementReal( element, 'alpha', 1.0 )
+#        alpha = self._elementReal( element, 'alpha', 1.0 )
         pixmap = self.getImagePixmap( image )
         rotation, scalex, scaley = self._elementRotationScaleXY( element )
 ##        tilex = self._elementBool( element, 'tilex', False )
