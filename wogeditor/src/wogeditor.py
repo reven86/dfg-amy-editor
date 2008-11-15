@@ -461,31 +461,6 @@ class LevelModel(metaworld.World):
                           metawog.TREE_LEVEL_RESOURCE: self.resource_tree }
         return root_by_world[element_file]
 
-    def addElement( self, element_file, parent_element, element, index = None ):
-        """Adds the specified element (tree) at the specified position in the parent element.
-           If index is None, then the element is added after all the parent children.
-           The element is inserted with all its children.
-           """
-        # Adds the element
-        if index is None:
-            index = len(parent_element)
-        parent_element.insert( index, element )
-
-    def removeElement( self, element_file, element ):
-        """Removes the specified element and all its children from the level."""
-        if element in (self.scene_tree, self.level_tree, self.resource_tree):
-            print 'Warning: attempted to remove root element, GUI should not allow that'
-            return False # can not remove those elements
-        # @todo makes tag look-up fails once model is complete
-        found = find_element_in_tree( self.getObjectFileRootElement(element_file), element )
-        if found is None:
-            print 'Warning: inconsistency, element to remove in not in the specified element_file', element
-            return False
-        parent_elements, index_in_parent = found
-        # Remove the element from its parent
-        del parent_elements[-1][index_in_parent]
-        return True
-
     def getImagePixmap( self, image_id ):
         image_element = self.resolve_reference( metawog.WORLD_LEVEL, 'image', image_id )
         pixmap = None
@@ -533,7 +508,7 @@ class LevelModel(metaworld.World):
                     meta_element = metawog.TREE_LEVEL_RESOURCE.find_element_meta_by_tag( tag )
                     new_resource = metaworld.Element( meta_element, {'id':resource_id.upper(),
                                                                      'path':resource_path} )
-                    self.addElement( metawog.TREE_LEVEL_RESOURCE, resource_element, new_resource )
+                    resource_element.append( new_resource )
                     added_elements.append( new_resource )
         return added_elements
             
@@ -1620,7 +1595,7 @@ class MainWindow(QtGui.QMainWindow):
         data = top_left_index.data( QtCore.Qt.UserRole ).toPyObject()
         if data:
             world, element_file, element_meta, element, property_name = data
-            self.getCurrentLevelModel().updateObjectPropertyValue( element_file, element, property_name, str(new_value) )
+            element.set( property_name, str(new_value) )
         else:
             print 'Warning: no data on edited item!'
 
@@ -1637,8 +1612,11 @@ class MainWindow(QtGui.QMainWindow):
                 # Notes: a selectionChanged signal may have been emitted due to selection change.
                 # Check out FormWindow::initializePopupMenu in designer, it does plenty of interesting stuff...
                 menu = QtGui.QMenu( tree_view )
-                remove_action = menu.addAction( self.tr("Remove element") )
-                menu.addSeparator()
+                if not element.is_root(): 
+                    remove_action = menu.addAction( self.tr("Remove element") )
+                    menu.addSeparator()
+                else:
+                    remove_action = None
                 if index.parent() is None:
                     remove_action.setEnable( False )
                 child_element_meta_by_actions = {}
@@ -1652,9 +1630,9 @@ class MainWindow(QtGui.QMainWindow):
                 selected_element_meta = child_element_meta_by_actions.get( selected_action )
                 if selected_element_meta:
                     self._appendChildTag( tree_view, element_file, index, selected_element_meta )
-                elif selected_action is remove_action:
+                elif remove_action is not None and selected_action is remove_action:
                     element_to_remove = tree_view.model().itemFromIndex( index ).data( QtCore.Qt.UserRole ).toPyObject()
-                    self.getCurrentLevelModel().removeElement( element_file, element_to_remove )
+                    element_to_remove.parent.remove( element_to_remove )
 
     def _appendChildTag( self, tree_view, element_file, parent_element_index, new_element_meta ):
         """Adds the specified child tag to the specified element and update the tree view."""
@@ -1668,11 +1646,10 @@ class MainWindow(QtGui.QMainWindow):
                     if init_value is None:
                         init_value = ''
                     mandatory_attributes[attribute_name] = init_value
-            # Creates and append to parent the new child element
-            child_element = metaworld.Element( new_element_meta, mandatory_attributes )
             # Notes: when the element is added, the ElementAdded signal will cause the
             # corresponding item to be inserted into the tree.
-            self.getCurrentLevelModel().addElement( element_file, parent_element, child_element )
+            child_element = parent_element.make_child( new_element_meta, 
+                                                       mandatory_attributes )
             # Select new item in tree view
             item_child = tree_view.model()._findItemByElement( child_element )
             selection_model = tree_view.selectionModel()
