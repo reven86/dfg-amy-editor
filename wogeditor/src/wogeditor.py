@@ -24,6 +24,7 @@ import os.path
 import glob
 import math
 import subprocess
+import louie
 import wogfile
 import metaworld
 import metawog
@@ -98,9 +99,22 @@ class GameModel(QtCore.QObject):
                                           filename_filter = '%s.scene.bin' )
         self.level_models_by_name = {}
         self.current_model = None
-        self.is_dirty = False
+        self.__is_dirty = False
         self._initializeGlobalReferences()
         self._loadBalls()
+        self.modified_worlds_to_check = set()
+        louie.connect( self._onElementAdded, metaworld.ElementAdded )
+        louie.connect( self._onElementAboutToBeRemoved, metaworld.ElementAboutToBeRemoved )
+        louie.connect( self._onElementUpdated, metaworld.AttributeUpdated )
+
+    @property
+    def is_dirty(self):
+        worlds = self.modified_worlds_to_check
+        self.modified_worlds_to_check = set()
+        for world in worlds:
+            if world:
+                self.__is_dirty = self.__is_dirty or world.is_dirty
+        return self.__is_dirty
 
     def getResourcePath( self, game_dir_relative_path ):
         return os.path.join( self._wog_dir, game_dir_relative_path )
@@ -217,28 +231,34 @@ class GameModel(QtCore.QObject):
         self.emit( QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                    level_name, element_file, element )
 
+    def _onElementAdded(self, element, index_in_parent):
+        self.modified_worlds_to_check.add( element.world )
+
+    def _onElementUpdated(self, element, attribute_name, new_value, old_value):
+        self.modified_worlds_to_check.add( element.world )
+        
+    def _onElementAboutToBeRemoved(self, element, index_in_parent):
+        self.modified_worlds_to_check.add( element.world )
+
     def elementAdded( self, level_name, element_file, parent_element, element, index_in_parent ):
         """Signal that an element tree was inserted into another element."""
-        self.is_dirty = True
         self.emit( QtCore.SIGNAL('elementAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                    level_name, element_file, parent_element, element, index_in_parent )
 
     def elementRemoved( self, level_name, element_file, parent_elements, element, index_in_parent ):
         """Signal that an element has been removed from its tree."""
-        self.is_dirty = True
         self.emit( QtCore.SIGNAL('elementRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                    level_name, element_file, parent_elements, element, index_in_parent )
 
     def elementPropertyValueChanged( self, level_name, element_file, element, property_name, value ):
         """Signal that an element attribute value has changed."""
-        self.is_dirty = True
         self.emit( QtCore.SIGNAL('elementPropertyValueChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                    level_name, element_file, element, property_name, value )
 
     def hasModifiedReadOnlyLevels( self ):
         """Checks if the user has modified read-only level."""
         for level_model in self.level_models_by_name.itervalues():
-            if level_model.isDirty() and level_model.isReadOnlyLevel():
+            if level_model.is_dirty and level_model.isReadOnlyLevel():
                 return True
         return False
 
@@ -248,7 +268,7 @@ class GameModel(QtCore.QObject):
         """
         for level_model in self.level_models_by_name.itervalues():
             level_model.saveModifiedElements()
-        self.is_dirty = False
+        self.__is_dirty = False
 
     def playLevel( self, level_name ):
         """Starts WOG to test the specified level."""
@@ -295,12 +315,13 @@ class GameModel(QtCore.QObject):
         self.level_models_by_name[level_name] = level_world
         self._levels.append( level_name )
         self._levels.sort()
-        self.is_dirty = True
+        self.__is_dirty = True
 
 class BallModel(metaworld.World):
     def __init__( self, universe, world_meta, ball_name, game_model ):
         metaworld.World.__init__( self, universe, world_meta, ball_name )
         self.game_model = game_model
+        self.is_dirty = False
 
 class LevelModel(metaworld.World):
     def __init__( self, universe, world_meta, level_name, game_model, is_dirty = False ):
@@ -330,7 +351,8 @@ class LevelModel(metaworld.World):
     def resource_tree( self ):
         return self.find_tree( metawog.TREE_LEVEL_RESOURCE ).root
 
-    def isDirty( self ):
+    @property
+    def is_dirty( self ):
         return len(self.dirty_element_types) != 0
 
     def isReadOnlyLevel( self ):
