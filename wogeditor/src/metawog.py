@@ -18,21 +18,21 @@ TREE_LEVEL_SCENE = describe_tree( 'level.scene' )
 TREE_LEVEL_RESOURCE = describe_tree( 'level.resource' )
 
 # Declares the world hierarchy
-WORLD_LEVEL = describe_world( 'global.level', files_desc = [
+WORLD_LEVEL = describe_world( 'global.level', trees_meta = [
     TREE_LEVEL_GAME,
     TREE_LEVEL_SCENE,
     TREE_LEVEL_RESOURCE
     ] )
-WORLD_ISLAND = describe_world( 'global.island', files_desc = [
+WORLD_ISLAND = describe_world( 'global.island', trees_meta = [
     TREE_ISLAND
     ] )
-WORLD_BALL = describe_world( 'global.ball', files_desc = [
+WORLD_BALL = describe_world( 'global.ball', trees_meta = [
     TREE_BALL_MAIN,
     TREE_BALL_RESOURCE
     ] )
 WORLD_GLOBAL = describe_world( 'global',
                                child_worlds = [ WORLD_ISLAND, WORLD_LEVEL, WORLD_BALL ],
-                               files_desc = [
+                               trees_meta = [
     TREE_GLOBAL_RESOURCE,
     TREE_GLOBAL_FX,
     TREE_GLOBAL_MATERIALS,
@@ -151,7 +151,7 @@ TREE_LEVEL_GAME.add_objects( [
         ] )
     ] )
 
-def _describe_resource_file( file_desc, resource_world, is_global = False ):
+def _describe_resource_file( tree_meta, resource_world, is_global = False ):
     if is_global:
         resources_object = describe_element( 'Resources', min_occurrence = 1 )
     else:
@@ -185,7 +185,7 @@ def _describe_resource_file( file_desc, resource_world, is_global = False ):
                 ] )
         ] )
     
-    file_desc.add_objects( [
+    tree_meta.add_objects( [
         # DUPLICATED FROM GLOBAL SCOPE => makes FACTORY function ?
         describe_element( 'ResourceManifest', exact_occurrence = 1, attributes = [], objects = [
             resources_object

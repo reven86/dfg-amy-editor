@@ -1030,9 +1030,9 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
 
 
-def validate_enumerated_property( world_key, attribute_desc, input ):
-    type_name = attribute_desc.name
-    is_list = attribute_desc.is_list
+def validate_enumerated_property( world_key, attribute_meta, input ):
+    type_name = attribute_meta.name
+    is_list = attribute_meta.is_list
     input = unicode( input )
     input_values = input.split(',')
     if len(input_values) == 0:
@@ -1042,32 +1042,32 @@ def validate_enumerated_property( world_key, attribute_desc, input ):
     elif len(input_values) != 1 and not is_list:
         return QtGui.QValidator.Intermediate, 'Only one %s value is allowed' % type_name
     for input_value in input_values:
-        if input_value not in attribute_desc.values:
+        if input_value not in attribute_meta.values:
             return ( QtGui.QValidator.Intermediate, 'Invalid %s value: "%%1". Valid values: %%2' % type_name,
-                     input_value, ','.join(attribute_desc.values) )
+                     input_value, ','.join(attribute_meta.values) )
     return QtGui.QValidator.Acceptable
 
-def complete_enumerated_property( world_key, attribute_desc ):
-    return sorted(attribute_desc.values)
+def complete_enumerated_property( world_key, attribute_meta ):
+    return sorted(attribute_meta.values)
 
-def do_validate_numeric_property( attribute_desc, input, value_type, error_message ):
+def do_validate_numeric_property( attribute_meta, input, value_type, error_message ):
     try:
         value = value_type(str(input))
-        if attribute_desc.min_value is not None and value < attribute_desc.min_value:
-            return QtGui.QValidator.Intermediate, 'Value must be >= %1', str(attribute_desc.min_value)
-        if attribute_desc.max_value is not None and value > attribute_desc.max_value:
-            return QtGui.QValidator.Intermediate, 'Value must be < %1', str(attribute_desc.max_value)
+        if attribute_meta.min_value is not None and value < attribute_meta.min_value:
+            return QtGui.QValidator.Intermediate, 'Value must be >= %1', str(attribute_meta.min_value)
+        if attribute_meta.max_value is not None and value > attribute_meta.max_value:
+            return QtGui.QValidator.Intermediate, 'Value must be < %1', str(attribute_meta.max_value)
         return QtGui.QValidator.Acceptable
     except ValueError:
         return QtGui.QValidator.Intermediate, error_message
 
-def validate_integer_property( world_key, attribute_desc, input ):
-    return do_validate_numeric_property( attribute_desc, input, int, 'Value must be an integer' )
+def validate_integer_property( world_key, attribute_meta, input ):
+    return do_validate_numeric_property( attribute_meta, input, int, 'Value must be an integer' )
 
-def validate_real_property( world_key, attribute_desc, input ):
-    return do_validate_numeric_property( attribute_desc, input, float, 'Value must be a real number' )
+def validate_real_property( world_key, attribute_meta, input ):
+    return do_validate_numeric_property( attribute_meta, input, float, 'Value must be a real number' )
 
-def validate_rgb_property( world_key, attribute_desc, input ):
+def validate_rgb_property( world_key, attribute_meta, input ):
     input = unicode(input)
     values = input.split(',')
     if len(values) != 3:
@@ -1081,7 +1081,7 @@ def validate_rgb_property( world_key, attribute_desc, input ):
             return QtGui.QValidator.Intermediate, 'RGB color must be of the form "R,G,B" were R,G,B are integer in range [0-255].'
     return QtGui.QValidator.Acceptable
 
-def validate_xy_property( world_key, attribute_desc, input ):
+def validate_xy_property( world_key, attribute_meta, input ):
     input = unicode(input)
     values = input.split(',')
     if len(values) != 2:
@@ -1103,7 +1103,7 @@ def complete_reference_property( world, attribute_meta ):
     return world.list_identifiers( attribute_meta.reference_family )
 
 # For later
-##def editor_rgb_property( parent, option, index, element, attribute_desc, default_editor_factory ):
+##def editor_rgb_property( parent, option, index, element, attribute_meta, default_editor_factory ):
 ##    widget = QtGui.QWidget( parent )
 ##    hbox = QtGui.QHBoxLayout()
 ##    hbox.addWidget( default_editor_factory )
@@ -1113,11 +1113,11 @@ def complete_reference_property( world, attribute_meta ):
 
 # A dictionnary of specific handler for metawog attribute types.
 # validator: called whenever the user change the input.
-#           a callable(attribute_desc, input) returning either QtGui.QValidator.Acceptable if input is a valid value,
+#           a callable(attribute_meta, input) returning either QtGui.QValidator.Acceptable if input is a valid value,
 #           or a tuple (QtGui.QValidator.Intermediate, message, arg1, arg2...) if the input is invalid. Message must be
 #           in QString format (e.g. %1 for arg 1...). The message is displayed in the status bar.
 # converter: called when the user valid the input (enter key usualy) to store the edited value into the model.
-#            a callable(editor, model, index, attribute_desc).
+#            a callable(editor, model, index, attribute_meta).
 ATTRIBUTE_TYPE_EDITOR_HANDLERS = {
     metaworld.BOOLEAN_TYPE: { 'validator': validate_enumerated_property,
                               'converter': complete_enumerated_property },
@@ -1133,10 +1133,10 @@ ATTRIBUTE_TYPE_EDITOR_HANDLERS = {
     }
 
 class PropertyValidator(QtGui.QValidator):
-    def __init__( self, parent, main_window, world_key, attribute_desc, validator ):
+    def __init__( self, parent, main_window, world_key, attribute_meta, validator ):
         QtGui.QValidator.__init__( self, parent )
         self.main_window = main_window
-        self.attribute_desc = attribute_desc
+        self.attribute_meta = attribute_meta
         self.validator = validator
         self.world_key = world_key
 
@@ -1145,7 +1145,7 @@ class PropertyValidator(QtGui.QValidator):
            Valid values for state are: QtGui.QValidator.Invalid, QtGui.QValidator.Acceptable, QtGui.QValidator.Intermediate.
            Returning Invalid actually prevent the user from inputing that a value that would make the input invalid. It is
            better to avoid returning this at it prevent temporary invalid value (when using cut'n'paste for example)."""
-        status = self.validator( self.world_key, self.attribute_desc, input )
+        status = self.validator( self.world_key, self.attribute_meta, input )
         if type(status) == tuple:
             message = status[1]
             args = status[2:]
@@ -1164,7 +1164,7 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
     def createEditor( self, parent, option, index ):
         """Returns the widget used to edit the item specified by index for editing. The parent widget and style option are used to control how the editor widget appears."""
         # see QDefaultItemEditorFactory::createEditor for example of implementations
-        world_key, object_file, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
+        world_key, object_file, element, property_name, attribute_meta, handler_data = self._getHandlerData( index )
         need_specific_editor = handler_data and handler_data.get('editor')
         if need_specific_editor:
             class DefaultEditorFactory(object):
@@ -1172,16 +1172,16 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
                     self.args = args
                 def __call_( self, parent ):
                     return QtGui.QStyledItemDelegate.createEditor( self.args[0], parent, *(self.args[1:]) )
-            editor = handler_data['editor']( parent, option, index, element, attribute_desc, DefaultEditorFactory() )
+            editor = handler_data['editor']( parent, option, index, element, attribute_meta, DefaultEditorFactory() )
         else: # No specific, use default QLineEditor
             editor = QtGui.QStyledItemDelegate.createEditor( self, parent, option, index )
         if handler_data and handler_data.get('validator'):
-            validator = PropertyValidator( editor, self.main_window, world_key, attribute_desc, handler_data['validator'] )
+            validator = PropertyValidator( editor, self.main_window, world_key, attribute_meta, handler_data['validator'] )
             editor.setValidator( validator )
         if handler_data and handler_data.get('completer'):
             word_list = QtCore.QStringList()
             completer = handler_data['completer'] 
-            sorted_word_list = list( completer( world_key, attribute_desc ) )
+            sorted_word_list = list( completer( world_key, attribute_meta ) )
             sorted_word_list.sort( lambda x,y: cmp(x.lower(), y.lower()) )
             for word in sorted_word_list:
                 word_list.append( word )
@@ -1193,9 +1193,9 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
 
     def _getHandlerData( self, index ):
         """Returns data related to item at the specified index.
-           Returns: tuple (world_key, object_file, element, property_name, attribute_desc, handler_data). 
-           handler_data may be None if no specific handler is defined for the attribute_desc.
-           attribute_desc may be None if metawog is missing some attribute declaration.
+           Returns: tuple (world_key, object_file, element, property_name, attribute_meta, handler_data). 
+           handler_data may be None if no specific handler is defined for the attribute_meta.
+           attribute_meta may be None if metawog is missing some attribute declaration.
            """
         data =  index.data( QtCore.Qt.UserRole ).toPyObject()
         # if this fails, then we are trying to edit the property name or item was added incorrectly.
@@ -1203,20 +1203,20 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
         world_key, object_file, element_meta, element, property_name = data
         if element_meta is None:
             handler_data = None
-            attribute_desc = None
+            attribute_meta = None
             print 'Warning: metawog is incomplet, no attribute description for', object_file, element.tag, property_name
         else:
-            attribute_desc = element_meta.attributes_by_name.get( property_name )
-            if attribute_desc is None:
+            attribute_meta = element_meta.attributes_by_name.get( property_name )
+            if attribute_meta is None:
                 print 'Warning: metawog is incomplet, no attribute description for', object_file, element.tag, property_name
                 handler_data = None
             else:
-                handler_data = ATTRIBUTE_TYPE_EDITOR_HANDLERS.get( attribute_desc.type )
-        return (world_key, object_file, element, property_name, attribute_desc, handler_data)
+                handler_data = ATTRIBUTE_TYPE_EDITOR_HANDLERS.get( attribute_meta.type )
+        return (world_key, object_file, element, property_name, attribute_meta, handler_data)
 
     def setEditorData( self, editor, index ):
         """Sets the data to be displayed and edited by the editor from the data model item specified by the model index."""
-        world_key, object_file, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
+        world_key, object_file, element, property_name, attribute_meta, handler_data = self._getHandlerData( index )
         editor.setText( element.get( property_name, u'' ) )
 #        QtGui.QStyledItemDelegate.setEditorData( self, editor, index )
 
@@ -1233,12 +1233,12 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
            Conclusion: we set the data into the model, only if they are valid as QLineEdit validation may have
            been by-passed on focus change or current item change.
         """
-        world_key, object_file, element, property_name, attribute_desc, handler_data = self._getHandlerData( index )
+        world_key, object_file, element, property_name, attribute_meta, handler_data = self._getHandlerData( index )
         if not editor.hasAcceptableInput(): # input is invalid, discard it
             return
         need_specific_converter = handler_data and handler_data.get('converter')
         if need_specific_converter:
-            handler_data['converter']( editor, model, index, attribute_desc )
+            handler_data['converter']( editor, model, index, attribute_meta )
         else:
 ##            value = editor.text()
 ##            model.setData(index, QtCore.QVariant( value ), QtCore.Qt.EditRole)
@@ -1451,8 +1451,8 @@ class MainWindow(QtGui.QMainWindow):
             self._resetPropertyListModel( element )
             world_key = self.getCurrentLevelModel()
             missing_attributes = set( element.keys() )
-            for attribute_desc in element_meta.attributes_order:
-                attribute_name = attribute_desc.name
+            for attribute_meta in element_meta.attributes_order:
+                attribute_name = attribute_meta.name
                 if attribute_name in missing_attributes:
                     missing_attributes.remove( attribute_name )
                 attribute_value = element.get( attribute_name )
@@ -1461,7 +1461,7 @@ class MainWindow(QtGui.QMainWindow):
                 if attribute_value is not None: # bold property name for defined property
                     font = item_name.font()
                     font.setBold( True )
-                    if attribute_value is None and attribute_desc.mandatory:
+                    if attribute_value is None and attribute_meta.mandatory:
                         # @todo Also put name in red if value is not valid.
                         brush = QtGui.QBrush( QtGui.QColor( 255, 0, 0 ) )
                         font.setForeground( brush )
@@ -1578,9 +1578,9 @@ class MainWindow(QtGui.QMainWindow):
         if parent_element is not None:
             # build the list of attributes with their initial values.
             mandatory_attributes = {}
-            for attribute_name, attribute_desc in new_element_meta.attributes_by_name.iteritems():
-                if attribute_desc.mandatory:
-                    init_value = attribute_desc.init
+            for attribute_name, attribute_meta in new_element_meta.attributes_by_name.iteritems():
+                if attribute_meta.mandatory:
+                    init_value = attribute_meta.init
                     if init_value is None:
                         init_value = ''
                     mandatory_attributes[attribute_name] = init_value

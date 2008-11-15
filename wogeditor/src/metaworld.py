@@ -160,11 +160,11 @@ def path_attribute( name, **kwargs ):
 unknown_attribute = string_attribute # to help with generated model
 
 class ObjectsMetaOwner:
-    def __init__( self, objects_desc = None ):
-        objects_desc = objects_desc or []
+    def __init__( self, elements_meta = None ):
+        elements_meta = elements_meta or []
         self.__world = None
         self.objects_by_tag = {}
-        self.add_objects( objects_desc )
+        self.add_objects( elements_meta )
 
     @property
     def world( self ):
@@ -176,8 +176,8 @@ class ObjectsMetaOwner:
             for element_meta in self.objects_by_tag.itervalues():
                 element_meta._set_world( parent_world )
 
-    def add_objects( self, objects_desc ):
-        for element_meta in objects_desc:
+    def add_objects( self, elements_meta ):
+        for element_meta in elements_meta:
             assert element_meta.tag not in self.objects_by_tag, element_meta.tag
             self.objects_by_tag[element_meta.tag] = element_meta
             element_meta._set_world( self.__world )
@@ -220,10 +220,10 @@ class ElementMeta(ObjectsMetaOwner):
        - a minimum number of occurrences when it occurs in a parent object
        - a conceptual file it may appears in
     """
-    def __init__( self, tag, objects_desc = None, attributes = None,
+    def __init__( self, tag, elements_meta = None, attributes = None,
                   min_occurrence = None, max_occurrence = None,
                   read_only = False ):
-        ObjectsMetaOwner.__init__( self, objects_desc = objects_desc or [] )
+        ObjectsMetaOwner.__init__( self, elements_meta = elements_meta or [] )
         self.tag = tag
         attributes = attributes or []
         self.attributes_order = []
@@ -246,19 +246,19 @@ class ElementMeta(ObjectsMetaOwner):
             attribute.attach_to_element_desc( self )
         self.attributes_order.extend( attributes )
 
-    def _add_reference_attribute( self, attribute_desc ):
-        assert attribute_desc not in self.reference_attributes
-        self.reference_attributes.add( attribute_desc )
+    def _add_reference_attribute( self, attribute_meta ):
+        assert attribute_meta not in self.reference_attributes
+        self.reference_attributes.add( attribute_meta )
 
-    def _set_identifier_attribute( self, attribute_desc ):
+    def _set_identifier_attribute( self, attribute_meta ):
         assert self.identifier_attribute is None
-        self.identifier_attribute = attribute_desc
+        self.identifier_attribute = attribute_meta
 
-    def _set_file( self, file_desc ):
-        if self.file is not file_desc: # avoid cycle
-            self.file = file_desc
+    def _set_file( self, tree_meta ):
+        if self.file is not tree_meta: # avoid cycle
+            self.file = tree_meta
             for element_meta in self.objects_by_tag.itervalues():
-                element_meta._set_file( file_desc )
+                element_meta._set_file( tree_meta )
 
     def _object_added( self, element_meta ):
         element_meta.parent_objects.add( self )
@@ -281,13 +281,13 @@ def describe_element( tag, attributes = None, objects = None,
     if exact_occurrence is not None:
         min_occurrence = exact_occurrence
         max_occurrence = exact_occurrence
-    return ElementMeta( tag, attributes = attributes, objects_desc = objects,
+    return ElementMeta( tag, attributes = attributes, elements_meta = objects,
                        min_occurrence = min_occurrence, max_occurrence = max_occurrence,
                        read_only = read_only )
 
 class TreeMeta(ObjectsMetaOwner):
     def __init__( self, conceptual_file_name, objects = None ):
-        ObjectsMetaOwner.__init__( self, objects_desc = objects or [] )
+        ObjectsMetaOwner.__init__( self, elements_meta = objects or [] )
         self.name = conceptual_file_name
         assert len(self.objects_by_tag) <= 1
 
@@ -308,22 +308,22 @@ def describe_tree( conceptual_file_name, objects = None ):
     return TreeMeta( conceptual_file_name, objects = objects )
 
 class WorldMeta(object):
-    def __init__( self, world_name, files_desc = None, child_worlds = None ):
+    def __init__( self, world_name, trees_meta = None, child_worlds = None ):
         child_worlds = child_worlds or []
         self.world_name = world_name
         self.parent_world = None
         self.child_worlds = []
-        self.files_desc_by_name = {}
+        self.trees_meta_by_name = {}
         self.__objects_by_tag = None
         self.add_child_worlds( child_worlds )
-        self.add_files_desc( files_desc )
+        self.add_trees_meta( trees_meta )
 
     @property
     def objects_by_tag( self ):
         if self.__objects_by_tag is None:
             self.__objects_by_tag = {}
-            for file_desc in self.files_desc_by_name.itervalues():
-                self.__objects_by_tag.update( file_desc.all_descendant_element_metas() )
+            for tree_meta in self.trees_meta_by_name.itervalues():
+                self.__objects_by_tag.update( tree_meta.all_descendant_element_metas() )
         return self.__objects_by_tag
 
     def add_child_worlds( self, child_worlds ):
@@ -331,17 +331,17 @@ class WorldMeta(object):
         for world in child_worlds:
             world.parent_world = self
 
-    def add_files_desc( self, files_desc ):
-        for file_desc in files_desc:
-            assert file_desc.name not in self.files_desc_by_name
-            self.files_desc_by_name[file_desc.name] = file_desc
-            file_desc._set_world( self )
+    def add_trees_meta( self, trees_meta ):
+        for tree_meta in trees_meta:
+            assert tree_meta.name not in self.trees_meta_by_name
+            self.trees_meta_by_name[tree_meta.name] = tree_meta
+            tree_meta._set_world( self )
 
     def __repr__( self ):
-        return '%s(name=%s, files=[%s])' % (self.__class__.__name__, self.world_name, ','.join(self.files_desc_by_name.keys()))
+        return '%s(name=%s, files=[%s])' % (self.__class__.__name__, self.world_name, ','.join(self.trees_meta_by_name.keys()))
 
-def describe_world( world_name, files_desc = None, child_worlds = None ):
-    return WorldMeta( world_name, files_desc = files_desc, child_worlds = child_worlds )
+def describe_world( world_name, trees_meta = None, child_worlds = None ):
+    return WorldMeta( world_name, trees_meta = trees_meta, child_worlds = child_worlds )
 
 class ReferenceTracker(object):
     """The reference trackers keep that of all object identifiers to check for reference validity and identifier unicity.
@@ -351,7 +351,7 @@ class ReferenceTracker(object):
     def __init__( self ):
         self.worlds_by_world = {} # (world_desc, parent_world_key) by world_key
         self.ref_by_world_and_family = {} # dict( (world_key,family): dict(id: object_key) )
-        self.back_references = {} # dict( (family,identifier) : set(world_key,object_key,attribute_desc)] )
+        self.back_references = {} # dict( (family,identifier) : set(world_key,object_key,attribute_meta)] )
 
     # Mutators
     def world_added( self, world ):
@@ -373,9 +373,9 @@ class ReferenceTracker(object):
             identifier_value = identifier_desc.get( element )
             self._register_object_identifier( world, element, identifier_desc, identifier_value )
         # Checks object for all reference attributes
-        for attribute_desc in element.meta.reference_attributes:
-            reference_value = attribute_desc.get( element )
-            self._register_object_reference( world, element, attribute_desc, reference_value )
+        for attribute_meta in element.meta.reference_attributes:
+            reference_value = attribute_meta.get( element )
+            self._register_object_reference( world, element, attribute_meta, reference_value )
 
     def _register_object_identifier( self, world_key, object_key, identifier_desc, identifier_value ):
 ##        print '=> registering "%s" with identifier: "%s"' % (object_key, repr(identifier_value))
@@ -391,14 +391,14 @@ class ReferenceTracker(object):
                 self.ref_by_world_and_family[ (world_key,identifier_desc.reference_family) ] = references
             references[identifier_value] = object_key
 
-    def _register_object_reference( self, world_key, object_key, attribute_desc, reference_value ):
+    def _register_object_reference( self, world_key, object_key, attribute_meta, reference_value ):
         if reference_value is not None:
-            back_reference_key = (attribute_desc.reference_family, reference_value)
+            back_reference_key = (attribute_meta.reference_family, reference_value)
             back_references = self.back_references.get( back_reference_key )
             if back_references is None:
                 back_references = set()
                 self.back_references[back_reference_key] = back_references
-            back_references.add( (world_key, object_key, attribute_desc) )
+            back_references.add( (world_key, object_key, attribute_meta) )
 
     def object_about_to_be_removed( self, element ):
 ##        print 'REF: object_about_to_be_removed', element
@@ -411,9 +411,9 @@ class ReferenceTracker(object):
             identifier_value = identifier_desc.get( element )
             self._unregister_object_identifier( world_key, element, identifier_desc, identifier_value )
         # Checks object for all reference attributes
-        for attribute_desc in element_meta.reference_attributes:
-            reference_value = attribute_desc.get( element )
-            self._unregister_object_reference( world_key, element, attribute_desc, reference_value )
+        for attribute_meta in element_meta.reference_attributes:
+            reference_value = attribute_meta.get( element )
+            self._unregister_object_reference( world_key, element, attribute_meta, reference_value )
 
     def _unregister_object_identifier( self, world_key, object_key, identifier_desc, identifier_value ):
 ##        print '=> unregistering "%s" with identifier: "%s"' % (object_key, repr(identifier_value))
@@ -425,32 +425,32 @@ class ReferenceTracker(object):
                 except KeyError:    # May happens in case of multiple image with same identifier (usually blank)
                     pass            # since unicity is not validated yet
 
-    def _unregister_object_reference( self, world_key, object_key, attribute_desc, reference_value ):
+    def _unregister_object_reference( self, world_key, object_key, attribute_meta, reference_value ):
         if reference_value is not None:
-            back_reference_key = (attribute_desc.reference_family, reference_value)
+            back_reference_key = (attribute_meta.reference_family, reference_value)
             back_references = self.back_references.get( back_reference_key )
             if back_references:
-                back_references.remove( (world_key, object_key, attribute_desc) )
+                back_references.remove( (world_key, object_key, attribute_meta) )
 
-    def attribute_updated( self, object_key, attribute_desc, old_value, new_value ):
+    def attribute_updated( self, object_key, attribute_meta, old_value, new_value ):
         world_key = object_key.world
         assert world_key is not None
-        element_meta = attribute_desc.element_meta
+        element_meta = attribute_meta.element_meta
         identifier_desc = element_meta.identifier_attribute
-        if identifier_desc is attribute_desc:
+        if identifier_desc is attribute_meta:
             self._unregister_object_identifier( world_key, object_key, identifier_desc, old_value )
             self._register_object_identifier( world_key, object_key, identifier_desc, new_value )
-        if attribute_desc in element_meta.reference_attributes:
-            self._unregister_object_reference( world_key, object_key, attribute_desc, old_value )
-            self._register_object_reference( world_key, object_key, attribute_desc, new_value )
+        if attribute_meta in element_meta.reference_attributes:
+            self._unregister_object_reference( world_key, object_key, attribute_meta, old_value )
+            self._register_object_reference( world_key, object_key, attribute_meta, new_value )
 
     # Queries
-    def is_valid_reference( self, world_key, attribute_desc, attribute_value ):
-        references = self.ref_by_world_and_family.get( (world_key,attribute_desc.reference_family) )
+    def is_valid_reference( self, world_key, attribute_meta, attribute_value ):
+        references = self.ref_by_world_and_family.get( (world_key,attribute_meta.reference_family) )
         if references is None or attribute_value not in references:
             world_desc, parent_world_key = self.worlds_by_world[world_key]
             if parent_world_key is not None:
-                return self.is_valid_reference( parent_world_key, attribute_desc, attribute_value )
+                return self.is_valid_reference( parent_world_key, attribute_meta, attribute_value )
             return False
         return True
 
@@ -463,7 +463,7 @@ class ReferenceTracker(object):
         return identifiers
 
     def list_references( self, family, identifier ):
-        """Returns a list of (world_key,object_key,attribute_desc) object attributes that reference the specified identifier."""
+        """Returns a list of (world_key,object_key,attribute_meta) object attributes that reference the specified identifier."""
 ##        import pprint
 ##        pprint.pprint( self.back_references )
 ##        print 'Searching', family, identifier
@@ -475,24 +475,24 @@ def print_world_meta( world ):
     print '* Scope:', world.world_name
     for child_world in world.child_worlds:
         print '  has child world:', child_world.world_name
-    for tree in world.files_desc_by_name:
+    for tree in world.trees_meta_by_name:
         print '  contained file:', tree
     print '  contains object:', ', '.join( sorted(world.objects_by_tag) )
     for child_world in world.child_worlds:
         print_world_meta( child_world )
         print
-    for file_desc in world.files_desc_by_name.itervalues():
-        print_tree_meta( file_desc )
+    for tree_meta in world.trees_meta_by_name.itervalues():
+        print_tree_meta( tree_meta )
         print
 
-def print_tree_meta( file_desc ):
+def print_tree_meta( tree_meta ):
     """Diagnostic function that print the full content of a TreeMeta, including its objects."""
-    print '* File:', file_desc.name
-    print '  belong to world:', file_desc.world.world_name
-    print '  root object:', file_desc.root_element_meta.tag
-    print '  contains object:', ', '.join( sorted(file_desc.all_descendant_element_metas()) )
+    print '* File:', tree_meta.name
+    print '  belong to world:', tree_meta.world.world_name
+    print '  root object:', tree_meta.root_element_meta.tag
+    print '  contains object:', ', '.join( sorted(tree_meta.all_descendant_element_metas()) )
     print '  object tree:'
-    print_element_meta_tree( file_desc.root_element_meta, '        ' )
+    print_element_meta_tree( tree_meta.root_element_meta, '        ' )
 
 def print_element_meta_tree( element, indent ):
     """Diagnostic function that print the hierarchy of an ElementMeta and its children."""
@@ -645,7 +645,7 @@ class Universe(WorldsOwner):
         louie.connect( self._on_world_added, WorldAdded )
         louie.connect( self._on_world_about_to_be_removed, WorldAboutToBeRemoved )
         self.ref_by_world_and_family = {} # dict( (world,family): dict(id: element) )
-        self.back_references = {} # dict( (family,identifier) : set(world,element,attribute_desc)] )
+        self.back_references = {} # dict( (family,identifier) : set(world,element,attribute_meta)] )
 
     @property
     def universe( self ):
@@ -833,29 +833,29 @@ class Universe(WorldsOwner):
         back_reference_key = (family, identifier_value)
         return list( self.back_references.get( back_reference_key, [] ) )
 
-    def make_unattached_tree_from_xml( self, file_desc, xml_data ):
+    def make_unattached_tree_from_xml( self, tree_meta, xml_data ):
         """Makes a tree from the provided xml data for the specified kind of tree.
            The tree is NOT attached to any world. Use World.add_tree to do so.
            Returns the created tree if successful (root was successfully parsed),
            otherwise raise the exception WorldException.
            Warning may be raised at the universe level.
-           file_desc: description of the kind of tree to load. Used to associated xml tag to element description.
+           tree_meta: description of the kind of tree to load. Used to associated xml tag to element description.
            xml_data: raw XML data.
         """
         xml_tree = xml.etree.ElementTree.fromstring( xml_data )
-        if file_desc.root_element_meta.tag != xml_tree.tag:
+        if tree_meta.root_element_meta.tag != xml_tree.tag:
             raise WorldException( u'Expected root tag "%(root)s", but got "%(actual)s" instead.' % {
-                'root': file_desc.root_element_meta.tag, 'actual': xml_tree.tag } )
+                'root': tree_meta.root_element_meta.tag, 'actual': xml_tree.tag } )
         def _make_element_tree_from_xml( element_meta, xml_tree ):
             # Map element attributes
             known_attributes = {}
             missing_attributes = set( xml_tree.keys() )
-            for attribute_desc in element_meta.attributes_by_name.itervalues():
-                attribute_value = xml_tree.get( attribute_desc.name )
+            for attribute_meta in element_meta.attributes_by_name.itervalues():
+                attribute_value = xml_tree.get( attribute_meta.name )
                 if attribute_value is not None:
                     # @todo Warning if attribute already in dict
-                    known_attributes[ attribute_desc.name ] = attribute_value
-                    missing_attributes.remove( attribute_desc.name )
+                    known_attributes[ attribute_meta.name ] = attribute_value
+                    missing_attributes.remove( attribute_meta.name )
             if missing_attributes:
                 self._warning( u'Element %(tag)s, the following attributes are missing in the object description: %(attributes)s.',
                                tag = xml_tree.tag,
@@ -871,8 +871,8 @@ class Universe(WorldsOwner):
                                    tag = xml_tree.tag,
                                    child = xml_tree_child.tag )
             return Element( element_meta, attributes = known_attributes, children = children )
-        root_element = _make_element_tree_from_xml( file_desc.root_element_meta, xml_tree )
-        return Tree( self, file_desc, root_element = root_element )
+        root_element = _make_element_tree_from_xml( tree_meta.root_element_meta, xml_tree )
+        return Tree( self, tree_meta, root_element = root_element )
 
 
 class WorldException(Exception):
@@ -937,26 +937,26 @@ class World(WorldsOwner):
         louie.send( WorldAboutToBeRemoved, parent_world, self )
         self._parent_world = None
 
-    def make_tree( self, file_desc, root_element = None ):
-        tree = Tree( self.universe, file_desc, root_element = root_element )
+    def make_tree( self, tree_meta, root_element = None ):
+        tree = Tree( self.universe, tree_meta, root_element = root_element )
         self.add_tree( tree )
         return tree
 
-    def make_tree_from_xml( self, file_desc, xml_data ):
+    def make_tree_from_xml( self, tree_meta, xml_data ):
         """Makes a tree from the provided xml data for the specified kind of tree.
            The tree is automatically attached to the world.
            Returns the created tree if successful (root was successfully parsed),
            otherwise raise the exception WorldException.
            Warning may be raised at the universe level.
-           file_desc: description of the kind of tree to load. Used to associated xml tag to element description.
+           tree_meta: description of the kind of tree to load. Used to associated xml tag to element description.
            xml_data: raw XML data.
         """
-        tree = self.universe.make_unattached_tree_from_xml( file_desc, xml_data )
+        tree = self.universe.make_unattached_tree_from_xml( tree_meta, xml_data )
         self.add_tree( tree )
         return tree
 
-    def find_tree( self, file_desc ):
-        return self._trees.get( file_desc )
+    def find_tree( self, tree_meta ):
+        return self._trees.get( tree_meta )
 
     def add_tree( self, *trees ):
         for tree in trees:
@@ -982,9 +982,9 @@ class World(WorldsOwner):
 class Tree:
     """Represents a part of the world elements live in, described by a TreeMeta.
     """
-    def __init__( self, universe, file_desc, root_element = None ):
+    def __init__( self, universe, tree_meta, root_element = None ):
         self._universe = universe
-        self._file_desc = file_desc
+        self._file_desc = tree_meta
         self._root_element = root_element
         self._world = None
         self.set_root( root_element )
@@ -1295,10 +1295,10 @@ if __name__ == "__main__":
     TREE_TEST_GLOBAL = describe_tree( 'testglobal' )
     TREE_TEST_LEVEL = describe_tree( 'testlevel' )
 
-    WORLD_TEST_LEVEL = describe_world( 'testworld.level', files_desc = [TREE_TEST_LEVEL] )
+    WORLD_TEST_LEVEL = describe_world( 'testworld.level', trees_meta = [TREE_TEST_LEVEL] )
 
     WORLD_TEST_GLOBAL = describe_world( 'testworld',
-                                        files_desc = [TREE_TEST_GLOBAL],
+                                        trees_meta = [TREE_TEST_GLOBAL],
                                         child_worlds = [WORLD_TEST_LEVEL] )
 
     GLOBAL_TEXT = describe_element( 'text', attributes = [
@@ -1335,7 +1335,7 @@ if __name__ == "__main__":
             for world in (WORLD_TEST_LEVEL, WORLD_TEST_GLOBAL):
                 for element_meta in world.objects_by_tag.itervalues():
                     self.assertEqual( world, element_meta.world )
-#                for file_desc in world.files_desc_by_name.itervalues():
+#                for tree_meta in world.trees_meta_by_name.itervalues():
 #                    self.assertEqual( world, element_meta.world )
             self.assertEqual( sorted([LEVEL_SIGN, LEVEL_INLINE]), sorted(LEVEL_TEXT.parent_objects) )
             for tree, objects in { TREE_TEST_GLOBAL: [GLOBAL_TEXT],
