@@ -231,13 +231,13 @@ class GameModel(QtCore.QObject):
         self.emit( QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                    level_name, element_file, element )
 
-    def _onElementAdded(self, element, index_in_parent):
+    def _onElementAdded(self, element, index_in_parent): #IGNORE:W0613
         self.modified_worlds_to_check.add( element.world )
 
-    def _onElementUpdated(self, element, attribute_name, new_value, old_value):
+    def _onElementUpdated(self, element, attribute_name, new_value, old_value): #IGNORE:W0613
         self.modified_worlds_to_check.add( element.world )
         
-    def _onElementAboutToBeRemoved(self, element, index_in_parent):
+    def _onElementAboutToBeRemoved(self, element, index_in_parent): #IGNORE:W0613
         self.modified_worlds_to_check.add( element.world )
 
     def elementAdded( self, level_name, element_file, parent_element, element, index_in_parent ):
@@ -1271,14 +1271,99 @@ class MetaWorldTreeViewModel(QtGui.QStandardItemModel):
         QtGui.QStandardItemModel.__init__( self, *args )
         self._metaworld_tree = None
         self._meta_tree = meta_tree
+        self._setHeaders()
 
     @property
     def metaworld_tree( self ):
         return self._metaworld_tree
 
     def set_metaworld_tree( self, tree ):
+        assert tree is not None
         assert tree.meta == self._meta_tree, (tree.meta, self._meta_tree)
+        # setup event listener for the tree
+# Notes: somehow the tree remain empty if we do not allow setting twice. To investigate...
+#        if tree == self._metaworld_tree:
+#            return
+        if self._metaworld_tree is not None:
+            self._metaworld_tree.disconnect_from_element_events( 
+                self._onElementAdded, self._onElementUpdated,
+                self._onElementAboutToBeRemoved )
         self._metaworld_tree = tree
+        if tree is not None:
+            self._metaworld_tree.connect_to_element_events( 
+                self._onElementAdded, self._onElementUpdated,
+                self._onElementAboutToBeRemoved )
+        self._refreshTreeRoot()
+        
+    def _refreshTreeRoot(self):
+        # refresh items
+        self.clear()
+        self._setHeaders()
+        if self._metaworld_tree.root:
+            self._insertElementTreeInTree( self, self._metaworld_tree.root )
+
+    def _setHeaders(self):
+        self.setHorizontalHeaderLabels( [self.tr('Element')] )
+
+    def _onElementAdded(self, element, index_in_parent ):
+        if element.parent is None:
+            self._refreshTreeRoot()
+        else:
+            parent_item = self._findItemByElement( element.parent )
+            if parent_item is not None:
+                self._insertElementNodeInTree( parent_item, element, index_in_parent )
+            else:
+                print 'Warning: parent_element not found in tree view', element.parent
+
+    def _onElementUpdated(self, element, attribute_name, new_value, old_value):
+        pass # for later when name will be displayed in tree view
+#        print
+#        print '************ Element updated', attribute_name, new_value
+#        print
+
+    def _onElementAboutToBeRemoved(self, element, index_in_parent ): #IGNORE:W0613
+        item = self._findItemByElement( element )
+        if item:
+            item_row = item.row()
+            item.parent().removeRow( item_row )
+        # Notes: selection will be automatically switched to the previous row in the tree view.
+
+    def _findItemByElement( self, element ):
+        """Returns the tree view item corresponding to the specified element.
+           None if the element is not in the tree.
+        """
+        for item in qthelper.standardModelTreeItems( self ):
+            if item.data( QtCore.Qt.UserRole ).toPyObject() is element:
+                return item
+        return None
+
+    @staticmethod
+    def _insertElementTreeInTree( item_parent, element, index = None ):
+        """Inserts a sub-tree of item in item_parent at the specified index corresponding to the tree of the specified element.
+           Returns the new root item of the sub-tree.
+           index: if None, append the new sub-tree after all the parent chidlren.
+        """
+        items_to_process = [ (item_parent, element, index) ]
+        while items_to_process:
+            item_parent, element, index = items_to_process.pop(0)
+            item = MetaWorldTreeViewModel._insertElementNodeInTree( item_parent, 
+                                                                    element, 
+                                                                    index )
+            for child_element in element:
+                items_to_process.append( (item, child_element, None) )
+
+    @staticmethod
+    def _insertElementNodeInTree( item_parent, element, index = None ):
+        """Inserts a single child node in item_parent at the specified index corresponding to the specified element and returns item.
+           index: if None, append the new child item after all the parent chidlren.
+        """
+        if index is None:
+            index = item_parent.rowCount()
+        item = QtGui.QStandardItem( element.tag )
+        item.setData( QtCore.QVariant( element ), QtCore.Qt.UserRole )
+        item.setFlags( item.flags() & ~QtCore.Qt.ItemIsEditable )
+        item_parent.insertRow( index, item )
+        return item
 
 class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
     def __init__( self, *args ):
@@ -1326,33 +1411,9 @@ class MainWindow(QtGui.QMainWindow):
                           self._refreshLevel )
             self.connect( self._game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                           self._refreshOnSelectedObjectChange )
-            self.connect( self._game_model, QtCore.SIGNAL('elementAdded(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                          self._refreshOnObjectInsertion )
-            self.connect( self._game_model, QtCore.SIGNAL('elementRemoved(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
-                          self._refreshOnObjectRemoval )
         except GameModelException, e:
             QtGui.QMessageBox.warning(self, self.tr("Loading WOG levels"),
                                       unicode(e))
-
-    def _refreshOnObjectInsertion( self, level_name, element_file, parent_element, element, index ):
-        """Called when an element is added to the tree.
-        """
-        tree_view = self.tree_view_by_element_world[element_file]
-        parent_item = self._findItemInTreeViewByElement( tree_view, parent_element )
-        if parent_item:
-            self._insertElementNodeInTree( parent_item, element, index )
-        else:
-            print 'Warning: parent_element not found in tree view', parent_element
-
-    def _refreshOnObjectRemoval( self, level_name, element_file, parent_elements, element, index_in_parent ):
-        """Called when an element is removed from its tree.
-        """
-        tree_view = self.tree_view_by_element_world[element_file]
-        item = self._findItemInTreeViewByElement( tree_view, element )
-        if item:
-            item_row = item.row()
-            item.parent().removeRow( item_row )
-        # Notes: selection will be automatically switched to the previous row in the tree view.
 
     def _refreshLevel( self, old_model, new_game_level_model ):
         """Refresh the tree views and property list on level switch."""
@@ -1363,39 +1424,10 @@ class MainWindow(QtGui.QMainWindow):
 
     def _refreshElementTree( self, element_tree_view, root_element ):
         """Refresh a tree view using its root element."""
-        assert root_element.tree is not None
-        element_tree_view.model().clear()
-        element_tree_view.model().set_metaworld_tree( root_element.tree )
-        root_item = self._insertElementTreeInTree( element_tree_view.model(), root_element )
-        element_tree_view.setExpanded( root_item.index(), True )
-
-    def _insertElementTreeInTree( self, item_parent, element, index = None ):
-        """Inserts a sub-tree of item in item_parent at the specified index corresponding to the tree of the specified element.
-           Returns the new root item of the sub-tree.
-           index: if None, append the new sub-tree after all the parent chidlren.
-        """
-        items_to_process = [ (item_parent, element, index) ]
-        root_item = None
-        while items_to_process:
-            item_parent, element, index = items_to_process.pop(0)
-            item = self._insertElementNodeInTree( item_parent, element, index )
-            if root_item is None:
-                root_item = item
-            for child_element in element:
-                items_to_process.append( (item, child_element, None) )
-        return root_item
-
-    def _insertElementNodeInTree( self, item_parent, element, index = None ):
-        """Inserts a single child node in item_parent at the specified index corresponding to the specified element and returns item.
-           index: if None, append the new child item after all the parent chidlren.
-        """
-        if index is None:
-            index = item_parent.rowCount()
-        item = QtGui.QStandardItem( element.tag )
-        item.setData( QtCore.QVariant( element ), QtCore.Qt.UserRole )
-        item.setFlags( item.flags() & ~QtCore.Qt.ItemIsEditable )
-        item_parent.insertRow( index, item )
-        return item
+        model = element_tree_view.model()
+        model.set_metaworld_tree( root_element.tree )
+        root_index = model.index(0,0)
+        element_tree_view.setExpanded( root_index, True )
                     
     def _refreshGraphicsView( self, game_level_model ):
         level_mdi = self._findLevelGraphicView( game_level_model.level_name )
@@ -1417,12 +1449,6 @@ class MainWindow(QtGui.QMainWindow):
         self._refreshPropertyListFromElement( element_file, element )
         self._refreshSceneTreeSelection( element_file, element )
 
-    def _findItemInTreeViewByElement( self, tree_view, element ):
-        for item in qthelper.standardModelTreeItems( tree_view.model() ):
-            if item.data( QtCore.Qt.UserRole ).toPyObject() is element:
-                return item
-        return None
-
     def _refreshSceneTreeSelection( self, element_file, element ):
         """Select the item corresponding to element in the tree view.
         """
@@ -1430,7 +1456,7 @@ class MainWindow(QtGui.QMainWindow):
         for other_tree_view in self.tree_view_by_element_world.itervalues():  
             if other_tree_view != tree_view: # unselect elements on all other tree views
                 other_tree_view.selectionModel().clear()
-        selected_item = self._findItemInTreeViewByElement( tree_view, element )
+        selected_item = tree_view.model()._findItemByElement( element )
         if selected_item:
             selected_index = selected_item.index()
             selection_model = tree_view.selectionModel()
@@ -1612,7 +1638,7 @@ class MainWindow(QtGui.QMainWindow):
             # corresponding item to be inserted into the tree.
             self.getCurrentLevelModel().addElement( element_file, parent_element, child_element )
             # Select new item in tree view
-            item_child = self._findItemInTreeViewByElement( tree_view, child_element )
+            item_child = tree_view.model()._findItemByElement( child_element )
             selection_model = tree_view.selectionModel()
             selection_model.select( item_child.index(), QtGui.QItemSelectionModel.ClearAndSelect )
             tree_view.scrollTo( item_child.index() )
@@ -1832,7 +1858,6 @@ class MainWindow(QtGui.QMainWindow):
         dock.setAllowedAreas( QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea )
         element_tree_view = QtGui.QTreeView( dock )
         tree_model = MetaWorldTreeViewModel(element_file, 0, 1, element_tree_view)  # nb rows, nb cols
-        tree_model.setHorizontalHeaderLabels( [self.tr('Element')] )
         element_tree_view.setModel( tree_model )
         dock.setWidget( element_tree_view )
         self.addDockWidget( QtCore.Qt.RightDockWidgetArea, dock )

@@ -405,6 +405,7 @@ class ElementAdded(louie.Signal):
        element: Element that has been added.
        index_in_parent: zero-based index of insertion element in parent_element.
                         Always 0 if element is the root of the tree.
+       sender: tree that owns the element
        Can retrieve the element tree via element.tree.   
     """
 
@@ -416,6 +417,7 @@ class ElementAboutToBeRemoved(louie.Signal):
        element: Element that will be removed.
        index_in_parent: zero-based index of insertion element in parent_element.
                         Always 0 if element is the root of the tree.  
+       sender: tree that owns the element
     """
 
 class AttributeUpdated(louie.Signal):
@@ -425,6 +427,7 @@ class AttributeUpdated(louie.Signal):
        attribute_name: name of the attribute of the element that has been modified
        new_value: new value of the attribute. None if the attribute has been removed.
        old_value: old value of the attribute. None if the attribute has been added.
+       sender: tree that owns the element
     """
     
 class TreeAdded(louie.Signal):
@@ -432,6 +435,7 @@ class TreeAdded(louie.Signal):
        Signature: (tree)
        tree: tree that has been added to a world.
              Can retrieve the tree world & universe using tree.world and tree.universe.
+       sender: parent world of the tree 
     """
     
 class TreeAboutToBeRemoved(louie.Signal):
@@ -439,6 +443,7 @@ class TreeAboutToBeRemoved(louie.Signal):
        Signature: (tree)
        tree: tree that is about to be removed from a world.
              Can retrieve the tree world & universe using tree.world and tree.universe.
+       sender: parent world of the tree 
     """
 
 class WorldAdded(louie.Signal):
@@ -891,6 +896,36 @@ class Tree:
     @property
     def meta( self ):
         return self._tree_meta
+
+    def connect_to_element_events(self,
+                                  added_handler = None,
+                                  updated_handler = None,
+                                  removed_handler = None ):
+        """Connects to ElementAdded, AttributeUpdated and ElementAboutToBeRemoved
+           events related to elements of this tree.
+        """
+        self._manage_element_events_connection( louie.connect, added_handler, 
+                                                updated_handler, removed_handler )
+
+    def disconnect_from_element_events(self,
+                                       added_handler = None,
+                                       updated_handler = None,
+                                       removed_handler = None ):
+        """Disconnects to ElementAdded, AttributeUpdated and ElementAboutToBeRemoved
+           events related to elements of this tree.
+        """
+        self._manage_element_events_connection( louie.disconnect, added_handler, 
+                                                updated_handler, removed_handler )
+        
+        
+    def _manage_element_events_connection(self, connection_manager,
+                                          added_handler, updated_handler, removed_handler ):
+        if added_handler is not None:
+            connection_manager( added_handler, ElementAdded, self )
+        if updated_handler is not None:
+            connection_manager( updated_handler, AttributeUpdated, self )
+        if removed_handler is not None:
+            connection_manager( removed_handler, ElementAboutToBeRemoved, self )
 
     def to_xml( self, encoding = None ):
         """Outputs a XML string representing the tree.
