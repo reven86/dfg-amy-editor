@@ -40,6 +40,21 @@ def tr( context, message ):
 
 MODEL_TYPE_LEVEL = 'Level'
 
+class ActiveWorldChanged(louie.Signal):
+    """Emitted when the current level MDI change.
+       Signature: (new_active_world)
+       sender: universe the world belong to
+    """
+
+class WorldSelectionChanged(louie.Signal):
+    """Emitted when the selected elements change.
+       Signature: (selected,unselected)
+       selected: set of Element that are now selected
+       unselected: set of Element that are no longer selected, but were previously selected
+       sender: world the element belong to
+    """
+
+
 def find_element_in_tree( root_element, element ):
     """Searchs the specified element in the root_element children and returns all its parent, and its index in its immediate parent.
        Returns None if the element is not found, otherwise returns a tuple ([parent_elements], child_index)
@@ -114,7 +129,6 @@ class GameModel(QtCore.QObject):
            Loads Levels
 
            The following signals are provided:
-           QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)')
            QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
         """
         QtCore.QObject.__init__( self )
@@ -136,7 +150,6 @@ class GameModel(QtCore.QObject):
         self._levels = self._loadDirList( os.path.join( self._res_dir, 'levels' ), 
                                           filename_filter = '%s.scene.bin' )
         self.level_models_by_name = {}
-        self.current_model = None
         self.__is_dirty = False
         self._initializeGlobalReferences()
         self._loadBalls()
@@ -241,13 +254,13 @@ class GameModel(QtCore.QObject):
         return self._levels
 
     def getLevelModel( self, level_name ):
-        return self.level_models_by_name.get( level_name )
-
-    def selectLevel( self, level_name ):
         if level_name not in self.level_models_by_name:
             level_dir = os.path.join( self._res_dir, 'levels', level_name )
 
-            level_world = self.global_world.make_world( metawog.WORLD_LEVEL, level_name, LevelModel, self )
+            level_world = self.global_world.make_world( metawog.WORLD_LEVEL, 
+                                                        level_name, 
+                                                        LevelModel, 
+                                                        self )
             self._loadTree( level_world, metawog.TREE_LEVEL_GAME,
                             level_dir, level_name + '.level.bin' )
             self._loadTree( level_world, metawog.TREE_LEVEL_SCENE,
@@ -256,13 +269,11 @@ class GameModel(QtCore.QObject):
                             level_dir, level_name + '.resrc.bin' )
             
             self.level_models_by_name[level_name] = level_world
-        level_model = self.level_models_by_name[level_name]
-        
-        old_model = level_model
-        self.current_model = level_model
-        self.emit( QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)'),
-                   old_model,
-                   level_model )
+        return self.level_models_by_name[level_name]
+
+    def selectLevel( self, level_name ):
+        level_model = self.getLevelModel(level_name)
+        louie.send( ActiveWorldChanged, self._universe, level_model )
 
     def elementSelected( self, level_name, element_file, element ):
         """Signal that the specified element has been selected."""
@@ -548,6 +559,8 @@ class LevelGraphicView(QtGui.QGraphicsView):
             tree.connect_to_element_events( self.__on_element_added,
                                             self.__on_element_updated,
                                             self.__on_element_about_to_be_removed )
+        louie.connect( self._on_active_world_change, ActiveWorldChanged )
+        
 
     def selectLevelOnSubWindowActivation( self ):
         """Called when the user switched MDI window."""
@@ -628,6 +641,12 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
     def __on_element_about_to_be_removed(self, element, index_in_parent): #IGNORE:W0613
         self.refreshFromModel( element.tree.world, set([element]) )
+
+    def _on_active_world_change(self, active_world):
+        """Called when a new world becomes active (may be another one).
+        """
+        if active_world.key == self.__level_name:
+            self.refreshFromModel( active_world )
 
     def refreshFromModel( self, game_level_model, elements_to_skip = None ):
         elements_to_skip = elements_to_skip or set()
@@ -1288,6 +1307,10 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
     def metaworld_tree( self ):
         return self._metaworld_tree
 
+    @property
+    def meta_tree(self):
+        return self._meta_tree
+
     def set_metaworld_tree( self, tree ):
         assert tree is not None
         assert tree.meta == self._meta_tree, (tree.meta, self._meta_tree)
@@ -1383,6 +1406,23 @@ class MetaWorldTreeView(QtGui.QTreeView):
         self.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
         self.connect( self, QtCore.SIGNAL("customContextMenuRequested(QPoint)"),
                       self._onContextMenu )
+        louie.connect( self._on_active_world_change, ActiveWorldChanged )
+        
+    def _on_active_world_change(self, active_world):
+        """Refresh a tree view with the new root element."""
+        model = self.model()
+        if model is None or active_world is None:
+            model.set_metaworld_tree( None )
+            self.hide()
+        else:
+            model_tree = active_world.find_tree( model.meta_tree )
+            if model_tree is not None:
+                model.set_metaworld_tree( model_tree )
+                root_index = model.index(0,0)
+                self.setExpanded( root_index, True )
+                self.show()
+            else: # the new world has no tree of the type of the view
+                self.hide()
         
     def _onContextMenu( self, menu_pos ):
         # Select the right clicked item
@@ -1486,27 +1526,11 @@ class MainWindow(QtGui.QMainWindow):
     def _reloadGameModel( self ):
         try:
             self._game_model = GameModel( self._wog_path )
-            self.connect( self._game_model, QtCore.SIGNAL('currentModelChanged(PyQt_PyObject,PyQt_PyObject)'),
-                          self._refreshLevel )
             self.connect( self._game_model, QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)'),
                           self._refreshOnSelectedObjectChange )
         except GameModelException, e:
             QtGui.QMessageBox.warning(self, self.tr("Loading WOG levels"),
                                       unicode(e))
-
-    def _refreshLevel( self, old_model, new_game_level_model ):
-        """Refresh the tree views and property list on level switch."""
-        self._refreshElementTree( self.sceneTree, new_game_level_model.scene_tree )
-        self._refreshElementTree( self.levelTree, new_game_level_model.level_tree )
-        self._refreshElementTree( self.levelResourceTree, new_game_level_model.resource_tree )
-        self._refreshGraphicsView( new_game_level_model )
-
-    def _refreshElementTree( self, element_tree_view, root_element ):
-        """Refresh a tree view using its root element."""
-        model = element_tree_view.model()
-        model.set_metaworld_tree( root_element.tree )
-        root_index = model.index(0,0)
-        element_tree_view.setExpanded( root_index, True )
                     
     def _refreshGraphicsView( self, game_level_model ):
         level_mdi = self._findLevelGraphicView( game_level_model.level_name )
