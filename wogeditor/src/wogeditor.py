@@ -1158,10 +1158,10 @@ def validate_reference_property( scope_key, attribute_desc, input ):
     input = unicode(input)
     if scope_key.tracker.is_valid_reference( scope_key, attribute_desc, input ):
         return QtGui.QValidator.Acceptable
-    return QtGui.QValidator.Intermediate, '"%%1" is not a valid reference to an object of type %s' % attribute_desc.reference_familly, input
+    return QtGui.QValidator.Intermediate, '"%%1" is not a valid reference to an object of type %s' % attribute_desc.reference_family, input
 
 def complete_reference_property( scope_key, attribute_desc ):
-    return scope_key.tracker.list_identifiers( scope_key, attribute_desc.reference_familly )
+    return scope_key.tracker.list_identifiers( scope_key, attribute_desc.reference_family )
 
 # For later
 ##def editor_rgb_property( parent, option, index, element, attribute_desc, default_editor_factory ):

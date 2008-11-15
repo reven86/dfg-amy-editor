@@ -93,9 +93,9 @@ class BooleanAttributeDesc(EnumeratedAttributeDesc):
         EnumeratedAttributeDesc.__init__( self, name, ('true','false'), BOOLEAN_TYPE, **kwargs )
 
 class ReferenceAttributeDesc(AttributeDesc):
-    def __init__( self, name, reference_familly, reference_scope, **kwargs ):
+    def __init__( self, name, reference_family, reference_scope, **kwargs ):
         AttributeDesc.__init__( self, name, REFERENCE_TYPE, **kwargs )
-        self.reference_familly = reference_familly
+        self.reference_family = reference_family
         self.reference_scope = reference_scope
 
     def attach_to_object_desc( self, object_desc ):
@@ -103,9 +103,9 @@ class ReferenceAttributeDesc(AttributeDesc):
         object_desc._add_reference_attribute( self )
 
 class IdentifierAttributeDesc(AttributeDesc):
-    def __init__( self, name, reference_familly, reference_scope, **kwargs ):
+    def __init__( self, name, reference_family, reference_scope, **kwargs ):
         AttributeDesc.__init__( self, name, IDENTIFIER_TYPE, **kwargs )
-        self.reference_familly = reference_familly
+        self.reference_family = reference_family
         self.reference_scope = reference_scope
 
     def attach_to_object_desc( self, object_desc ):
@@ -147,11 +147,11 @@ def angle_degrees_attribute( name, min_value = None, max_value = None, **kwargs 
 def angle_radians_attribute( name, min_value = None, max_value = None, **kwargs ):
     return NumericAttributeDesc( name, ANGLE_RADIANS_TYPE, min_value = min_value, max_value = max_value, **kwargs )
 
-def reference_attribute( name, reference_familly, reference_scope, **kwargs ):
-    return ReferenceAttributeDesc( name, reference_familly = reference_familly, reference_scope = reference_scope, **kwargs )
+def reference_attribute( name, reference_family, reference_scope, **kwargs ):
+    return ReferenceAttributeDesc( name, reference_family = reference_family, reference_scope = reference_scope, **kwargs )
 
-def identifier_attribute( name, reference_familly, reference_scope, **kwargs ):
-    return IdentifierAttributeDesc( name, reference_familly, reference_scope, **kwargs )
+def identifier_attribute( name, reference_family, reference_scope, **kwargs ):
+    return IdentifierAttributeDesc( name, reference_family, reference_scope, **kwargs )
 
 def path_attribute( name, **kwargs ):
     return PathAttributeDesc( name, **kwargs )
@@ -344,13 +344,13 @@ def describe_scope( scope_name, files_desc = None, child_scopes = None ):
 
 class ReferenceTracker(object):
     """The reference trackers keep that of all object identifiers to check for reference validity and identifier unicity.
-       It keeps track of all object identifiers per familly and scope.
-       It keeps track of all references on a given object familly/identifier (to easily rename for example).
+       It keeps track of all object identifiers per family and scope.
+       It keeps track of all references on a given object family/identifier (to easily rename for example).
     """
     def __init__( self ):
         self.scopes_by_world = {} # (scope_desc, parent_scope_key) by scope_key
-        self.ref_by_scope_and_familly = {} # dict( (scope_key,familly): dict(id: object_key) )
-        self.back_references = {} # dict( (familly,identifier) : set(scope_key,object_key,attribute_desc)] )
+        self.ref_by_scope_and_family = {} # dict( (scope_key,family): dict(id: object_key) )
+        self.back_references = {} # dict( (family,identifier) : set(scope_key,object_key,attribute_desc)] )
 
     # Mutators
     def scope_added( self, world ):
@@ -384,15 +384,15 @@ class ReferenceTracker(object):
             # walk parents scopes until we find the right one.
             while self.scopes_by_world[scope_key][0] != identifier_desc.reference_scope:
                 scope_key = self.scopes_by_world[scope_key][1]
-            references = self.ref_by_scope_and_familly.get( (scope_key,identifier_desc.reference_familly) )
+            references = self.ref_by_scope_and_family.get( (scope_key,identifier_desc.reference_family) )
             if references is None:
                 references = {}
-                self.ref_by_scope_and_familly[ (scope_key,identifier_desc.reference_familly) ] = references
+                self.ref_by_scope_and_family[ (scope_key,identifier_desc.reference_family) ] = references
             references[identifier_value] = object_key
 
     def _register_object_reference( self, scope_key, object_key, attribute_desc, reference_value ):
         if reference_value is not None:
-            back_reference_key = (attribute_desc.reference_familly, reference_value)
+            back_reference_key = (attribute_desc.reference_family, reference_value)
             back_references = self.back_references.get( back_reference_key )
             if back_references is None:
                 back_references = set()
@@ -417,7 +417,7 @@ class ReferenceTracker(object):
     def _unregister_object_identifier( self, scope_key, object_key, identifier_desc, identifier_value ):
 ##        print '=> unregistering "%s" with identifier: "%s"' % (object_key, repr(identifier_value))
         if identifier_value is not None:
-            references = self.ref_by_scope_and_familly.get( (scope_key,identifier_desc.reference_familly) )
+            references = self.ref_by_scope_and_family.get( (scope_key,identifier_desc.reference_family) )
             if references:
                 try:
                     del references[identifier_value]
@@ -426,7 +426,7 @@ class ReferenceTracker(object):
 
     def _unregister_object_reference( self, scope_key, object_key, attribute_desc, reference_value ):
         if reference_value is not None:
-            back_reference_key = (attribute_desc.reference_familly, reference_value)
+            back_reference_key = (attribute_desc.reference_family, reference_value)
             back_references = self.back_references.get( back_reference_key )
             if back_references:
                 back_references.remove( (scope_key, object_key, attribute_desc) )
@@ -445,7 +445,7 @@ class ReferenceTracker(object):
 
     # Queries
     def is_valid_reference( self, scope_key, attribute_desc, attribute_value ):
-        references = self.ref_by_scope_and_familly.get( (scope_key,attribute_desc.reference_familly) )
+        references = self.ref_by_scope_and_family.get( (scope_key,attribute_desc.reference_family) )
         if references is None or attribute_value not in references:
             scope_desc, parent_scope_key = self.scopes_by_world[scope_key]
             if parent_scope_key is not None:
@@ -453,20 +453,20 @@ class ReferenceTracker(object):
             return False
         return True
 
-    def list_identifiers( self, scope_key, familly ):
-        """Returns a list all identifiers for the specified familly in the specified scope and its parent scopes."""
-        identifiers = self.ref_by_scope_and_familly.get( (scope_key, familly), {} ).keys()
+    def list_identifiers( self, scope_key, family ):
+        """Returns a list all identifiers for the specified family in the specified scope and its parent scopes."""
+        identifiers = self.ref_by_scope_and_family.get( (scope_key, family), {} ).keys()
         scope_desc, parent_scope_key = self.scopes_by_world[scope_key]
         if parent_scope_key is not None:
-            identifiers.extend( self.list_identifiers( parent_scope_key, familly ) )
+            identifiers.extend( self.list_identifiers( parent_scope_key, family ) )
         return identifiers
 
-    def list_references( self, familly, identifier ):
+    def list_references( self, family, identifier ):
         """Returns a list of (scope_key,object_key,attribute_desc) object attributes that reference the specified identifier."""
 ##        import pprint
 ##        pprint.pprint( self.back_references )
-##        print 'Searching', familly, identifier
-        return list( self.back_references.get( (familly, identifier), [] ) )
+##        print 'Searching', family, identifier
+        return list( self.back_references.get( (family, identifier), [] ) )
         
 
 def print_scope( scope ):
@@ -643,8 +643,8 @@ class Universe(WorldsOwner):
         louie.connect( self._on_tree_about_to_be_removed, TreeAboutToBeRemoved )
         louie.connect( self._on_world_added, WorldAdded )
         louie.connect( self._on_world_about_to_be_removed, WorldAboutToBeRemoved )
-        self.ref_by_world_and_familly = {} # dict( (world,familly): dict(id: element) )
-        self.back_references = {} # dict( (familly,identifier) : set(world,element,attribute_desc)] )
+        self.ref_by_world_and_family = {} # dict( (world,family): dict(id: element) )
+        self.back_references = {} # dict( (family,identifier) : set(world,element,attribute_desc)] )
 
     @property
     def universe( self ):
@@ -667,13 +667,13 @@ class Universe(WorldsOwner):
     def _on_tree_added(self, tree):
         if tree.universe == self:
             self._manage_tree_connections( tree, louie.connect )
-            if tree.root:
+            if tree.root is not None:
                 self._on_element_added( tree.root, 0 )
 
     def _on_tree_about_to_be_removed(self, tree):
         if tree.universe == self:
             self._manage_tree_connections( tree, louie.disconnect )
-            if tree.root:
+            if tree.root is not None:
                 self._on_element_about_to_be_removed( tree.root, 0 ) 
             
     def _manage_tree_connections(self, tree, connection_manager):
@@ -708,16 +708,16 @@ class Universe(WorldsOwner):
             world = element.world
             while world.meta != id_meta.reference_scope:
                 world = world.parent_world
-            id_scope_key = (world,id_meta.reference_familly)
-            references = self.ref_by_world_and_familly.get( id_scope_key )
+            id_scope_key = (world,id_meta.reference_family)
+            references = self.ref_by_world_and_family.get( id_scope_key )
             if references is None:
                 references = {}
-                self.ref_by_world_and_familly[ id_scope_key ] = references
+                self.ref_by_world_and_family[ id_scope_key ] = references
             references[identifier_value] = element
 
     def _register_element_reference( self, element, attribute_meta, reference_value ):
         if reference_value is not None:
-            back_reference_key = (attribute_meta.reference_familly, reference_value)
+            back_reference_key = (attribute_meta.reference_family, reference_value)
             back_references = self.back_references.get( back_reference_key )
             if back_references is None:
                 back_references = set()
@@ -750,8 +750,8 @@ class Universe(WorldsOwner):
             while world.meta != id_meta.reference_scope:
                 world = world.parent_world
             # unregister the reference
-            id_scope_key = (world,id_meta.reference_familly)
-            references = self.ref_by_world_and_familly.get( id_scope_key )
+            id_scope_key = (world,id_meta.reference_family)
+            references = self.ref_by_world_and_family.get( id_scope_key )
             if references:
                 try:
                     del references[identifier_value]
@@ -760,7 +760,7 @@ class Universe(WorldsOwner):
 
     def _unregister_element_reference( self, element, attribute_meta, reference_value ):
         if reference_value is not None:
-            back_reference_key = (attribute_meta.reference_familly, reference_value)
+            back_reference_key = (attribute_meta.reference_family, reference_value)
             back_references = self.back_references.get( back_reference_key )
             if back_references:
                 back_references.remove( (element, attribute_meta) )
@@ -779,6 +779,58 @@ class Universe(WorldsOwner):
     
     def _warning( self, message, **kwargs ):
         print message % kwargs
+
+    # Identifier/Reference queries
+    
+    def is_valid_reference( self, world, attribute_meta, attribute_value ):
+        """Checks if the specified attribute reference is valid in the world scope
+           specified by attribute_meta.
+           @exception ValueError if world has no world matching 
+                      attribute_meta.reference_scope in its hierarchy. 
+        """
+        # walk parents scopes until we find the right one.
+        assert world is not None
+        initial_world = world
+        while world.meta != attribute_meta.reference_scope:
+            world = world.parent_world
+            if world is None:
+                raise ValueError( "World '%(world)s' as no meta world '%(scope)s' in its hiearchy" % 
+                                  {'world':initial_world, 
+                                   'scope':attribute_meta.reference_scope } )
+        return self._is_valid_reference_in_world_or_parent( world, 
+                                                            attribute_meta, 
+                                                            attribute_value )
+
+    def _is_valid_reference_in_world_or_parent(self, world, attribute_meta, attribute_value ):
+        """Checks if the world or one of its parent as the specified identifier in
+           the family specified by attribute_meta.
+           Implementation detail of is_valid_reference.
+        """
+        id_scope_key = (world,attribute_meta.reference_family)
+        references = self.ref_by_world_and_family.get( id_scope_key )
+        if references is None or attribute_value not in references:
+            world = world.parent_world
+            if world is not None:
+                return self._is_valid_reference_in_world_or_parent( world, 
+                                                                    attribute_meta, 
+                                                                    attribute_value )
+            return False
+        return True
+
+    def list_identifiers( self, world, family ):
+        """Returns a list all identifiers for the specified family in the specified scope and its parent scopes."""
+        id_scope_key = (world, family)
+        identifiers = set(self.ref_by_world_and_family.get( id_scope_key, {} ).keys())
+        if world.parent_world is not None:
+            identifiers |= self.list_identifiers( world.parent_world, family )
+        return identifiers
+
+    def list_references( self, family, identifier_value ):
+        """Returns a list of (element,attribute_meta) element attributes 
+           that reference the specified identifier.
+        """
+        back_reference_key = (family, identifier_value)
+        return list( self.back_references.get( back_reference_key, [] ) )
 
     def make_unattached_tree_from_xml( self, file_desc, xml_data ):
         """Makes a tree from the provided xml data for the specified kind of tree.
@@ -861,6 +913,18 @@ class World(WorldsOwner):
     @property
     def trees(self):
         return self._trees.values()
+
+    def list_identifiers( self, family ):
+        """Returns a list all identifiers for the specified family in the specified scope and its parent scopes."""
+        return self.universe.list_identifiers(self, family)
+
+    def is_valid_reference( self, attribute_meta, attribute_value ):
+        """Checks if the specified attribute reference is valid in the world scope
+           specified by attribute_meta.
+           @exception ValueError if world has no world matching 
+                      attribute_meta.reference_scope in its hierarchy. 
+        """
+        return self.universe.is_valid_reference( self, attribute_meta, attribute_value )
 
     def _attached_to_parent_world( self, parent_world ):
         """Called when a sub-world is attached to the world."""
@@ -1022,6 +1086,12 @@ class Element(_ElementBase):
     @property
     def meta( self ):
         return self._object_desc
+
+    def make_child( self, element_meta, attributes = None, children = None ):
+        """Makes a new child element and append it to the element."""
+        child_element = Element( element_meta, attributes, children )
+        self.append( child_element )
+        return child_element
 
     def attribute_meta( self, attribute_name ):
         """Returns the AttributeDesc for the specified attribute.
@@ -1231,7 +1301,7 @@ if __name__ == "__main__":
                                         child_scopes = [TEST_LEVEL_SCOPE] )
 
     GLOBAL_TEXT = describe_object( 'text', attributes = [
-        identifier_attribute( 'id', mandatory = True, reference_familly = 'text',
+        identifier_attribute( 'id', mandatory = True, reference_family = 'text',
                               reference_scope = TEST_GLOBAL_SCOPE ),
         string_attribute( 'fr' )
         ] )
@@ -1240,15 +1310,15 @@ if __name__ == "__main__":
     TEST_GLOBAL_FILE.add_objects( [ GLOBAL_TEXT ] )
 
     LEVEL_TEXT = describe_object( 'text', attributes = [
-        identifier_attribute( 'id', mandatory = True, reference_familly = 'text',
-                              reference_scope = TEST_GLOBAL_SCOPE ),
+        identifier_attribute( 'id', mandatory = True, reference_family = 'text',
+                              reference_scope = TEST_LEVEL_SCOPE ),
         string_attribute( 'fr' )
         ] )
     
     LEVEL_SIGN = describe_object( 'sign', attributes = [
-        reference_attribute( 'text', reference_familly = 'text',
+        reference_attribute( 'text', reference_family = 'text',
                              reference_scope = TEST_LEVEL_SCOPE, init = '', mandatory = True ),
-        reference_attribute( 'alt_text', reference_familly = 'text',
+        reference_attribute( 'alt_text', reference_family = 'text',
                              reference_scope = TEST_LEVEL_SCOPE )
         ], objects = [ LEVEL_TEXT ] )
 
@@ -1256,140 +1326,8 @@ if __name__ == "__main__":
 
     TEST_LEVEL_FILE.add_objects( [ LEVEL_INLINE ] )
 
-    class TestScope(object):
-        data = {}
-        objects_desc = {}
-
-        def __init__( self, tracker, name ):
-            self.tracker = tracker
-            self.name = name
-
-        def add_object( self, key, object_desc, **attributes ):
-            self.data[key] = attributes
-            self.objects_desc[key] = object_desc
-            self.tracker.object_added( key )
-
-        def remove_object( self, key ):
-            self.tracker.object_about_to_be_removed( key )
-            del self.data[key]
-            del self.objects_desc[key]
-
-        def update_attribute( self, key, **attributes ):
-            object_desc = self.objects_desc[key]
-            for name, new_value in attributes.iteritems():
-                old_value = self.data[key].get( name )
-                self.data[key][name] = new_value
-                self.tracker.attribute_updated( key, object_desc.attributes_by_name[name],
-                                                old_value, new_value )
-
-        def _retrieve_attribute( self, scope_key, object_key, attribute_desc ):
-            element = scope_key.data.get(object_key)
-            if element:
-                return element.get(attribute_desc.name)
-            return None
-
-        def __repr__( self ):
-            return 'TestScope<%s>' % self.name
-
 
     class MetaTest(unittest.TestCase):
-
-##        def test_identifiers(self):
-##            tracker = ReferenceTracker()
-##            global_scope = TestScope(tracker,'global')
-##            tracker.scope_added( global_scope, TEST_GLOBAL_SCOPE, None )
-##            level1_scope = TestScope(tracker,'level1')
-##            tracker.scope_added( level1_scope, TEST_LEVEL_SCOPE, global_scope )
-##            # add objects
-##            global_scope.add_object( 'hello', GLOBAL_TEXT, id = 'TEXT_HELLO', fr = 'bonjour' )
-##            level1_scope.add_object( 'hi', LEVEL_TEXT, id = 'TEXT_HI', fr = 'salut' )
-##            # check
-##            self.assert_( tracker.is_valid_reference( global_scope,
-##                                                      LEVEL_SIGN.attributes_by_name['text'],
-##                                                      'TEXT_HELLO' ) )
-##            self.assert_( tracker.is_valid_reference( level1_scope,
-##                                                      LEVEL_SIGN.attributes_by_name['text'],
-##                                                      'TEXT_HELLO' ) )
-##            self.assert_( tracker.is_valid_reference( level1_scope,
-##                                                      LEVEL_SIGN.attributes_by_name['text'],
-##                                                      'TEXT_HI' ) )
-##            self.failIf( tracker.is_valid_reference( global_scope,
-##                                                     LEVEL_SIGN.attributes_by_name['text'],
-##                                                     'TEXT_HI' ) )
-##            self.assertEqual( ['TEXT_HELLO'], tracker.list_identifiers( global_scope, 'text' ) )
-##            self.assertEqual( sorted(['TEXT_HELLO','TEXT_HI']),
-##                              sorted(tracker.list_identifiers( level1_scope, 'text' )) )
-##            # update global hello object attribute
-##            global_scope.update_attribute( 'hello', id='TEXT_HELLO_NEW', fr='bonjour new' )
-##            # check
-##            self.failIf( tracker.is_valid_reference( global_scope,
-##                                                     LEVEL_SIGN.attributes_by_name['text'],
-##                                                     'TEXT_HELLO' ) )
-##            self.failIf( tracker.is_valid_reference( level1_scope,
-##                                                     LEVEL_SIGN.attributes_by_name['text'],
-##                                                     'TEXT_HELLO' ) )
-##            self.assert_( tracker.is_valid_reference( global_scope,
-##                                                      LEVEL_SIGN.attributes_by_name['text'],
-##                                                      'TEXT_HELLO_NEW' ) )
-##            self.assert_( tracker.is_valid_reference( level1_scope,
-##                                                      LEVEL_SIGN.attributes_by_name['text'],
-##                                                      'TEXT_HELLO_NEW' ) )
-##            self.assertEqual( ['TEXT_HELLO_NEW'], tracker.list_identifiers( global_scope, 'text' ) )
-##            self.assertEqual( sorted(['TEXT_HELLO_NEW','TEXT_HI']),
-##                              sorted(tracker.list_identifiers( level1_scope, 'text' )) )
-##            # remove object
-##            global_scope.remove_object( 'hello' )
-##            # check
-##            self.failIf( tracker.is_valid_reference( level1_scope,
-##                                                     LEVEL_SIGN.attributes_by_name['text'],
-##                                                     'TEXT_HELLO_NEW' ) )
-##            self.assertEqual( sorted(['TEXT_HI']),
-##                              sorted(tracker.list_identifiers( level1_scope, 'text' )) )
-
-##        def test_back_references(self):
-##            tracker = ReferenceTracker()
-##            global_scope = TestScope(tracker,'global')
-##            tracker.scope_added( global_scope )
-##            level1_scope = TestScope(tracker,'level1')
-##            tracker.scope_added( level1_scope, TEST_LEVEL_SCOPE, global_scope )
-##            level2_scope = TestScope(tracker,'level2')
-##            tracker.scope_added( level2_scope, TEST_LEVEL_SCOPE, global_scope )
-##            # add objects
-##            global_scope.add_object( 'hello', GLOBAL_TEXT, id = 'TEXT_HELLO', fr = 'bonjour' )
-##            level1_scope.add_object( 'hi', LEVEL_TEXT, id = 'TEXT_HI', fr = 'salut' )
-##            for level_scope in (level1_scope, level2_scope):
-##                level_scope.add_object( 'sign1', LEVEL_SIGN, text = 'TEXT_HI' )
-##                level_scope.add_object( 'sign2', LEVEL_SIGN, text = 'TEXT_HELLO' )
-##            level1_scope.add_object( 'sign3', LEVEL_SIGN, text = 'TEXT_HI' )
-##            level2_scope.add_object( 'sign4', LEVEL_SIGN, text = 'TEXT_HELLO', alt_text = 'TEXT_HELLO' )
-##            # check
-##            level_text_attribute = LEVEL_SIGN.attributes_by_name['text']
-##            level_alt_text_attribute = LEVEL_SIGN.attributes_by_name['alt_text']
-##            self.assertEqual( sorted([ (level1_scope, 'sign2', level_text_attribute),
-##                                       (level2_scope, 'sign2', level_text_attribute),
-##                                       (level2_scope, 'sign4', level_text_attribute),
-##                                       (level2_scope, 'sign4', level_alt_text_attribute) ]),
-##                              sorted(tracker.list_references( 'text', 'TEXT_HELLO' )) )
-##            self.assertEqual( sorted([ (level1_scope, 'sign1', level_text_attribute),
-##                                       (level2_scope, 'sign1', level_text_attribute),
-##                                       (level1_scope, 'sign3', level_text_attribute) ]),
-##                              sorted(tracker.list_references( 'text', 'TEXT_HI' )) )
-##            # remove object
-##            level2_scope.remove_object( 'sign4' )
-##            self.assertEqual( sorted([ (level1_scope, 'sign2', level_text_attribute),
-##                                       (level2_scope, 'sign2', level_text_attribute) ]),
-##                              sorted(tracker.list_references( 'text', 'TEXT_HELLO' )) )
-##            # update objects
-##            level1_scope.update_attribute( 'sign2', text='TEXT_HI' )
-##            level1_scope.update_attribute( 'sign3', text='TEXT_HELLO' )
-##            # check
-##            self.assertEqual( sorted([ (level2_scope, 'sign2', level_text_attribute),
-##                                       (level1_scope, 'sign3', level_text_attribute) ]),
-##                              sorted(tracker.list_references( 'text', 'TEXT_HELLO' )) )
-##            self.assertEqual( sorted([ (level1_scope, 'sign1', level_text_attribute),
-##                                       (level2_scope, 'sign1', level_text_attribute),
-##                                       (level1_scope, 'sign2', level_text_attribute) ]),
-##                              sorted(tracker.list_references( 'text', 'TEXT_HI' )) )
 
         def test_descriptions( self ):
             self.assertEqual( sorted(['text', 'sign', 'inline']), sorted(TEST_LEVEL_SCOPE.objects_by_tag.keys()) )
@@ -1418,8 +1356,81 @@ if __name__ == "__main__":
             self.world_level2 = self.world.make_world( TEST_LEVEL_SCOPE, 'level2' )
             self.level2 = self.world_level2.make_tree( TEST_LEVEL_FILE )
 
-        def _make_element(self, object_desc ):
-            return Element( object_desc )
+        def _make_element(self, object_desc, **attributes ):
+            return Element( object_desc, attributes = attributes )
+
+        def test_identifiers(self):
+            universe = self.universe
+            self.assertEqual( set([]), universe.list_identifiers(self.world, 'text') )
+            self.failIf(universe.list_references('text', 'TEXT_HI'))
+            # add objects
+            gt1 = self._make_element( GLOBAL_TEXT, id = 'TEXT_HI', fr = 'Salut' )
+            global_tree = self.world.make_tree( TEST_GLOBAL_FILE, gt1 )
+            assert global_tree.universe == universe
+            # check reference resolution to global world from global or level worlds
+            def check_text_ids( world, *args ):
+                self.assertEqual( set(args), 
+                                  universe.list_identifiers(world, 'text') )
+            check_text_ids( self.world, 'TEXT_HI' )
+            check_text_ids( self.world_level1, 'TEXT_HI' )
+            check_text_ids( self.world_level2, 'TEXT_HI' )
+            def check_valid_sign_reference(world, value):
+                attribute_meta = LEVEL_SIGN.attributes_by_name['text']
+                assert world is not None
+                self.assert_( world.is_valid_reference(attribute_meta, value) ) 
+            def check_invalid_sign_reference(world, value):
+                attribute_meta = LEVEL_SIGN.attributes_by_name['text']
+                assert world is not None
+                self.failIf( world.is_valid_reference(attribute_meta, value) ) 
+            check_valid_sign_reference( self.world_level1, 'TEXT_HI')
+            check_valid_sign_reference( self.world_level2, 'TEXT_HI')
+            check_invalid_sign_reference( self.world_level1, 'TEXT_HO')
+            check_invalid_sign_reference( self.world_level2, 'TEXT_HO')
+            # add identifiers specific to level1 scope
+            l1root = self._make_element( LEVEL_INLINE )
+            l2root = self._make_element( LEVEL_INLINE )
+            self.level1.set_root( l1root )
+            self.level2.set_root( l2root )
+            l1_ho = l1root.make_child(LEVEL_TEXT, {'id':'TEXT_HO', 'fr':'Oh'})
+            # check that reference resolution keep level worlds identifiers independent
+            check_valid_sign_reference( self.world_level1, 'TEXT_HO')
+            check_invalid_sign_reference( self.world_level2, 'TEXT_HO')
+            check_text_ids( self.world, 'TEXT_HI' )
+            check_text_ids( self.world_level1, 'TEXT_HI', 'TEXT_HO' )
+            check_text_ids( self.world_level2, 'TEXT_HI' )
+            # add identifier specified to level2 scope
+            l2_ho = l2root.make_child(LEVEL_TEXT, {'id':'TEXT_HO', 'fr':'Oooh'})
+            check_valid_sign_reference( self.world_level2, 'TEXT_HO')
+            check_text_ids( self.world_level1, 'TEXT_HI', 'TEXT_HO' )
+            check_text_ids( self.world_level2, 'TEXT_HI', 'TEXT_HO' )
+            #
+            # check back references
+            #
+            def check_references( identifier_value, *args ):
+                expected = set([ (element,element.meta.attribute_by_name(name))
+                                 for element, name in args ] )
+                actual = set( universe.list_references( 'text', identifier_value ) )
+                self.assertEqual( expected, actual )
+            check_references( 'TEXT_HI' )    
+            l1s1 = l1root.make_child( LEVEL_SIGN, 
+                                      {'text':'TEXT_HI', 'alt_text':'TEXT_HO'})
+            check_references( 'TEXT_HI', (l1s1,'text') )    
+            check_references( 'TEXT_HO', (l1s1,'alt_text') )
+            # check after update    
+            l1s1.set( 'text', 'TEXT_HO' )
+            check_references( 'TEXT_HI' )    
+            check_references( 'TEXT_HO', (l1s1,'text'), (l1s1,'alt_text') )
+            # check after unset attribute
+            l1s1.unset( 'alt_text' )
+            check_references( 'TEXT_HI' )    
+            check_references( 'TEXT_HO', (l1s1,'text') )
+            # remove element with reference
+            l1s1.parent.remove( l1s1 )
+            check_references( 'TEXT_HI' )    
+            check_references( 'TEXT_HO' )
+            # remove element with identifier
+            l1_ho.parent.remove( l1_ho )
+            check_invalid_sign_reference( self.world_level1, 'TEXT_HO')
 
         def test_world( self ):
             self.assertEqual( self.universe, self.universe.universe )
