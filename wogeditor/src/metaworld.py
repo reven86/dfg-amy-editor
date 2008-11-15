@@ -195,6 +195,12 @@ class ObjectsMetaOwner:
                     break
         return found_element_meta
 
+    def immediate_child_elements(self):
+        return self.elements_by_tag.values()
+
+    def immediate_child_tags(self):
+        return self.elements_by_tag.keys()
+
     def find_immediate_child_by_tag( self, tag ):
         """Returns the ElementMeta corresponding to the specified tag if found, otherwise returns None.
            Notes: only direct child are inspected. Grand-children will not be examined.
@@ -269,6 +275,9 @@ class ElementMeta(ObjectsMetaOwner):
         """ 
         return self.attributes_by_name[attribute_name]
 
+    @property
+    def attributes(self):
+        return self.attributes_by_name.values()
 
     def __repr__( self ):
         return '%s(tag=%s, attributes=[%s], elements=[%s])' % (

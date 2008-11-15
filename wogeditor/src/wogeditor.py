@@ -1277,7 +1277,7 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
 ##            model.setData(index, QtCore.QVariant( value ), QtCore.Qt.EditRole)
             QtGui.QStyledItemDelegate.setModelData( self, editor, model, index )
 
-class MetaWorldTreeViewModel(QtGui.QStandardItemModel):
+class MetaWorldTreeModel(QtGui.QStandardItemModel):
     def __init__( self, meta_tree, *args ):
         QtGui.QStandardItemModel.__init__( self, *args )
         self._metaworld_tree = None
@@ -1357,7 +1357,7 @@ class MetaWorldTreeViewModel(QtGui.QStandardItemModel):
         items_to_process = [ (item_parent, element, index) ]
         while items_to_process:
             item_parent, element, index = items_to_process.pop(0)
-            item = MetaWorldTreeViewModel._insertElementNodeInTree( item_parent, 
+            item = MetaWorldTreeModel._insertElementNodeInTree( item_parent, 
                                                                     element, 
                                                                     index )
             for child_element in element:
@@ -1375,6 +1375,74 @@ class MetaWorldTreeViewModel(QtGui.QStandardItemModel):
         item.setFlags( item.flags() & ~QtCore.Qt.ItemIsEditable )
         item_parent.insertRow( index, item )
         return item
+
+class MetaWorldTreeView(QtGui.QTreeView):
+    def __init__( self, *args ):
+        QtGui.QTreeView.__init__( self, *args )
+        # Hook context menu popup signal
+        self.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
+        self.connect( self, QtCore.SIGNAL("customContextMenuRequested(QPoint)"),
+                      self._onContextMenu )
+        
+    def _onContextMenu( self, menu_pos ):
+        # Select the right clicked item
+        index = self.indexAt(menu_pos)
+        if index.isValid():
+            element = index.data( QtCore.Qt.UserRole ).toPyObject()
+            if element is None:
+                print 'Warning: somehow managed to activate context menu on non item???'
+            else:
+                selection_model = self.selectionModel()
+                selection_model.select( index, QtGui.QItemSelectionModel.ClearAndSelect )
+                # Notes: a selectionChanged signal may have been emitted due to selection change.
+                # Check out FormWindow::initializePopupMenu in designer, it does plenty of interesting stuff...
+                menu = QtGui.QMenu( self )
+                if not element.is_root(): 
+                    remove_action = menu.addAction( self.tr("Remove element") )
+                    menu.addSeparator()
+                else:
+                    remove_action = None
+                if index.parent() is None:
+                    remove_action.setEnable( False )
+                child_element_meta_by_actions = {}
+                element_meta = element.meta
+                for tag in sorted(element_meta.immediate_child_tags()):
+                    child_element_meta = element_meta.find_immediate_child_by_tag(tag)
+                    if not child_element_meta.read_only:
+                        action = menu.addAction( self.tr("Add child %1").arg(tag) )
+                        child_element_meta_by_actions[action] = child_element_meta
+                selected_action = menu.exec_( self.viewport().mapToGlobal(menu_pos) )
+                selected_element_meta = child_element_meta_by_actions.get( selected_action )
+                if selected_element_meta:
+                    self._appendChildTag( index, selected_element_meta )
+                elif remove_action is not None and selected_action is remove_action:
+                    element_to_remove = self.model().itemFromIndex( index ).data( QtCore.Qt.UserRole ).toPyObject()
+                    element_to_remove.parent.remove( element_to_remove )
+        
+    def _appendChildTag( self, parent_element_index, new_element_meta ):
+        """Adds the specified child tag to the specified element and update the tree view."""
+        parent_element = parent_element_index.data( QtCore.Qt.UserRole ).toPyObject()
+        if parent_element is not None:
+            # build the list of attributes with their initial values.
+            mandatory_attributes = {}
+            for attribute_meta in new_element_meta.attributes:
+                if attribute_meta.mandatory:
+                    init_value = attribute_meta.init
+                    if init_value is None:
+                        init_value = ''
+                    mandatory_attributes[attribute_meta.name] = init_value
+            # Notes: when the element is added, the ElementAdded signal will cause the
+            # corresponding item to be inserted into the tree.
+            child_element = parent_element.make_child( new_element_meta, 
+                                                       mandatory_attributes )
+            # Select new item in tree view
+            item_child = self.model()._findItemByElement( child_element )
+            selection_model = self.selectionModel()
+            selection_model.select( item_child.index(), QtGui.QItemSelectionModel.ClearAndSelect )
+            self.scrollTo( item_child.index() )
+        else:
+            print 'Warning: attempting to add an element to an item without associated elements!', parent_element, parent_element_index
+        
 
 class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
     def __init__( self, *args ):
@@ -1599,65 +1667,6 @@ class MainWindow(QtGui.QMainWindow):
         else:
             print 'Warning: no data on edited item!'
 
-    def _onTreeViewCustomContextMenu( self, tree_view, element_file, menu_pos ):
-        # Select the right clicked item
-        index = tree_view.indexAt(menu_pos)
-        if index.isValid():
-            element = index.data( QtCore.Qt.UserRole ).toPyObject()
-            if element is None:
-                print 'Warning: somehow managed to activate context menu on non item???'
-            else:
-                selection_model = tree_view.selectionModel()
-                selection_model.select( index, QtGui.QItemSelectionModel.ClearAndSelect )
-                # Notes: a selectionChanged signal may have been emitted due to selection change.
-                # Check out FormWindow::initializePopupMenu in designer, it does plenty of interesting stuff...
-                menu = QtGui.QMenu( tree_view )
-                if not element.is_root(): 
-                    remove_action = menu.addAction( self.tr("Remove element") )
-                    menu.addSeparator()
-                else:
-                    remove_action = None
-                if index.parent() is None:
-                    remove_action.setEnable( False )
-                child_element_meta_by_actions = {}
-                element_meta = element_file.find_element_meta_by_tag(element.tag)
-                for tag in sorted(element_meta.elements_by_tag.iterkeys()):
-                    child_element_meta = element_meta.find_immediate_child_by_tag(tag)
-                    if not child_element_meta.read_only:
-                        action = menu.addAction( self.tr("Add child %1").arg(tag) )
-                        child_element_meta_by_actions[action] = child_element_meta
-                selected_action = menu.exec_( tree_view.viewport().mapToGlobal(menu_pos) )
-                selected_element_meta = child_element_meta_by_actions.get( selected_action )
-                if selected_element_meta:
-                    self._appendChildTag( tree_view, element_file, index, selected_element_meta )
-                elif remove_action is not None and selected_action is remove_action:
-                    element_to_remove = tree_view.model().itemFromIndex( index ).data( QtCore.Qt.UserRole ).toPyObject()
-                    element_to_remove.parent.remove( element_to_remove )
-
-    def _appendChildTag( self, tree_view, element_file, parent_element_index, new_element_meta ):
-        """Adds the specified child tag to the specified element and update the tree view."""
-        parent_element = parent_element_index.data( QtCore.Qt.UserRole ).toPyObject()
-        if parent_element is not None:
-            # build the list of attributes with their initial values.
-            mandatory_attributes = {}
-            for attribute_name, attribute_meta in new_element_meta.attributes_by_name.iteritems():
-                if attribute_meta.mandatory:
-                    init_value = attribute_meta.init
-                    if init_value is None:
-                        init_value = ''
-                    mandatory_attributes[attribute_name] = init_value
-            # Notes: when the element is added, the ElementAdded signal will cause the
-            # corresponding item to be inserted into the tree.
-            child_element = parent_element.make_child( new_element_meta, 
-                                                       mandatory_attributes )
-            # Select new item in tree view
-            item_child = tree_view.model()._findItemByElement( child_element )
-            selection_model = tree_view.selectionModel()
-            selection_model.select( item_child.index(), QtGui.QItemSelectionModel.ClearAndSelect )
-            tree_view.scrollTo( item_child.index() )
-        else:
-            print 'Warning: attempting to add an element to an item without associated elements!', parent_element, parent_element_index
-
     def save(self):
         """Saving all modified elements.
         """
@@ -1869,8 +1878,8 @@ class MainWindow(QtGui.QMainWindow):
     def createElementTreeView(self, name, element_file, sibling_tabbed_dock = None ):
         dock = QtGui.QDockWidget( self.tr( name ), self )
         dock.setAllowedAreas( QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea )
-        element_tree_view = QtGui.QTreeView( dock )
-        tree_model = MetaWorldTreeViewModel(element_file, 0, 1, element_tree_view)  # nb rows, nb cols
+        element_tree_view = MetaWorldTreeView( dock )
+        tree_model = MetaWorldTreeModel(element_file, 0, 1, element_tree_view)  # nb rows, nb cols
         element_tree_view.setModel( tree_model )
         dock.setWidget( element_tree_view )
         self.addDockWidget( QtCore.Qt.RightDockWidgetArea, dock )
@@ -1888,10 +1897,6 @@ class MainWindow(QtGui.QMainWindow):
         selection_model = element_tree_view.selectionModel()
         self.connect( selection_model, QtCore.SIGNAL("selectionChanged(QItemSelection,QItemSelection)"),
                       TreeBinder( element_tree_view, element_file, self._onElementTreeSelectionChange) )
-        # Hook context menu popup signal
-        element_tree_view.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
-        self.connect( element_tree_view, QtCore.SIGNAL("customContextMenuRequested(QPoint)"),
-                      TreeBinder( element_tree_view, element_file, self._onTreeViewCustomContextMenu) )
         self.tree_view_by_element_world[element_file] = element_tree_view
         return dock, element_tree_view
         
