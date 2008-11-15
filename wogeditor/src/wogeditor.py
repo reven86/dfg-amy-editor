@@ -1519,6 +1519,9 @@ class MetaWorldTreeView(QtGui.QTreeView):
                     init_value = attribute_meta.init
                     if init_value is None:
                         init_value = ''
+                    if attribute_meta.type == metaworld.IDENTIFIER_TYPE:
+                        init_value = parent_element.world.generate_unique_identifier(
+                            attribute_meta )
                     mandatory_attributes[attribute_meta.name] = init_value
             # Notes: when the element is added, the ElementAdded signal will cause the
             # corresponding item to be inserted into the tree.

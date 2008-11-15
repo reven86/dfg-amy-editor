@@ -736,8 +736,10 @@ class Universe(WorldsOwner):
 
     
     def is_valid_attribute_reference( self, world, attribute_meta, id_value ):
-        """Checks if the specified attribute reference is valid in the world,
-           for the reference world and family specified by attribute_meta.
+        """Checks if id_value is valid in world for the family specified 
+           by attribute_meta.
+           Resolution only consider identifiers defined in world at the level or above 
+           the level of reference_world_meta in the hierarchy of world.
            @exception ValueError if world has no world matching 
                       attribute_meta.reference_world in its hierarchy. 
         """
@@ -745,6 +747,17 @@ class Universe(WorldsOwner):
                                       attribute_meta.reference_world, 
                                       attribute_meta.reference_family, 
                                       id_value) is not None
+
+    
+    def is_valid_reference( self, world, reference_world, family, id_value ):
+        """Checks if id_value is a valid reference in world of type family.
+           Resolution only consider identifiers defined in world at the level or above 
+           the level of reference_world_meta in the hierarchy of world.
+           @exception ValueError if world has no world matching 
+                      attribute_meta.reference_world in its hierarchy. 
+        """
+        return self.resolve_reference(world, reference_world, 
+                                      family, id_value) is not None
 
     def list_identifiers( self, world, family ):
         """Returns a list all identifiers for the specified family in the specified world and its parent worlds."""
@@ -864,6 +877,17 @@ class World(WorldsOwner):
         """
         return self.universe.is_valid_attribute_reference( self, attribute_meta, attribute_value )
 
+    def is_valid_reference( self, reference_world, family, id_value ):
+        """Checks if id_value is a valid reference in this world of type family.
+           Resolution only consider identifiers defined in this world 
+           at the level or above the level of reference_world_meta in 
+           the hierarchy of world.
+           @exception ValueError if world has no world matching 
+                      attribute_meta.reference_world in its hierarchy. 
+        """
+        return self.universe.is_valid_reference( self, reference_world, 
+                                                 family, id_value )
+
     def _attached_to_parent_world( self, parent_world ):
         """Called when a sub-world is attached to the world."""
         self._parent_world = parent_world
@@ -911,6 +935,21 @@ class World(WorldsOwner):
             louie.send( TreeAboutToBeRemoved, self, tree )
             del self._trees[ tree._tree_meta ]
             tree._world = None
+
+    def generate_unique_identifier(self, id_meta ):
+        """Generates an identifier value that is unique for the specified attribute
+           id_meta in this world.
+        """
+        assert id_meta.type == IDENTIFIER_TYPE
+        prefix = id_meta.reference_family
+        serial_number = 1
+        while True:
+            id_value = '%s%d' % (prefix,serial_number)
+            if not self.is_valid_reference( id_meta.reference_world,
+                                            id_meta.reference_family, 
+                                            id_value ):
+                return id_value
+            serial_number += 1
 
     def _warning( self, message, **kwargs ):
         self._universe._warning( message, **kwargs )

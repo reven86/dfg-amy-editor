@@ -5,6 +5,7 @@
 * Missing SceneLayer colorize attribute
 * Missing signpost image attribute
 * Added check to prefix removing the root of the tree
+* Added unique identifier generation when adding child
 
 - Version 0.3.1:
 * Fixed bug that prevented adding/editing a new pipe in a level
