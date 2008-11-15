@@ -28,3 +28,22 @@ def standardModelTreeItems( model, root_index = None ):
         items.append( model.itemFromIndex(index) )
     return items
     
+def index_path( index ):
+    """Returns a list of tuple (row,column) corresponding to the index path starting from
+       the root.
+       index: instance of QModelIndex
+    """
+    path = []
+    if not index.isValid():
+        return [(-1,-1)]
+    if index.parent().isValid():
+        path.extend( index_path(index.parent()) )
+    path.append( (index.row(),index.column()) )
+    return path
+
+def index_path_str(index, separator = None):
+    """Returns a string representing the index path.
+       index: instance of QModelIndex
+    """
+    separator = separator or ' / '
+    return separator.join( ['%d:%d' % xy for xy in index_path(index) ] )
