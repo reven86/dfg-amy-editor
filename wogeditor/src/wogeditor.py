@@ -352,7 +352,6 @@ class GameModel(QtCore.QObject):
         level_world = self.global_world.make_world( metawog.WORLD_LEVEL, level_name,
                                                     LevelModel, self, is_dirty = True )
         level_world.add_tree( level_tree, scene_tree, resource_tree )
-        level_world.initializeLevelReferencesAndCache()
         self.level_models_by_name[level_name] = level_world
         self._levels.append( level_name )
         self._levels.sort()
@@ -364,16 +363,75 @@ class BallModel(metaworld.World):
         self.game_model = game_model
         self.is_dirty = False
 
+class DirtyWorldTracker(object):
+    """Provides the list of tree that have been modified in a world.
+       Use element events to track change. Starts tracking for change
+       only once all tree from the world description have been added 
+       to the world. 
+    """
+    def __init__(self, world, is_dirty = False):
+        """world: world that is tracked for change.
+           is_dirty: is the world initially considered has dirty (new world for example).
+        """
+        self.__world = world
+        if is_dirty:
+            self.__dirty_tree_metas = set( self.__world.meta.trees )
+        else:
+            self.__dirty_tree_metas = set()
+        louie.connect( self.__on_tree_added, metawog.TreeAdded, world )
+
+    def __on_tree_added(self, tree):
+        for tree_meta in self.__world.meta.trees:
+            if self.__world.find_tree(tree_meta) is None: # level not ready yet
+                return
+        # all tree are available, setup the level
+        for tree in self.__world.trees:
+            tree.connect_to_element_events( self.__on_element_added,
+                                            self.__on_element_updated,
+                                            self.__on_element_about_to_be_removed )
+
+    def __on_element_added(self, element, index_in_parent): #IGNORE:W0613
+        self.__dirty_tree_metas.add( element.tree.meta )
+
+    def __on_element_about_to_be_removed(self, element, index_in_parent): #IGNORE:W0613
+        self.__dirty_tree_metas.add( element.tree.meta )
+
+    def __on_element_updated(self, element, name, new_value, old_value): #IGNORE:W0613
+        self.__dirty_tree_metas.add( element.tree.meta )
+
+    @property
+    def is_dirty(self):
+        """Returns True if one of the world tree has been modified."""
+        return len(self.__dirty_tree_metas) > 0
+
+    @property
+    def dirty_trees(self):
+        """Returns the list of modified world trees."""
+        return [ self.__world.find_tree(tree_meta) 
+                 for tree_meta in list(self.__dirty_tree_metas) ]
+    
+    @property
+    def dirty_tree_metas(self):
+        """Returns the types of the modified world tree."""
+        return list(self.__dirty_tree_metas)
+
+    def is_dirty_tree(self, tree_meta):
+        """Return True if the specified type of world tree has been modified."""
+        return tree_meta in self.dirty_tree_metas 
+
+    def clean(self):
+        """Forget any change made to the trees so that is_dirty returns True."""
+        self.__dirty_tree_metas = set()
+
+    def clean_tree(self, tree_meta):
+        """Forget any change made to the specified tree type."""
+        self.__dirty_tree_metas.remove( tree_meta )
+
 class LevelModel(metaworld.World):
     def __init__( self, universe, world_meta, level_name, game_model, is_dirty = False ):
         metaworld.World.__init__( self, universe, world_meta, level_name )
         self.game_model = game_model
-        self.dirty_element_types = set()
-        if is_dirty:
-            self.dirty_element_types |= set( (metawog.TREE_LEVEL_GAME,
-                                             metawog.TREE_LEVEL_RESOURCE,
-                                             metawog.TREE_LEVEL_SCENE) )
-
+        self.__dirty_tracker = DirtyWorldTracker( self, is_dirty )
 
     @property
     def level_name( self ):
@@ -393,32 +451,27 @@ class LevelModel(metaworld.World):
 
     @property
     def is_dirty( self ):
-        return len(self.dirty_element_types) != 0
+        return self.__dirty_tracker.is_dirty
 
     def isReadOnlyLevel( self ):
         return self.level_name.lower() in 'ab3 beautyandthetentacle beautyschool blusteryday bulletinboardsystem burningman chain deliverance drool economicdivide fistyreachesout flyawaylittleones flyingmachine geneticsortingmachine goingup gracefulfailure grapevinevirus graphicprocessingunit hanglow helloworld htinnovationcommittee immigrationnaturalizationunit impalesticky incinerationdestination infestytheworm ivytower leaphole mapworldview mistyslongbonyroad mom observatoryobservationstation odetobridgebuilder productlauncher redcarpet regurgitationpumpingstation roadblocks secondhandsmoke superfusechallengetime theserver thirdwheel thrustertest towerofgoo tumbler uppershaft volcanicpercolatordayspa waterlock weathervane whistler youhavetoexplodethehead'.split()
 
     def saveModifiedElements( self ):
         """Save the modified scene, level, resource tree."""
-        if self.isReadOnlyLevel():  # Discards change made on read-only level
-            self.dirty_element_types = set()
-            return
-        level_name = self.level_name
-        level_dir = os.path.join( self.game_model._res_dir, 'levels', level_name )
-        if metawog.TREE_LEVEL_GAME in self.dirty_element_types:
-            self.game_model._savePackedData( level_dir, level_name + '.level.bin', self.level_tree )
-            self.dirty_element_types.remove( metawog.TREE_LEVEL_GAME )
-        if metawog.TREE_LEVEL_RESOURCE in self.dirty_element_types:
-            self.game_model._savePackedData( level_dir, level_name + '.resrc.bin', self.resource_tree )
-            self.dirty_element_types.remove( metawog.TREE_LEVEL_RESOURCE )
-        if metawog.TREE_LEVEL_SCENE in self.dirty_element_types:
-            self.game_model._savePackedData( level_dir, level_name + '.scene.bin', self.scene_tree )
-            self.dirty_element_types.remove( metawog.TREE_LEVEL_SCENE )
+        if not self.isReadOnlyLevel():  # Discards change made on read-only level
+            level_name = self.level_name
+            level_dir = os.path.join( self.game_model._res_dir, 'levels', level_name )
+            if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_GAME):
+                self.game_model._savePackedData( level_dir, level_name + '.level.bin', self.level_tree )
+            if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_RESOURCE):
+                self.game_model._savePackedData( level_dir, level_name + '.resrc.bin', self.resource_tree )
+            if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_SCENE):
+                self.game_model._savePackedData( level_dir, level_name + '.scene.bin', self.scene_tree )
+        self.__dirty_tracker.clean()
 
     def updateObjectPropertyValue( self, element_file, element, property_name, new_value ):
         """Changes the property value of an element (scene, level or resource)."""
         element.set( property_name, new_value )
-        self.dirty_element_types.add( element_file )
         self.game_model.elementPropertyValueChanged( self.level_name,
                                                     element_file, element,
                                                     property_name, new_value )
@@ -439,7 +492,6 @@ class LevelModel(metaworld.World):
             index = len(parent_element)
         parent_element.insert( index, element )
         # Broadcast the insertion event
-        self.dirty_element_types.add( element_file )
         self.game_model.elementAdded( self.level_name, element_file, parent_element, element, index )
 
     def removeElement( self, element_file, element ):
@@ -457,7 +509,6 @@ class LevelModel(metaworld.World):
         del parent_elements[-1][index_in_parent]
         # broadcast element removal event...
         self.game_model.elementRemoved( self.level_name, element_file, parent_elements, element, index_in_parent )
-        self.dirty_element_types.add( element_file )
         return True
 
     def getImagePixmap( self, image_id ):

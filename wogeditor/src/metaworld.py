@@ -319,6 +319,10 @@ class WorldMeta(object):
         self.add_trees_meta( trees_meta )
 
     @property
+    def trees(self):
+        return self.trees_meta_by_name.values()
+
+    @property
     def elements_by_tag( self ):
         if self.__elements_by_tag is None:
             self.__elements_by_tag = {}
