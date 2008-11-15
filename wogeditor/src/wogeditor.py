@@ -85,15 +85,15 @@ class GameModel(QtCore.QObject):
         properties_dir = os.path.join( self._wog_dir, u'properties' )
         self._res_dir = os.path.join( self._wog_dir, u'res' )
         self._universe = metaworld.Universe()
-        self.global_world = self._universe.make_world( metawog.GLOBAL_SCOPE, 'global' )
-        self._effects_tree = self._loadTree( self.global_world, metawog.GLOBAL_FX_FILE,
+        self.global_world = self._universe.make_world( metawog.WORLD_GLOBAL, 'global' )
+        self._effects_tree = self._loadTree( self.global_world, metawog.TREE_GLOBAL_FX,
                                              properties_dir, 'fx.xml.bin' )
-        self._materials_tree = self._loadTree( self.global_world, metawog.GLOBAL_MATERIALS_FILE,
+        self._materials_tree = self._loadTree( self.global_world, metawog.TREE_GLOBAL_MATERIALS,
                                                properties_dir, 'materials.xml.bin' )
-        self._resources_tree = self._loadTree( self.global_world, metawog.GLOBAL_RESOURCE_FILE,
+        self._resources_tree = self._loadTree( self.global_world, metawog.TREE_GLOBAL_RESOURCE,
                                                properties_dir, 'resources.xml.bin' )
         self._readonly_resources = set()    # resources in resources.xml that have expanded defaults idprefix & path
-        self._texts_tree = self._loadTree( self.global_world, metawog.GLOBAL_TEXT_FILE,
+        self._texts_tree = self._loadTree( self.global_world, metawog.TREE_GLOBAL_TEXT,
                                            properties_dir, 'text.xml.bin' )
         self._levels = self._loadDirList( os.path.join( self._res_dir, 'levels' ), 
                                           filename_filter = '%s.scene.bin' )
@@ -144,10 +144,10 @@ class GameModel(QtCore.QObject):
                                         filename_filter = 'balls.xml.bin' )
         ball_dir = os.path.join( self._res_dir, 'balls' )
         for ball_name in ball_names:
-            ball_world = self.global_world.make_world( metawog.BALL_SCOPE, ball_name, BallModel, self )
-            ball_tree = self._loadTree( ball_world, metawog.BALL_MAIN_FILE,
+            ball_world = self.global_world.make_world( metawog.WORLD_BALL, ball_name, BallModel, self )
+            ball_tree = self._loadTree( ball_world, metawog.TREE_BALL_MAIN,
                                         os.path.join(ball_dir, ball_name), 'balls.xml.bin' )
-            resource_tree = self._loadTree( ball_world, metawog.BALL_RESOURCE_FILE,
+            resource_tree = self._loadTree( ball_world, metawog.TREE_BALL_RESOURCE,
                                             os.path.join(ball_dir, ball_name), 'resources.xml.bin' )
             assert ball_tree.world == ball_world
             assert ball_tree.root.world == ball_world, ball_tree.root.world
@@ -195,12 +195,12 @@ class GameModel(QtCore.QObject):
         if level_name not in self.level_models_by_name:
             level_dir = os.path.join( self._res_dir, 'levels', level_name )
 
-            level_world = self.global_world.make_world( metawog.LEVEL_SCOPE, level_name, LevelModel, self )
-            level_tree = self._loadTree( level_world, metawog.LEVEL_GAME_FILE,
+            level_world = self.global_world.make_world( metawog.WORLD_LEVEL, level_name, LevelModel, self )
+            level_tree = self._loadTree( level_world, metawog.TREE_LEVEL_GAME,
                                          level_dir, level_name + '.level.bin' )
-            scene_tree = self._loadTree( level_world, metawog.LEVEL_SCENE_FILE,
+            scene_tree = self._loadTree( level_world, metawog.TREE_LEVEL_SCENE,
                                          level_dir, level_name + '.scene.bin' )
-            resource_tree = self._loadTree( level_world, metawog.LEVEL_RESOURCE_FILE,
+            resource_tree = self._loadTree( level_world, metawog.TREE_LEVEL_RESOURCE,
                                             level_dir, level_name + '.resrc.bin' )
             level_world.initializeLevelReferencesAndCache()
             
@@ -261,11 +261,11 @@ class GameModel(QtCore.QObject):
         """Creates a new blank level with the specified name.
            May fails with an IOError."""
         return self._addNewLevel( level_name,
-            self._universe.make_unattached_tree_from_xml( metawog.LEVEL_GAME_FILE,
+            self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_GAME,
                                                           metawog.LEVEL_GAME_TEMPLATE ),
-            self._universe.make_unattached_tree_from_xml( metawog.LEVEL_SCENE_FILE,
+            self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_SCENE,
                                                           metawog.LEVEL_SCENE_TEMPLATE ),
-            self._universe.make_unattached_tree_from_xml( metawog.LEVEL_RESOURCE_FILE,
+            self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_RESOURCE,
                                                           metawog.LEVEL_RESOURCE_TEMPLATE ) )
 
     def cloneLevel( self, cloned_level_name, new_level_name ):
@@ -274,9 +274,9 @@ class GameModel(QtCore.QObject):
         def clone_level_tree( object_type ):
             return level_model.find_tree( object_type ).clone()
         return self._addNewLevel( new_level_name,
-                                  clone_level_tree( metawog.LEVEL_GAME_FILE ),
-                                  clone_level_tree( metawog.LEVEL_SCENE_FILE ),
-                                  clone_level_tree( metawog.LEVEL_RESOURCE_FILE ) )
+                                  clone_level_tree( metawog.TREE_LEVEL_GAME ),
+                                  clone_level_tree( metawog.TREE_LEVEL_SCENE ),
+                                  clone_level_tree( metawog.TREE_LEVEL_RESOURCE ) )
 
     def _addNewLevel( self, level_name, level_tree, scene_tree, resource_tree ):
         """Adds a new level using the specified level, scene and resource tree.
@@ -289,7 +289,7 @@ class GameModel(QtCore.QObject):
         for resource_element in resource_tree.root.findall( './/Resources' ):
             resource_element.set( 'id', 'scene_%s' % level_name )
         # Creates and register the new level
-        level_world = self.global_world.make_world( metawog.LEVEL_SCOPE, level_name,
+        level_world = self.global_world.make_world( metawog.WORLD_LEVEL, level_name,
                                                     LevelModel, self, is_dirty = True )
         level_world.add_tree( level_tree, scene_tree, resource_tree )
         level_world.initializeLevelReferencesAndCache()
@@ -309,9 +309,9 @@ class LevelModel(metaworld.World):
         self.game_model = game_model
         self.dirty_object_types = set()
         if is_dirty:
-            self.dirty_object_types |= set( (metawog.LEVEL_GAME_FILE,
-                                             metawog.LEVEL_RESOURCE_FILE,
-                                             metawog.LEVEL_SCENE_FILE) )
+            self.dirty_object_types |= set( (metawog.TREE_LEVEL_GAME,
+                                             metawog.TREE_LEVEL_RESOURCE,
+                                             metawog.TREE_LEVEL_SCENE) )
 
         self.images_by_id = {}
 
@@ -321,15 +321,15 @@ class LevelModel(metaworld.World):
 
     @property
     def level_tree( self ):
-        return self.find_tree( metawog.LEVEL_GAME_FILE ).root
+        return self.find_tree( metawog.TREE_LEVEL_GAME ).root
 
     @property
     def scene_tree( self ):
-        return self.find_tree( metawog.LEVEL_SCENE_FILE ).root
+        return self.find_tree( metawog.TREE_LEVEL_SCENE ).root
 
     @property
     def resource_tree( self ):
-        return self.find_tree( metawog.LEVEL_RESOURCE_FILE ).root
+        return self.find_tree( metawog.TREE_LEVEL_RESOURCE ).root
 
     def isDirty( self ):
         return len(self.dirty_object_types) != 0
@@ -364,15 +364,15 @@ class LevelModel(metaworld.World):
             return
         level_name = self.level_name
         level_dir = os.path.join( self.game_model._res_dir, 'levels', level_name )
-        if metawog.LEVEL_GAME_FILE in self.dirty_object_types:
+        if metawog.TREE_LEVEL_GAME in self.dirty_object_types:
             self.game_model._savePackedData( level_dir, level_name + '.level.bin', self.level_tree )
-            self.dirty_object_types.remove( metawog.LEVEL_GAME_FILE )
-        if metawog.LEVEL_RESOURCE_FILE in self.dirty_object_types:
+            self.dirty_object_types.remove( metawog.TREE_LEVEL_GAME )
+        if metawog.TREE_LEVEL_RESOURCE in self.dirty_object_types:
             self.game_model._savePackedData( level_dir, level_name + '.resrc.bin', self.resource_tree )
-            self.dirty_object_types.remove( metawog.LEVEL_RESOURCE_FILE )
-        if metawog.LEVEL_SCENE_FILE in self.dirty_object_types:
+            self.dirty_object_types.remove( metawog.TREE_LEVEL_RESOURCE )
+        if metawog.TREE_LEVEL_SCENE in self.dirty_object_types:
             self.game_model._savePackedData( level_dir, level_name + '.scene.bin', self.scene_tree )
-            self.dirty_object_types.remove( metawog.LEVEL_SCENE_FILE )
+            self.dirty_object_types.remove( metawog.TREE_LEVEL_SCENE )
 
     def updateObjectPropertyValue( self, object_file, element, property_name, new_value ):
         """Changes the property value of an object (scene, level or resource)."""
@@ -394,9 +394,9 @@ class LevelModel(metaworld.World):
                                                     property_name, new_value )
 
     def getObjectFileRootElement( self, object_file ):
-        root_by_scope = { metawog.LEVEL_GAME_FILE: self.level_tree,
-                          metawog.LEVEL_SCENE_FILE: self.scene_tree,
-                          metawog.LEVEL_RESOURCE_FILE: self.resource_tree }
+        root_by_scope = { metawog.TREE_LEVEL_GAME: self.level_tree,
+                          metawog.TREE_LEVEL_SCENE: self.scene_tree,
+                          metawog.TREE_LEVEL_RESOURCE: self.resource_tree }
         return root_by_scope[object_file]
 
     def addElement( self, object_file, parent_element, element, index = None ):
@@ -437,7 +437,7 @@ class LevelModel(metaworld.World):
 
     def objectSelected( self, object_file, element ):
         """Indicates that the specified object has been selected.
-           object_file: one of metawog.LEVEL_GAME_FILE, metawog.LEVEL_SCENE_FILE, metawog.LEVEL_RESOURCE_FILE
+           object_file: one of metawog.TREE_LEVEL_GAME, metawog.TREE_LEVEL_SCENE, metawog.TREE_LEVEL_RESOURCE
         """
         self.game_model.objectSelected( self.level_name, object_file, element )
 
@@ -465,10 +465,10 @@ class LevelModel(metaworld.World):
                     existing_path = os.path.split( existing_path )[1]
                     id = id_prefix + ''.join( c for c in existing_path if c.upper() in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789' )
                     resource_path = 'res/levels/%s/%s' % (self.level_name,existing_path)
-                    meta_element = metawog.LEVEL_RESOURCE_FILE.find_object_desc_by_tag( tag )
+                    meta_element = metawog.TREE_LEVEL_RESOURCE.find_object_desc_by_tag( tag )
                     new_resource = metaworld.Element( meta_element, {'id':id.upper(),
                                                                      'path':resource_path} )
-                    self.addElement( metawog.LEVEL_RESOURCE_FILE, resource_element, new_resource )
+                    self.addElement( metawog.TREE_LEVEL_RESOURCE, resource_element, new_resource )
                     added_elements.append( new_resource )
         return added_elements
             
@@ -552,9 +552,9 @@ class LevelGraphicView(QtGui.QGraphicsView):
                 element = item.data(0).toPyObject()
                 assert element is not None, "Hmmm, forgot to associate a data to that item..."
                 if element in self.__scene_elements:
-                    self.getLevelModel().objectSelected( metawog.LEVEL_SCENE_FILE, element )
+                    self.getLevelModel().objectSelected( metawog.TREE_LEVEL_SCENE, element )
                 elif element in self.__level_elements:
-                    self.getLevelModel().objectSelected( metawog.LEVEL_GAME_FILE, element )
+                    self.getLevelModel().objectSelected( metawog.TREE_LEVEL_GAME, element )
                 else: # Should never get there
                     assert False
 
@@ -1681,7 +1681,7 @@ class MainWindow(QtGui.QMainWindow):
         if level_model:
             added_resource_elements = level_model.updateLevelResources()
             if added_resource_elements:
-                level_model.objectSelected( metawog.LEVEL_RESOURCE_FILE, added_resource_elements[0] )
+                level_model.objectSelected( metawog.TREE_LEVEL_RESOURCE, added_resource_elements[0] )
 
     def undo( self ):
         pass
@@ -1837,10 +1837,10 @@ class MainWindow(QtGui.QMainWindow):
         
     def createDockWindows(self):
         self.tree_view_by_object_scope = {} # map of all tree views
-        scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', metawog.LEVEL_SCENE_FILE )
-        level_dock, self.levelTree = self.createElementTreeView( 'Level', metawog.LEVEL_GAME_FILE, scene_dock )
+        scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', metawog.TREE_LEVEL_SCENE )
+        level_dock, self.levelTree = self.createElementTreeView( 'Level', metawog.TREE_LEVEL_GAME, scene_dock )
         resource_dock, self.levelResourceTree = self.createElementTreeView( 'Resource',
-                                                                            metawog.LEVEL_RESOURCE_FILE,
+                                                                            metawog.TREE_LEVEL_RESOURCE,
                                                                             level_dock )
         scene_dock.raise_() # Makes the scene the default active tab
         

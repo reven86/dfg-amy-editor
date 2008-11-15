@@ -1291,54 +1291,54 @@ class Element(_ElementBase):
 if __name__ == "__main__":
     import unittest
 
-    TEST_GLOBAL_FILE = describe_file( 'testglobal' )
-    TEST_LEVEL_FILE = describe_file( 'testlevel' )
+    TREE_TEST_GLOBAL = describe_file( 'testglobal' )
+    TREE_TEST_LEVEL = describe_file( 'testlevel' )
 
-    TEST_LEVEL_SCOPE = describe_scope( 'testscope.level', files_desc = [TEST_LEVEL_FILE] )
+    WORLD_TEST_LEVEL = describe_scope( 'testscope.level', files_desc = [TREE_TEST_LEVEL] )
 
-    TEST_GLOBAL_SCOPE = describe_scope( 'testscope',
-                                        files_desc = [TEST_GLOBAL_FILE],
-                                        child_scopes = [TEST_LEVEL_SCOPE] )
+    WORLD_TEST_GLOBAL = describe_scope( 'testscope',
+                                        files_desc = [TREE_TEST_GLOBAL],
+                                        child_scopes = [WORLD_TEST_LEVEL] )
 
     GLOBAL_TEXT = describe_object( 'text', attributes = [
         identifier_attribute( 'id', mandatory = True, reference_family = 'text',
-                              reference_scope = TEST_GLOBAL_SCOPE ),
+                              reference_scope = WORLD_TEST_GLOBAL ),
         string_attribute( 'fr' )
         ] )
 
 
-    TEST_GLOBAL_FILE.add_objects( [ GLOBAL_TEXT ] )
+    TREE_TEST_GLOBAL.add_objects( [ GLOBAL_TEXT ] )
 
     LEVEL_TEXT = describe_object( 'text', attributes = [
         identifier_attribute( 'id', mandatory = True, reference_family = 'text',
-                              reference_scope = TEST_LEVEL_SCOPE ),
+                              reference_scope = WORLD_TEST_LEVEL ),
         string_attribute( 'fr' )
         ] )
     
     LEVEL_SIGN = describe_object( 'sign', attributes = [
         reference_attribute( 'text', reference_family = 'text',
-                             reference_scope = TEST_LEVEL_SCOPE, init = '', mandatory = True ),
+                             reference_scope = WORLD_TEST_LEVEL, init = '', mandatory = True ),
         reference_attribute( 'alt_text', reference_family = 'text',
-                             reference_scope = TEST_LEVEL_SCOPE )
+                             reference_scope = WORLD_TEST_LEVEL )
         ], objects = [ LEVEL_TEXT ] )
 
     LEVEL_INLINE = describe_object( 'inline', objects= [ LEVEL_SIGN, LEVEL_TEXT ] )
 
-    TEST_LEVEL_FILE.add_objects( [ LEVEL_INLINE ] )
+    TREE_TEST_LEVEL.add_objects( [ LEVEL_INLINE ] )
 
 
     class MetaTest(unittest.TestCase):
 
         def test_descriptions( self ):
-            self.assertEqual( sorted(['text', 'sign', 'inline']), sorted(TEST_LEVEL_SCOPE.objects_by_tag.keys()) )
-            for scope in (TEST_LEVEL_SCOPE, TEST_GLOBAL_SCOPE):
+            self.assertEqual( sorted(['text', 'sign', 'inline']), sorted(WORLD_TEST_LEVEL.objects_by_tag.keys()) )
+            for scope in (WORLD_TEST_LEVEL, WORLD_TEST_GLOBAL):
                 for object_desc in scope.objects_by_tag.itervalues():
                     self.assertEqual( scope, object_desc.scope )
 #                for file_desc in scope.files_desc_by_name.itervalues():
 #                    self.assertEqual( scope, object_desc.scope )
             self.assertEqual( sorted([LEVEL_SIGN, LEVEL_INLINE]), sorted(LEVEL_TEXT.parent_objects) )
-            for tree, objects in { TEST_GLOBAL_FILE: [GLOBAL_TEXT],
-                                   TEST_LEVEL_FILE: [LEVEL_TEXT, LEVEL_SIGN] }.iteritems():
+            for tree, objects in { TREE_TEST_GLOBAL: [GLOBAL_TEXT],
+                                   TREE_TEST_LEVEL: [LEVEL_TEXT, LEVEL_SIGN] }.iteritems():
                 for element in objects:
                     self.assertEqual( tree, element.file )
                     self.assert_( element in tree.all_descendant_object_descs().values() )
@@ -1350,11 +1350,11 @@ if __name__ == "__main__":
 
         def setUp( self ):
             self.universe = Universe()
-            self.world = self.universe.make_world( TEST_GLOBAL_SCOPE, 'global' )
-            self.world_level1 = self.world.make_world( TEST_LEVEL_SCOPE, 'level1' )
-            self.level1 = self.world_level1.make_tree( TEST_LEVEL_FILE )
-            self.world_level2 = self.world.make_world( TEST_LEVEL_SCOPE, 'level2' )
-            self.level2 = self.world_level2.make_tree( TEST_LEVEL_FILE )
+            self.world = self.universe.make_world( WORLD_TEST_GLOBAL, 'global' )
+            self.world_level1 = self.world.make_world( WORLD_TEST_LEVEL, 'level1' )
+            self.level1 = self.world_level1.make_tree( TREE_TEST_LEVEL )
+            self.world_level2 = self.world.make_world( WORLD_TEST_LEVEL, 'level2' )
+            self.level2 = self.world_level2.make_tree( TREE_TEST_LEVEL )
 
         def _make_element(self, object_desc, **attributes ):
             return Element( object_desc, attributes = attributes )
@@ -1365,7 +1365,7 @@ if __name__ == "__main__":
             self.failIf(universe.list_references('text', 'TEXT_HI'))
             # add objects
             gt1 = self._make_element( GLOBAL_TEXT, id = 'TEXT_HI', fr = 'Salut' )
-            global_tree = self.world.make_tree( TEST_GLOBAL_FILE, gt1 )
+            global_tree = self.world.make_tree( TREE_TEST_GLOBAL, gt1 )
             assert global_tree.universe == universe
             # check reference resolution to global world from global or level worlds
             def check_text_ids( world, *args ):
@@ -1439,24 +1439,24 @@ if __name__ == "__main__":
             self.assertEqual( self.universe, self.level1.universe )
             # Global
             self.assertEqual( sorted( ['global'] ),
-                              sorted( self.universe.list_world_keys( TEST_GLOBAL_SCOPE ) ) )
+                              sorted( self.universe.list_world_keys( WORLD_TEST_GLOBAL ) ) )
             self.assertEqual( sorted( [self.world] ),
-                              sorted( self.universe.list_worlds_of_type( TEST_GLOBAL_SCOPE ) ) )
-            self.assertEqual( self.world, self.universe.find_world( TEST_GLOBAL_SCOPE, 'global' ) )
+                              sorted( self.universe.list_worlds_of_type( WORLD_TEST_GLOBAL ) ) )
+            self.assertEqual( self.world, self.universe.find_world( WORLD_TEST_GLOBAL, 'global' ) )
             # Levels
             self.assertEqual( sorted( ['level1', 'level2'] ),
-                              sorted( self.world.list_world_keys( TEST_LEVEL_SCOPE ) ) )
+                              sorted( self.world.list_world_keys( WORLD_TEST_LEVEL ) ) )
             self.assertEqual( sorted( [self.world_level1, self.world_level2] ),
-                              sorted( self.world.list_worlds_of_type( TEST_LEVEL_SCOPE ) ) )
-            self.assertEqual( self.world_level1, self.world.find_world( TEST_LEVEL_SCOPE, 'level1' ) )
+                              sorted( self.world.list_worlds_of_type( WORLD_TEST_LEVEL ) ) )
+            self.assertEqual( self.world_level1, self.world.find_world( WORLD_TEST_LEVEL, 'level1' ) )
             self.assertEqual( self.world, self.world_level1.parent_world )
             # Missing
             self.assertEqual( sorted( [] ),
-                              sorted( self.world.list_world_keys( TEST_GLOBAL_SCOPE ) ) )
+                              sorted( self.world.list_world_keys( WORLD_TEST_GLOBAL ) ) )
             self.assertEqual( sorted( [] ),
-                              sorted( self.world.list_worlds_of_type( TEST_GLOBAL_SCOPE ) ) )
-            self.assertEqual( None, self.world.find_world( TEST_LEVEL_SCOPE, 'level_unknown' ) )
-            self.assertEqual( None, self.world.find_world( TEST_GLOBAL_SCOPE, 'level_unknown' ) )
+                              sorted( self.world.list_worlds_of_type( WORLD_TEST_GLOBAL ) ) )
+            self.assertEqual( None, self.world.find_world( WORLD_TEST_LEVEL, 'level_unknown' ) )
+            self.assertEqual( None, self.world.find_world( WORLD_TEST_GLOBAL, 'level_unknown' ) )
     
         def test_element(self):
             s1 = self._make_element( LEVEL_SIGN )
@@ -1633,12 +1633,12 @@ if __name__ == "__main__":
 </inline>
 """
             def check( xml_data ):
-                world_level = self.world.make_world( TEST_LEVEL_SCOPE, 'levelxml' )
-                level_tree = world_level.make_tree_from_xml( TEST_LEVEL_FILE, xml_data )
-                self.assertEqual( TEST_LEVEL_FILE, level_tree.meta )
+                world_level = self.world.make_world( WORLD_TEST_LEVEL, 'levelxml' )
+                level_tree = world_level.make_tree_from_xml( TREE_TEST_LEVEL, xml_data )
+                self.assertEqual( TREE_TEST_LEVEL, level_tree.meta )
                 self.assertEqual( self.universe, level_tree.universe )
                 self.assertEqual( world_level, level_tree.world )
-                self.assertEqual( level_tree, world_level.find_tree( TEST_LEVEL_FILE ) )
+                self.assertEqual( level_tree, world_level.find_tree( TREE_TEST_LEVEL ) )
                 self.assertEqual( world_level, level_tree.root.world )
                 # content            
                 inline = level_tree.root
@@ -1669,8 +1669,8 @@ if __name__ == "__main__":
 
         def test_from_xml2( self ):
             xml_data = """<inline></inline>"""
-            world_level = self.world.make_world( TEST_LEVEL_SCOPE, 'levelxml' )
-            level_tree = world_level.make_tree_from_xml( TEST_LEVEL_FILE, xml_data )
+            world_level = self.world.make_world( WORLD_TEST_LEVEL, 'levelxml' )
+            level_tree = world_level.make_tree_from_xml( TREE_TEST_LEVEL, xml_data )
             self.assertEqual( world_level, level_tree.world )
             self.assertEqual( world_level, level_tree.root.world )
             
