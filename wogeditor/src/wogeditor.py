@@ -71,6 +71,9 @@ class GameModelException(Exception):
     pass
 
 class PixmapCache(object):
+    """A global pixmap cache the cache the pixmap associated to each element.
+       Maintains the cache up to date by listening for element events.
+    """
     def __init__(self, wog_dir, universe):
         self._wog_dir = wog_dir
         self._pixmaps_by_element = {}
@@ -353,15 +356,15 @@ class LevelModel(metaworld.World,metaworldui.SelectedElementsTracker):
         return self.key
 
     @property
-    def level_tree( self ):
+    def level_root( self ):
         return self.find_tree( metawog.TREE_LEVEL_GAME ).root
 
     @property
-    def scene_tree( self ):
+    def scene_root( self ):
         return self.find_tree( metawog.TREE_LEVEL_SCENE ).root
 
     @property
-    def resource_tree( self ):
+    def resource_root( self ):
         return self.find_tree( metawog.TREE_LEVEL_RESOURCE ).root
 
     @property
@@ -378,24 +381,14 @@ class LevelModel(metaworld.World,metaworldui.SelectedElementsTracker):
             level_dir = os.path.join( self.game_model._res_dir, 'levels', level_name )
             if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_GAME):
                 self.game_model._savePackedData( level_dir, level_name + '.level.bin', 
-                                                 self.level_tree.tree )
+                                                 self.level_root.tree )
             if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_RESOURCE):
                 self.game_model._savePackedData( level_dir, level_name + '.resrc.bin', 
-                                                 self.resource_tree.tree )
+                                                 self.resource_root.tree )
             if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_SCENE):
                 self.game_model._savePackedData( level_dir, level_name + '.scene.bin', 
-                                                 self.scene_tree.tree )
+                                                 self.scene_root.tree )
         self.__dirty_tracker.clean()
-
-    def updateObjectPropertyValue( self, tree_meta, element, property_name, new_value ):
-        """Changes the property value of an element (scene, level or resource)."""
-        element.set( property_name, new_value )
-
-    def getObjectFileRootElement( self, tree_meta ):
-        root_by_world = { metawog.TREE_LEVEL_GAME: self.level_tree,
-                          metawog.TREE_LEVEL_SCENE: self.scene_tree,
-                          metawog.TREE_LEVEL_RESOURCE: self.resource_tree }
-        return root_by_world[tree_meta]
 
     def getImagePixmap( self, image_id ):
         image_element = self.resolve_reference( metawog.WORLD_LEVEL, 'image', image_id )
@@ -413,14 +406,14 @@ class LevelModel(metaworld.World,metaworldui.SelectedElementsTracker):
         """
         game_dir = os.path.normpath( self.game_model._wog_dir )
         level_dir = os.path.join( game_dir, 'res', 'levels', self.level_name )
-        resource_element = self.resource_tree.find( './/Resources' )
+        resource_element = self.resource_root.find( './/Resources' )
         if resource_element is None:
             print 'Warning: root element not found in resource tree'
             return []
         added_elements = []
         for tag, extension, id_prefix in ( ('Image','png', 'LEVEL_IMAGE_'), ('Sound','ogg', 'LEVEL_SOUND_') ):
             known_paths = set()
-            for element in self.resource_tree.findall( './/' + tag ):
+            for element in self.resource_root.findall( './/' + tag ):
                 path = os.path.normpath( os.path.splitext( element.get('path','').lower() )[0] )
                 # known path are related to wog top dir in unix format & lower case without the file extension
                 known_paths.add( path )
@@ -569,11 +562,11 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.__balls_by_id = {}
         self.__strands = []
         self.__lines = []
-        level_element = game_level_model.level_tree
+        level_element = game_level_model.level_root
         self._addElements( scene, level_element, self.__level_elements, elements_to_skip )
         self._addStrands( scene )
 
-        scene_element = game_level_model.scene_tree
+        scene_element = game_level_model.scene_root
         self._addElements( scene, scene_element, self.__scene_elements, elements_to_skip )
 
         for element in self.__lines:
