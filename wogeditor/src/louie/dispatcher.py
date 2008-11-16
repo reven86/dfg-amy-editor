@@ -37,6 +37,7 @@ from louie import robustapply
 from louie import saferef
 from louie.sender import Any, Anonymous
 from louie.signal import All
+from louie.signal import _SIGNAL
 
 
 # Support for statistics.
@@ -127,6 +128,7 @@ def connect(receiver, signal=All, sender=Any, weak=True):
 
     Returns ``None``, may raise ``DispatcherTypeError``.
     """
+    assert isinstance(signal, _SIGNAL), signal
     if signal is None:
         raise error.DispatcherTypeError(
             'Signal cannot be None (receiver=%r sender=%r)'
@@ -198,6 +200,7 @@ def disconnect(receiver, signal=All, sender=Any, weak=True):
     Returns ``None``, may raise ``DispatcherTypeError`` or
     ``DispatcherKeyError``.
     """
+    assert isinstance(signal, _SIGNAL), signal
     if signal is None:
         raise error.DispatcherTypeError(
             'Signal cannot be None (receiver=%r sender=%r)'
@@ -332,6 +335,7 @@ def send(signal=All, sender=Anonymous, *arguments, **named):
     send, terminating the dispatch loop, so it is quite possible to
     not have all receivers called if a raises an error.
     """
+    assert isinstance(signal, _SIGNAL), signal
     # Call each receiver with whatever arguments it can accept.
     # Return a list of tuple pairs [(receiver, response), ... ].
     responses = []
@@ -358,6 +362,7 @@ def send(signal=All, sender=Anonymous, *arguments, **named):
 def send_minimal(signal=All, sender=Anonymous, *arguments, **named):
     """Like ``send``, but does not attach ``signal`` and ``sender``
     arguments to the call to the receiver."""
+    assert isinstance(signal, _SIGNAL), signal
     # Call each receiver with whatever arguments it can accept.
     # Return a list of tuple pairs [(receiver, response), ... ].
     responses = []
@@ -386,6 +391,7 @@ def send_exact(signal=All, sender=Anonymous, *arguments, **named):
     handlers, sending only to those receivers explicitly registered
     for a particular signal on a particular sender.
     """
+    assert isinstance(signal, _SIGNAL), signal
     responses = []
     for receiver in live_receivers(get_receivers(sender, signal)):
         # Wrap receiver using installed plugins.
@@ -436,6 +442,7 @@ def send_robust(signal=All, sender=Anonymous, *arguments, **named):
     ``Exception``), the error instance is returned as the result for
     that receiver.
     """
+    assert isinstance(signal, _SIGNAL), signal
     # Call each receiver with whatever arguments it can accept.
     # Return a list of tuple pairs [(receiver, response), ... ].
     responses = []
