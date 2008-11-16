@@ -31,6 +31,7 @@ import metawog
 import metaworldui
 import xml.etree.ElementTree 
 from PyQt4 import QtCore, QtGui
+from PyQt4.QtCore import Qt
 import qthelper
 import editleveldialog_ui
 import newleveldialog_ui
@@ -454,7 +455,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.__level_name = level_name
         self.__game_model = game_model
         self.setWindowTitle( self.tr( u'Level - %1' ).arg( level_name ) )
-        self.setAttribute( QtCore.Qt.WA_DeleteOnClose )
+        self.setAttribute( Qt.WA_DeleteOnClose )
         self.__scene = QtGui.QGraphicsScene()
         self.__balls_by_id = {}
         self.__strands = []
@@ -728,7 +729,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
                     
             pen = QtGui.QPen()
             pen.setWidth( 10 )
-    ##        brush = QtGui.QBrush( QtCore.Qt.SolidPattern )
+    ##        brush = QtGui.QBrush( Qt.SolidPattern )
     ##        item = scene.addPath( path, pen, brush )
             item = scene.addPath( path, pen )
             return item
@@ -1148,7 +1149,7 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
             for word in sorted_word_list:
                 word_list.append( word )
             completer = QtGui.QCompleter( word_list, editor )
-            completer.setCaseSensitivity( QtCore.Qt.CaseInsensitive )
+            completer.setCaseSensitivity( Qt.CaseInsensitive )
             completer.setCompletionMode( QtGui.QCompleter.UnfilteredPopupCompletion )
             editor.setCompleter( completer )
         return editor
@@ -1159,7 +1160,7 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
            handler_data may be None if no specific handler is defined for the attribute_meta.
            attribute_meta may be None if metawog is missing some attribute declaration.
            """
-        data =  index.data( QtCore.Qt.UserRole ).toPyObject()
+        data =  index.data( Qt.UserRole ).toPyObject()
         # if this fails, then we are trying to edit the property name or item was added incorrectly.
         assert data is not None
         world, element_file, element_meta, element, property_name = data
@@ -1203,7 +1204,7 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
             handler_data['converter']( editor, model, index, attribute_meta )
         else:
 ##            value = editor.text()
-##            model.setData(index, QtCore.QVariant( value ), QtCore.Qt.EditRole)
+##            model.setData(index, QtCore.QVariant( value ), Qt.EditRole)
             QtGui.QStyledItemDelegate.setModelData( self, editor, model, index )
 
 class MetaWorldTreeModel(QtGui.QStandardItemModel):
@@ -1277,7 +1278,7 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
            None if the element is not in the tree.
         """
         for item in qthelper.standardModelTreeItems( self ):
-            if item.data( QtCore.Qt.UserRole ).toPyObject() is element:
+            if item.data( Qt.UserRole ).toPyObject() is element:
                 return item
         return None
 
@@ -1304,8 +1305,8 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
         if index is None:
             index = item_parent.rowCount()
         item = QtGui.QStandardItem( element.tag )
-        item.setData( QtCore.QVariant( element ), QtCore.Qt.UserRole )
-        item.setFlags( item.flags() & ~QtCore.Qt.ItemIsEditable )
+        item.setData( QtCore.QVariant( element ), Qt.UserRole )
+        item.setFlags( item.flags() & ~Qt.ItemIsEditable )
         item_parent.insertRow( index, item )
         return item
 
@@ -1313,7 +1314,7 @@ class MetaWorldTreeView(QtGui.QTreeView):
     def __init__( self, *args ):
         QtGui.QTreeView.__init__( self, *args )
         # Hook context menu popup signal
-        self.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
+        self.setContextMenuPolicy( Qt.CustomContextMenu )
         self.connect( self, QtCore.SIGNAL("customContextMenuRequested(QPoint)"),
                       self._onContextMenu )
         louie.connect( self._on_active_world_change, metaworldui.ActiveWorldChanged )
@@ -1377,14 +1378,14 @@ class MetaWorldTreeView(QtGui.QTreeView):
         selected_indexes = selected.indexes()
         if len( selected_indexes ) == 1: # Do not handle multiple selection yet
             item = self.model().itemFromIndex( selected_indexes[0] )
-            element = item.data( QtCore.Qt.UserRole ).toPyObject()
+            element = item.data( Qt.UserRole ).toPyObject()
             element.world.set_selection( element )
 
     def _onContextMenu( self, menu_pos ):
         # Select the right clicked item
         index = self.indexAt(menu_pos)
         if index.isValid():
-            element = index.data( QtCore.Qt.UserRole ).toPyObject()
+            element = index.data( Qt.UserRole ).toPyObject()
             if element is None:
                 print 'Warning: somehow managed to activate context menu on non item???'
             else:
@@ -1412,12 +1413,12 @@ class MetaWorldTreeView(QtGui.QTreeView):
                 if selected_element_meta:
                     self._appendChildTag( index, selected_element_meta )
                 elif remove_action is not None and selected_action is remove_action:
-                    element_to_remove = self.model().itemFromIndex( index ).data( QtCore.Qt.UserRole ).toPyObject()
+                    element_to_remove = self.model().itemFromIndex( index ).data( Qt.UserRole ).toPyObject()
                     element_to_remove.parent.remove( element_to_remove )
         
     def _appendChildTag( self, parent_element_index, new_element_meta ):
         """Adds the specified child tag to the specified element and update the tree view."""
-        parent_element = parent_element_index.data( QtCore.Qt.UserRole ).toPyObject()
+        parent_element = parent_element_index.data( Qt.UserRole ).toPyObject()
         if parent_element is not None:
             # build the list of attributes with their initial values.
             mandatory_attributes = {}
@@ -1489,7 +1490,7 @@ class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
                     item_name.setFont( font )
                 item_value = QtGui.QStandardItem( attribute_value or '' )
                 item_value.setData( QtCore.QVariant( (world, element.tree, element_meta, element, attribute_name) ),
-                                    QtCore.Qt.UserRole )
+                                    Qt.UserRole )
                 self.appendRow( [ item_name, item_value ] )
             if missing_attributes:
                 print 'Warning: The following attributes of "%s" are missing in metaworld:' % element.tag, ', '.join( missing_attributes )
@@ -1603,8 +1604,8 @@ class MainWindow(QtGui.QMainWindow):
         if top_left_index.row() != bottom_right_index.row():
             print 'Warning: edited non editable row!!!'
             return # not the result of an edit
-        new_value = top_left_index.data( QtCore.Qt.DisplayRole ).toString()
-        data = top_left_index.data( QtCore.Qt.UserRole ).toPyObject()
+        new_value = top_left_index.data( Qt.DisplayRole ).toString()
+        data = top_left_index.data( Qt.UserRole ).toPyObject()
         if data:
             world, element_file, element_meta, element, property_name = data
             element.set( property_name, str(new_value) )
@@ -1618,7 +1619,7 @@ class MainWindow(QtGui.QMainWindow):
             had_modified_readonly_level = self._game_model.hasModifiedReadOnlyLevels()
             try:
                 try:
-                    QtGui.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+                    QtGui.QApplication.setOverrideCursor(Qt.WaitCursor)
                     self._game_model.save()
                 finally:
                     QtGui.QApplication.restoreOverrideCursor()
@@ -1821,12 +1822,12 @@ class MainWindow(QtGui.QMainWindow):
 
     def createElementTreeView(self, name, element_file, sibling_tabbed_dock = None ):
         dock = QtGui.QDockWidget( self.tr( name ), self )
-        dock.setAllowedAreas( QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea )
+        dock.setAllowedAreas( Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea )
         element_tree_view = MetaWorldTreeView( dock )
         tree_model = MetaWorldTreeModel(element_file, 0, 1, element_tree_view)  # nb rows, nb cols
         element_tree_view.setModel( tree_model )
         dock.setWidget( element_tree_view )
-        self.addDockWidget( QtCore.Qt.RightDockWidgetArea, dock )
+        self.addDockWidget( Qt.RightDockWidgetArea, dock )
         if sibling_tabbed_dock: # Stacks the dock widget together
             self.tabifyDockWidget( sibling_tabbed_dock, dock )
         self.tree_view_by_element_world[element_file] = element_tree_view
@@ -1851,7 +1852,7 @@ class MainWindow(QtGui.QMainWindow):
         delegate = PropertyListItemDelegate( self.propertiesList, self )
         self.propertiesList.setItemDelegate( delegate )
         dock.setWidget(self.propertiesList)
-        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, dock)
 
         self.connect(self.propertiesListModel, QtCore.SIGNAL("dataChanged(const QModelIndex&,const QModelIndex&)"),
                      self._onPropertyListValueChanged)
