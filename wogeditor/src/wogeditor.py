@@ -251,7 +251,7 @@ class GameModel(QtCore.QObject):
 
             level_world = self.global_world.make_world( metawog.WORLD_LEVEL, 
                                                         level_name, 
-                                                        LevelModel, 
+                                                        LevelWorld, 
                                                         self )
             self._loadTree( level_world, metawog.TREE_LEVEL_GAME,
                             level_dir, level_name + '.level.bin' )
@@ -264,8 +264,13 @@ class GameModel(QtCore.QObject):
         return self.level_models_by_name[level_name]
 
     def selectLevel( self, level_name ):
+        """Activate the specified level and load it if required.
+           Returns the activated LevelWorld.
+        """
         level_model = self.getLevelModel(level_name)
+        assert level_model is not None
         louie.send( metaworldui.ActiveWorldChanged, self._universe, level_model )
+        return level_model
 
     def _onElementAdded(self, element, index_in_parent): #IGNORE:W0613
         self.modified_worlds_to_check.add( element.world )
@@ -330,7 +335,7 @@ class GameModel(QtCore.QObject):
             resource_element.set( 'id', 'scene_%s' % level_name )
         # Creates and register the new level
         level_world = self.global_world.make_world( metawog.WORLD_LEVEL, level_name,
-                                                    LevelModel, self, is_dirty = True )
+                                                    LevelWorld, self, is_dirty = True )
         level_world.add_tree( level_tree, scene_tree, resource_tree )
         self.level_models_by_name[level_name] = level_world
         self._levels.append( level_name )
@@ -344,7 +349,7 @@ class BallModel(metaworld.World):
         self.is_dirty = False
 
 
-class LevelModel(metaworld.World,metaworldui.SelectedElementsTracker):
+class LevelWorld(metaworld.World,metaworldui.SelectedElementsTracker):
     def __init__( self, universe, world_meta, level_name, game_model, is_dirty = False ):
         metaworld.World.__init__( self, universe, world_meta, level_name )
         metaworldui.SelectedElementsTracker.__init__( self, self )
@@ -446,11 +451,10 @@ class LevelGraphicView(QtGui.QGraphicsView):
        QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)')
          => when the mouse mouse in the map. parameters: x,y in scene coordinate.
     """
-    def __init__( self, level_name, game_model ):
+    def __init__( self, level_world ):
         QtGui.QGraphicsView.__init__( self )
-        self.__level_name = level_name
-        self.__game_model = game_model
-        self.setWindowTitle( self.tr( u'Level - %1' ).arg( level_name ) )
+        self.__world = level_world 
+        self.setWindowTitle( self.tr( u'Level - %1' ).arg( self.__world.key ) )
         self.setAttribute( Qt.WA_DeleteOnClose )
         self.__scene = QtGui.QGraphicsScene()
         self.__balls_by_id = {}
@@ -459,24 +463,24 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.__scene_elements = set()
         self.__level_elements = set()
         self.setScene( self.__scene )
-        self.refreshFromModel( self.getLevelModel() )
+        self.refreshFromModel()
         self.scale( 1.0, 1.0 )
         self.connect( self.__scene, QtCore.SIGNAL('selectionChanged()'),
                       self._sceneSelectionChanged )
         self.setRenderHints( QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform )
         # Subscribes to level element change to refresh the view
-        for tree in self.getLevelModel().trees:
+        for tree in self.__world.trees:
             tree.connect_to_element_events( self.__on_element_added,
                                             self.__on_element_updated,
                                             self.__on_element_about_to_be_removed )
-        level_model = game_model.getLevelModel(level_name)
         louie.connect( self._on_active_world_change, metaworldui.ActiveWorldChanged, 
-                       level_model.universe )
-        louie.connect( self._on_selection_change, metaworldui.WorldSelectionChanged, level_model )
+                       self.__world.universe )
+        louie.connect( self._on_selection_change, metaworldui.WorldSelectionChanged, 
+                       self.__world )
 
     def selectLevelOnSubWindowActivation( self ):
         """Called when the user switched MDI window."""
-        self.__game_model.selectLevel( self.__level_name )
+        self.__world.game_model.selectLevel( self.__world.key )
 
     def mouseMoveEvent( self, event):
         pos = self.mapToScene( event.pos() ) 
@@ -535,38 +539,38 @@ class LevelGraphicView(QtGui.QGraphicsView):
                 item.setSelected( False )
 
     def matchModel( self, model_type, level_name ):
-        return model_type == MODEL_TYPE_LEVEL and level_name == self.__level_name
+        return model_type == MODEL_TYPE_LEVEL and level_name == self.__world.key
 
     def getLevelModel( self ):
-        return self.__game_model.getLevelModel( self.__level_name )
+        return self.__world
 
     def __on_element_added(self, element, index_in_parent): #IGNORE:W0613
-        self.refreshFromModel( element.tree.world )
+        self.refreshFromModel()
 
     def __on_element_updated(self, element, name, new_value, old_value): #IGNORE:W0613
-        self.refreshFromModel( element.tree.world )
+        self.refreshFromModel()
 
     def __on_element_about_to_be_removed(self, element, index_in_parent): #IGNORE:W0613
-        self.refreshFromModel( element.tree.world, set([element]) )
+        self.refreshFromModel( set([element]) )
 
     def _on_active_world_change(self, active_world):
         """Called when a new world becomes active (may be another one).
         """
-        if active_world.key == self.__level_name:
-            self.refreshFromModel( active_world )
+        if active_world == self.__world:
+            self.refreshFromModel()
 
-    def refreshFromModel( self, game_level_model, elements_to_skip = None ):
+    def refreshFromModel( self, elements_to_skip = None ):
         elements_to_skip = elements_to_skip or set()
         scene = self.__scene
         scene.clear()
         self.__balls_by_id = {}
         self.__strands = []
         self.__lines = []
-        level_element = game_level_model.level_root
+        level_element = self.__world.level_root
         self._addElements( scene, level_element, self.__level_elements, elements_to_skip )
         self._addStrands( scene )
 
-        scene_element = game_level_model.scene_root
+        scene_element = self.__world.scene_root
         self._addElements( scene, scene_element, self.__scene_elements, elements_to_skip )
 
         for element in self.__lines:
@@ -695,8 +699,8 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
     def getImagePixmap( self, image_id ):
         """Returns the image pixmap for the specified image id."""
-        if image_id:
-            return self.getLevelModel().getImagePixmap( image_id )
+        if image_id is not None:
+            return self.__world.getImagePixmap( image_id )
         return None
 
     def _levelSignPostBuilder( self, scene, element ):
@@ -1025,12 +1029,6 @@ class MainWindow(QtGui.QMainWindow):
         except GameModelException, e:
             QtGui.QMessageBox.warning(self, self.tr("Loading WOG levels"),
                                       unicode(e))
-                    
-    def _refreshGraphicsView( self, game_level_model ):
-        level_mdi = self._findLevelGraphicView( game_level_model.level_name )
-        if level_mdi:
-            level_view = level_mdi.widget()
-            level_view.refreshFromModel( game_level_model )
 
     def editLevel( self ):
         if self._game_model:
@@ -1042,7 +1040,7 @@ class MainWindow(QtGui.QMainWindow):
             if dialog.exec_() and ui.levelList.currentItem:
                 level_name = unicode( ui.levelList.currentItem().text() )
                 try:
-                    self._game_model.selectLevel( level_name )
+                    level_world = self._game_model.selectLevel( level_name )
                 except GameModelException, e:
                     QtGui.QMessageBox.warning(self, self.tr("Failed to load level!"),
                               unicode(e))
@@ -1051,20 +1049,20 @@ class MainWindow(QtGui.QMainWindow):
                     if sub_window:
                         self.mdiArea.setActiveSubWindow( sub_window )
                     else:
-                        self._addLevelGraphicView( level_name )
+                        self._addLevelGraphicView( level_world )
 
-    def _addLevelGraphicView( self, level_name ):
+    def _addLevelGraphicView( self, level_world ):
         """Adds a new MDI LevelGraphicView window for the specified level."""
-        view = LevelGraphicView( level_name, self._game_model )
-        sub_window = self.mdiArea.addSubWindow( view )
-        self.connect( view, QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)'),
+        level_view = LevelGraphicView( level_world )
+        sub_window = self.mdiArea.addSubWindow( level_view )
+        self.connect( level_view, QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)'),
                       self._updateMouseScenePosInStatusBar )
         self.connect( sub_window, QtCore.SIGNAL('aboutToActivate()'),
-                      view.selectLevelOnSubWindowActivation )
-        view.show()
+                      level_view.selectLevelOnSubWindowActivation )
+        level_view.show()
 
     def _updateMouseScenePosInStatusBar( self, x, y ):
-        """Called whenever the mouse move in the scene view."""
+        """Called whenever the mouse move in the LevelView."""
         y = -y # Reverse transformation done when mapping to scene (in Qt 0 = top, in WOG 0 = bottom)
         self._mousePositionLabel.setText( self.tr('x: %1 y: %2').arg(x).arg(y) )
 
@@ -1137,8 +1135,8 @@ class MainWindow(QtGui.QMainWindow):
         if new_level_name:
             try:
                 self._game_model.newLevel( new_level_name )
-                self._game_model.selectLevel( new_level_name )
-                self._addLevelGraphicView( new_level_name )
+                level_world = self._game_model.selectLevel( new_level_name )
+                self._addLevelGraphicView( level_world )
             except IOError, e:
                 QtGui.QMessageBox.warning(self, self.tr("Failed to create the new level!"),
                                           unicode(e))
@@ -1171,8 +1169,8 @@ class MainWindow(QtGui.QMainWindow):
             if new_level_name:
                 try:
                     self._game_model.cloneLevel( current_level_model.level_name, new_level_name )
-                    self._game_model.selectLevel( new_level_name )
-                    self._addLevelGraphicView( new_level_name )
+                    level_world = self._game_model.selectLevel( new_level_name )
+                    self._addLevelGraphicView( level_world )
                 except IOError, e:
                     QtGui.QMessageBox.warning(self, self.tr("Failed to create the new cloned level!"),
                                               unicode(e))
