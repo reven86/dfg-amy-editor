@@ -31,7 +31,6 @@ import metawog
 import metaworldui
 import metatreeui
 import metaelementui
-import xml.etree.ElementTree 
 from PyQt4 import QtCore, QtGui
 from PyQt4.QtCore import Qt
 import editleveldialog_ui
@@ -169,9 +168,9 @@ class GameModel(QtCore.QObject):
         xml_data = wogfile.decrypt_file_data( path )
         return world.make_tree_from_xml( meta_tree, xml_data )
 
-    def _savePackedData( self, directory, file_name, element_tree ):
+    def _savePackedData( self, directory, file_name, tree ):
         path = os.path.join( directory, file_name )
-        xml_data = xml.etree.ElementTree.tostring( element_tree )
+        xml_data = tree.to_xml()
         wogfile.encrypt_file_data( path, xml_data )
 
     def _loadDirList( self, directory, filename_filter ):
@@ -378,11 +377,14 @@ class LevelModel(metaworld.World,metaworldui.SelectedElementsTracker):
             level_name = self.level_name
             level_dir = os.path.join( self.game_model._res_dir, 'levels', level_name )
             if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_GAME):
-                self.game_model._savePackedData( level_dir, level_name + '.level.bin', self.level_tree )
+                self.game_model._savePackedData( level_dir, level_name + '.level.bin', 
+                                                 self.level_tree.tree )
             if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_RESOURCE):
-                self.game_model._savePackedData( level_dir, level_name + '.resrc.bin', self.resource_tree )
+                self.game_model._savePackedData( level_dir, level_name + '.resrc.bin', 
+                                                 self.resource_tree.tree )
             if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_SCENE):
-                self.game_model._savePackedData( level_dir, level_name + '.scene.bin', self.scene_tree )
+                self.game_model._savePackedData( level_dir, level_name + '.scene.bin', 
+                                                 self.scene_tree.tree )
         self.__dirty_tracker.clean()
 
     def updateObjectPropertyValue( self, tree_meta, element, property_name, new_value ):
