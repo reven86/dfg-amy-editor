@@ -55,7 +55,7 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
         else:
             parent_item = self._findItemByElement( element.parent )
             if parent_item is not None:
-                self._insertElementNodeInTree( parent_item, element, index_in_parent )
+                self._insertElementTreeInTree( parent_item, element, index_in_parent )
             else:
                 print 'Warning: parent_element not found in tree view', element.parent
 
@@ -117,7 +117,12 @@ class MetaWorldTreeView(QtGui.QTreeView):
         self.connect( self, QtCore.SIGNAL("customContextMenuRequested(QPoint)"),
                       self._onContextMenu )
         louie.connect( self._on_active_world_change, metaworldui.ActiveWorldChanged )
-        
+
+    @property
+    def metaworld_tree(self):
+        model = self.model()
+        return model and model.metaworld_tree or None 
+
     def setModel(self, model):
         QtGui.QTreeView.setModel(self, model)
         assert self.selectionModel() is not None
@@ -206,42 +211,46 @@ class MetaWorldTreeView(QtGui.QTreeView):
                 # Notes: a selectionChanged signal may have been emitted due to selection change.
                 # Check out FormWindow::initializePopupMenu in designer, it does plenty of interesting stuff...
                 menu = QtGui.QMenu( self )
-                if self._remove_element_actions( element, menu ):
-                    menu.addSeparator()
-                self._copy_action(menu)
-                self._clone_action(menu)
+                self._menu_cut_action( element, menu )
+                self._menu_copy_action( menu )
+                self._menu_paste_action( menu )
                 menu.addSeparator()
-                self._add_child_actions( element.meta, menu )
+                self._menu_add_child_actions( element.meta, menu )
+                menu.addSeparator()
+                self._menu_remove_element_actions( element, menu )
                 
                 menu.exec_( self.viewport().mapToGlobal(menu_pos) )
 
-    def _copy_action( self, menu ):
-        action = menu.addAction( self.tr("Copy") )
-        self.connect( action, QtCore.SIGNAL("triggered()"), 
-                      self._copy_selected_node )
-        return True
+    def _menu_cut_action( self, element, menu ):
+        if not element.is_root():
+            menu.addAction( self.tr("Cut"), self._cut_selected_node,
+                            QtGui.QKeySequence.Cut )
 
-    def _clone_action( self, menu ):
-        action = menu.addAction( self.tr("Clone") )
-        self.connect( action, QtCore.SIGNAL("triggered()"), 
-                      self._clone_selected_node )
-        return True
+    def _menu_copy_action( self, menu ):
+        menu.addAction( self.tr("Copy"), self._copy_selected_node,
+                        QtGui.QKeySequence.Copy )
 
-    def _remove_element_actions( self, element, menu ):
-        if not element.is_root(): 
-            remove_action = menu.addAction( self.tr("Remove element") )
-            self.connect( remove_action, QtCore.SIGNAL("triggered()"), 
-                          self._remove_selected_node )
-            return True
-        return False
-
-    def _remove_selected_node(self):
+    def _menu_paste_action( self, menu ):
+        action = menu.addAction( self.tr("Paste"), self._paste_node,
+                                 QtGui.QKeySequence.Paste )
+        clipboard = QtGui.QApplication.clipboard()
+        xml_data = clipboard.text()
         elements = self._get_selected_elements()
-        for element in elements:
-            if element.parent is not None:
-                element.parent.remove( element )
+        is_pastable = False
+        if len(elements) == 1 and xml_data:
+            element = elements[0]
+            while element is not None:
+                if element.can_add_child_from_xml( xml_data ):
+                    is_pastable = True
+                    break
+                element = element.parent
+        action.setEnabled( is_pastable )
 
-    def _add_child_actions(self, element_meta, menu):
+    def _menu_remove_element_actions( self, element, menu ):
+        if not element.is_root(): 
+            menu.addAction( self.tr("Remove element"), self._remove_selected_node )
+
+    def _menu_add_child_actions(self, element_meta, menu):
         class AddChildAction(QtCore.QObject):
             def __init__(self, tree_view, element_meta, parent):
                 QtCore.QObject.__init__( self, parent )
@@ -262,6 +271,12 @@ class MetaWorldTreeView(QtGui.QTreeView):
                 has_action = True
         return has_action
 
+    def _remove_selected_node(self):
+        elements = self._get_selected_elements()
+        for element in elements:
+            if element.parent is not None:
+                element.parent.remove( element )
+
     def _copy_selected_node(self):
         # Required meta data:
         # Root-tree meta
@@ -271,8 +286,24 @@ class MetaWorldTreeView(QtGui.QTreeView):
             clipboard = QtGui.QApplication.clipboard()
             clipboard.setText( xml_data )
 
-    def _clone_selected_node(self):
-        pass
+    def _cut_selected_node(self):
+        self._copy_selected_node()
+        self._remove_selected_node()
+
+    def _paste_node(self):
+        clipboard = QtGui.QApplication.clipboard()
+        xml_data = clipboard.text()
+        elements = self._get_selected_elements()
+        if len(elements) == 1 and xml_data:
+            element = elements[0]
+            while element is not None:
+                child_elements = element.make_detached_child_from_xml( xml_data )
+                if child_elements:
+                    for child_element in child_elements:
+                        element.safe_identifier_insert( len(element), child_element )
+                    element.world.set_selection( child_elements[0] )
+                    break
+                element = element.parent
         
     def _appendChildTag( self, parent_element, new_element_meta ):
         """Adds the specified child tag to the specified element and update the tree view."""

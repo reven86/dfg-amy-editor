@@ -278,6 +278,39 @@ class ElementMeta(ObjectsMetaOwner):
     @property
     def attributes(self):
         return self.attributes_by_name.values()
+    
+    def make_element_from_xml_element( self, xml_element, warning = None ):
+        """Create an Element from a xml.tree.ElementTree.Element.
+           Returns the created element. The element tag must match this meta element tag.
+           warning: callable(message,arguments) => formatted using message % arguments
+        """
+        assert self.tag == xml_element.tag
+        # Map element attributes
+        known_attributes = {}
+        missing_attributes = set( xml_element.keys() )
+        for attribute_meta in self.attributes_by_name.itervalues():
+            attribute_value = xml_element.get( attribute_meta.name )
+            if attribute_value is not None:
+                # @todo Warning if attribute already in dict
+                known_attributes[ attribute_meta.name ] = attribute_value
+                missing_attributes.remove( attribute_meta.name )
+        if missing_attributes and warning is not None:
+            warning( u'Element %(tag)s, the following attributes are missing in the element description: %(attributes)s.',
+                     tag = xml_element.tag,
+                     attributes = ', '.join( sorted( missing_attributes ) ) )
+        # Map element children
+        children = []
+        for xml_element_child in xml_element:
+            child_meta = self.find_immediate_child_by_tag( xml_element_child.tag )
+            if child_meta:
+                element = child_meta.make_element_from_xml_element( xml_element_child,
+                                                                    warning )
+                children.append( element )
+            elif warning is not None:
+                warning( u'Element %(tag)s, the following child tag missing in the element description: %(child)s.',
+                         tag = xml_element.tag,
+                         child = xml_element_child.tag )
+        return Element( self, attributes = known_attributes, children = children )
 
     def __repr__( self ):
         return '%s(tag=%s, attributes=[%s], elements=[%s])' % (
@@ -783,36 +816,13 @@ class Universe(WorldsOwner):
            tree_meta: description of the kind of tree to load. Used to associated xml tag to element description.
            xml_data: raw XML data.
         """
-        xml_tree = xml.etree.ElementTree.fromstring( xml_data )
-        if tree_meta.root_element_meta.tag != xml_tree.tag:
+        xml_element = xml.etree.ElementTree.fromstring( xml_data )
+        if tree_meta.root_element_meta.tag != xml_element.tag:
             raise WorldException( u'Expected root tag "%(root)s", but got "%(actual)s" instead.' % {
-                'root': tree_meta.root_element_meta.tag, 'actual': xml_tree.tag } )
-        def _make_element_tree_from_xml( element_meta, xml_tree ):
-            # Map element attributes
-            known_attributes = {}
-            missing_attributes = set( xml_tree.keys() )
-            for attribute_meta in element_meta.attributes_by_name.itervalues():
-                attribute_value = xml_tree.get( attribute_meta.name )
-                if attribute_value is not None:
-                    # @todo Warning if attribute already in dict
-                    known_attributes[ attribute_meta.name ] = attribute_value
-                    missing_attributes.remove( attribute_meta.name )
-            if missing_attributes:
-                self._warning( u'Element %(tag)s, the following attributes are missing in the element description: %(attributes)s.',
-                               tag = xml_tree.tag,
-                               attributes = ', '.join( sorted( missing_attributes ) ) )
-            # Map element children
-            children = []
-            for xml_tree_child in xml_tree:
-                child_element_meta = element_meta.find_immediate_child_by_tag( xml_tree_child.tag )
-                if child_element_meta:
-                    children.append( _make_element_tree_from_xml( child_element_meta, xml_tree_child ) )
-                else:
-                    self._warning( u'Element %(tag)s, the following child tag missing in the element description: %(child)s.',
-                                   tag = xml_tree.tag,
-                                   child = xml_tree_child.tag )
-            return Element( element_meta, attributes = known_attributes, children = children )
-        root_element = _make_element_tree_from_xml( tree_meta.root_element_meta, xml_tree )
+                'root': tree_meta.root_element_meta.tag, 'actual': xml_element.tag } )
+        root_meta = tree_meta.root_element_meta
+        root_element = root_meta.make_element_from_xml_element( xml_element,
+                                                                self._warning )
         return Tree( self, tree_meta, root_element = root_element )
 
 
@@ -1184,6 +1194,75 @@ class Element(_ElementBase):
         meta_element.append( self )
         return xml.etree.ElementTree.tostring( meta_element, encoding )
 
+    def can_add_child_from_xml(self, xml_data):
+        """Tests if the an XML string generated by to_xml_with_meta() can be added as a child.
+           Returns True if xml_data contains an element that can be a child of this element.
+        """
+        child_elements = self._make_element_from_xml( xml_data )
+        if child_elements is None:
+            return False
+        child_tags = self.meta.immediate_child_tags()
+        # check if there is at least one compatible child
+        return len( [ element for element in child_elements 
+                      if element.tag in child_tags ] ) > 0 
+
+    def _make_element_from_xml(self, xml_data):
+        try:
+            metaworld_element = xml.etree.ElementTree.fromstring( xml_data )
+        except xml.parsers.expat.ExpatError:
+            return None
+        if metaworld_element is None:
+            return None
+        # skip root node if MetaWorldElement
+        child_elements = [metaworld_element]
+        if  metaworld_element.tag == 'MetaWorldElement':
+            child_elements = metaworld_element[:]
+        return child_elements
+
+    def make_detached_child_from_xml( self, xml_data, warning = None ):
+        """Creates Elements from a XML string for insertion has a child of this element.
+           Returns a list of the created Element or an empty list on failure.
+           For an element to be created, it must be a suitable child of this element.
+          warning: callable(message,arguments) => formatted using message % arguments
+        """
+        xml_elements = self._make_element_from_xml( xml_data )
+        if xml_elements is None:
+            return []
+        child_tags = self.meta.immediate_child_tags()
+        valid_elements = []
+        for xml_element in xml_elements:
+            if xml_element.tag in child_tags:
+                child_meta = self.meta.find_immediate_child_by_tag( xml_element.tag )
+                valid_elements.append(
+                    child_meta.make_element_from_xml_element( xml_element, warning ) )
+        return valid_elements
+        
+
+    def safe_identifier_insert(self, index, element):
+        """Insert the child element at the specified index generating new identifier
+           if required.
+           This element must belong to a world.
+        """
+        assert self.world 
+        id_meta = element.meta.identifier_attribute
+        if id_meta is not None:
+            id_value = id_meta.get( element )
+            # Generate a new identifier if already exist or none is present.
+            is_valid = self.world.is_valid_reference( id_meta.reference_world,
+                                                      id_meta.reference_family,
+                                                      id_value ) 
+            if is_valid or not id_value:
+                id_meta.set( element, self.world.generate_unique_identifier( id_meta ) )
+        # Remove the children, they will be added one by one later to make sure
+        # they each have a unique id (otherwise they could end up with the 
+        # same identifier if they were in the same family
+        old_children = element[:]
+        del element[:]
+        self.insert( index, element )
+        for child_element in old_children:
+            # Reinsert the child in its original parent
+            element.safe_identifier_insert( len(element), child_element )
+
     def append( self, element ):
         """Adds a subelement to the end of this element.
            @param element The element to add.
@@ -1249,14 +1328,13 @@ class Element(_ElementBase):
         """
         if start < 0:
             start += len(self)
-        if start < 0 or start >= len(self):
+        if start < 0 or start > len(self):
             raise IndexError( "Start index %(i)d is not in range[0,%(len)d[" % {'i':start,'len':len(self)} )
         if stop < 0:
             stop += len(self)
         if stop < start:
             stop = start
-        if stop > len(self):
-            raise IndexError( "End index %(i)d is not in range[0,%(len)d]" % {'i':stop,'len':len(self)} )
+        stop = min(len(self), stop)
         tree = self.tree
         for index in xrange(start,stop):
             element = self._children[start]
@@ -1277,14 +1355,13 @@ class Element(_ElementBase):
         """
         if start < 0:
             start += len(self)
-        if start < 0 or start >= len(self):
+        if start < 0 or start > len(self):
             raise IndexError( "Start index %(i)d is not in range[0,%(len)d[" % {'i':start,'len':len(self)} )
         if stop < 0:
             stop += len(self)
         if stop < start:
             stop = start
-        if stop > len(self):
-            raise IndexError( "End index %(i)d is not in range[0,%(len)d]" % {'i':stop,'len':len(self)} )
+        stop = min(len(self), stop)
         tree = self.tree
         for index in xrange(start,stop):
             element = self._children[start]
