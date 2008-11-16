@@ -842,8 +842,7 @@ class MainWindow(QtGui.QMainWindow):
         dock = QtGui.QDockWidget( self.tr( name ), self )
         dock.setAllowedAreas( Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea )
         element_tree_view = metatreeui.MetaWorldTreeView( self.common_actions, dock )
-        tree_model = metatreeui.MetaWorldTreeModel(tree_meta, 0, 1, 
-                                                   element_tree_view)  # nb rows, nb cols
+        tree_model = metatreeui.MetaWorldTreeModel(tree_meta, element_tree_view)
         element_tree_view.setModel( tree_model )
         dock.setWidget( element_tree_view )
         self.addDockWidget( Qt.RightDockWidgetArea, dock )

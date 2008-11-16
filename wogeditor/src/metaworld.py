@@ -44,7 +44,10 @@ PATH_TYPE = 'path'
 
 class AttributeMeta(object):
     def __init__( self, name, attribute_type, init = None, default = None, 
-                  allow_empty = False, mandatory = False ):
+                  allow_empty = False, mandatory = False, display_id = False ):
+        """display_id: if True indicates that the attribute may be used to 
+                       visually identify the element (typically name).
+        """
         self.name = name
         self.type = attribute_type
         if init is not None:
@@ -54,9 +57,12 @@ class AttributeMeta(object):
         self.allow_empty = allow_empty
         self.mandatory = mandatory
         self.element_meta = None
+        self.display_id = display_id
 
     def attach_to_element_meta( self, element_meta ):
         self.element_meta = element_meta
+        if self.display_id:
+            self.element_meta.display_id_attributes.add( self )
 
     def get( self, element ):
         return element.get( self.name )
@@ -237,6 +243,7 @@ class ElementMeta(ObjectsMetaOwner):
         self.parent_elements = set() # An element may be added as child of multiple elements if they are in the same file
         self.identifier_attribute = None
         self.reference_attributes = set()
+        self.display_id_attributes = set()
         self.file = None # initialized when element or parent element is added to a file
         self.child_elements_by_tag = {}
         self.min_occurrence = min_occurrence or 0
@@ -1272,6 +1279,16 @@ class Element(_ElementBase):
         if index == 0:
             return self.parent
         return self.parent[index-1]
+    
+    def get_display_id(self):
+        """Returns the display attribute value of the element.
+           Returns an empty string if the element has no display id attribute.
+        """
+        for attribute in self.meta.display_id_attributes:
+            value = attribute.get(self)
+            if value:
+                return value
+        return ''
 
     def append( self, element ):
         """Adds a subelement to the end of this element.

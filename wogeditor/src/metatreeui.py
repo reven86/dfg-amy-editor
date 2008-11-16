@@ -8,7 +8,7 @@ import metaworldui
 
 class MetaWorldTreeModel(QtGui.QStandardItemModel):
     def __init__( self, meta_tree, *args ):
-        QtGui.QStandardItemModel.__init__( self, *args )
+        QtGui.QStandardItemModel.__init__( self, 0, 2, *args ) # nb rows, nb columns
         self._metaworld_tree = None
         self._meta_tree = meta_tree
         self._setHeaders()
@@ -47,7 +47,8 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
             self._insertElementTreeInTree( self, self._metaworld_tree.root )
 
     def _setHeaders(self):
-        self.setHorizontalHeaderLabels( [self.tr('Element')] )
+        self.setHorizontalHeaderLabels( [self.tr('Element'),
+                                         self.tr('Id or Name')] )
 
     def _onElementAdded(self, element, index_in_parent ):
         if element.parent is None:
@@ -109,18 +110,24 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
         """
         if index is None:
             index = item_parent.rowCount()
-        item = QtGui.QStandardItem( element.tag )
-        item.setData( QtCore.QVariant( element ), Qt.UserRole )
-        item.setFlags( item.flags() & ~Qt.ItemIsEditable )
-        item_parent.insertRow( index, item )
-        return item
+        display_name = element.get_display_id()
+        items = []
+        for text in (element.tag, display_name):
+            item = QtGui.QStandardItem( text )
+            item.setData( QtCore.QVariant( element ), Qt.UserRole )
+            item.setFlags( item.flags() & ~Qt.ItemIsEditable )
+            items.append( item )
+        item_parent.insertRow( index, items )
+        return items[0]
 
 class MetaWorldTreeView(QtGui.QTreeView):
     def __init__( self, common_actions, *args ):
         QtGui.QTreeView.__init__( self, *args )
         self._common_actions = common_actions
         # Hook context menu popup signal
+        self.setSelectionBehavior( QtGui.QAbstractItemView.SelectRows )
         self.setContextMenuPolicy( Qt.CustomContextMenu )
+        self.setRootIsDecorated( False )
         self.connect( self, QtCore.SIGNAL("customContextMenuRequested(QPoint)"),
                       self._onContextMenu )
         louie.connect( self._on_active_world_change, metaworldui.ActiveWorldChanged )
@@ -136,6 +143,7 @@ class MetaWorldTreeView(QtGui.QTreeView):
         self.connect( self.selectionModel(), 
                       QtCore.SIGNAL("selectionChanged(QItemSelection,QItemSelection)"),
                       self._onTreeViewSelectionChange )
+        self.resizeColumnToContents(0)
         
     def _on_active_world_change(self, active_world):
         """Refresh a tree view with the new root element."""
@@ -174,10 +182,11 @@ class MetaWorldTreeView(QtGui.QTreeView):
             if model.meta_tree in selected_meta_tree:
                 element = list(selected_elements)[0] # @todo handle multiple selection
                 selected_item = model._findItemByElement( element )
-                if selected_item:
+                if selected_item is not None:
                     selected_index = selected_item.index()
                     selection_model.select( selected_index, 
-                                            QtGui.QItemSelectionModel.ClearAndSelect )
+                                            QtGui.QItemSelectionModel.ClearAndSelect |
+                                            QtGui.QItemSelectionModel.Rows )
                     self.setExpanded( selected_index, True )
                     self.parent().raise_() # Raise the dock windows associated to the tree view
                     self.scrollTo( selected_index )
@@ -222,8 +231,7 @@ class MetaWorldTreeView(QtGui.QTreeView):
             if element is None:
                 print 'Warning: somehow managed to activate context menu on non item???'
             else:
-                selection_model = self.selectionModel()
-                selection_model.select( index, QtGui.QItemSelectionModel.ClearAndSelect )
+                element.world.set_selection( element )
                 # Notes: a selectionChanged signal may have been emitted due to selection change.
                 # Check out FormWindow::initializePopupMenu in designer, it does plenty of interesting stuff...
                 menu = QtGui.QMenu( self )
@@ -282,7 +290,6 @@ class MetaWorldTreeView(QtGui.QTreeView):
         child_element = parent_element.make_child( new_element_meta, 
                                                    mandatory_attributes )
         # Select new item in tree view
+        child_element.world.set_selection( child_element )
         item_child = self.model()._findItemByElement( child_element )
-        selection_model = self.selectionModel()
-        selection_model.select( item_child.index(), QtGui.QItemSelectionModel.ClearAndSelect )
         self.scrollTo( item_child.index() )

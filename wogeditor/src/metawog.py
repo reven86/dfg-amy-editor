@@ -88,7 +88,7 @@ TREE_LEVEL_GAME.add_elements( [
             ] ),
         describe_element( 'pipe', attributes = [
             identifier_attribute( 'id', mandatory = True, reference_family = 'pipe',
-                                  reference_world = WORLD_LEVEL, init ='exitPipe' ),
+                display_id = True, reference_world = WORLD_LEVEL, init ='exitPipe' ),
             real_attribute( 'depth', init = 0, mandatory = True ),
             enum_attribute( 'type', values = ('BEAUTY', 'BLACK', 'ISH') )
             ],
@@ -101,7 +101,7 @@ TREE_LEVEL_GAME.add_elements( [
             ] ),
         describe_element( 'BallInstance', attributes = [
             identifier_attribute( 'id', mandatory = True, reference_family = 'BallInstance',
-                                  reference_world = WORLD_LEVEL, init ='1' ),
+                display_id = True, reference_world = WORLD_LEVEL, init ='1' ),
             reference_attribute( 'type', mandatory = True,
                                  reference_family = 'ball', reference_world = WORLD_GLOBAL ),
             # @todo makes x,y a composite attribute
@@ -118,13 +118,15 @@ TREE_LEVEL_GAME.add_elements( [
                                  init = '', mandatory = True )
             ] ),
         describe_element( 'music', attributes = [
-            reference_attribute( 'id', reference_family = 'sound', reference_world = WORLD_LEVEL, mandatory = True )
+            reference_attribute( 'id', display_id = True, mandatory = True, 
+                reference_family = 'sound', reference_world = WORLD_LEVEL )
             ] ),
         describe_element( 'loopsound', attributes = [
-            reference_attribute( 'id', reference_family = 'sound', reference_world = WORLD_LEVEL, mandatory = True )
+            reference_attribute( 'id', display_id = True, mandatory = True, 
+                reference_family = 'sound', reference_world = WORLD_LEVEL )
             ] ),
         describe_element( 'levelexit', attributes = [
-            string_attribute( 'id', mandatory = True, init = 'theExit' ),
+            string_attribute( 'id', mandatory = True, display_id = True, init = 'theExit' ),
             string_attribute( 'filter', mandatory = True, init = '' ),  # @todo revisit 0..1 occ of enum occurrence
             xy_attribute( 'pos', mandatory = True, init = '0,0' ),
             real_attribute( 'radius', mandatory = True, init = '75' )
@@ -135,7 +137,7 @@ TREE_LEVEL_GAME.add_elements( [
             real_attribute( 'delay', mandatory = True, init = '1' )
             ] ),
         describe_element( 'endonmessage', attributes = [
-            string_attribute( 'id', mandatory = True )  # values seems to be hard-coded
+            string_attribute( 'id', display_id = True, mandatory = True )  # values seems to be hard-coded
             ] ),
         describe_element( 'fire', attributes = [
             real_attribute( 'x', mandatory = True, init = '0' ),
@@ -163,12 +165,12 @@ def _describe_resource_file( tree_meta, resource_world, is_global = False ):
     resources_element.add_elements( [
         describe_element( 'Image', attributes = [
             identifier_attribute( 'id', mandatory = True, reference_family = 'image',
-                                  reference_world = resource_world ),
+                display_id = True, reference_world = resource_world ),
             path_attribute( 'path', strip_extension = '.png', mandatory = True )
             ] ),
         describe_element( 'Sound', attributes = [
             identifier_attribute( 'id', mandatory = True, reference_family = 'sound',
-                                  reference_world = resource_world ),
+                display_id = True, reference_world = resource_world ),
             path_attribute( 'path', strip_extension = '.ogg', mandatory = True )
             ] ),
         describe_element( 'SetDefaults', read_only = True, attributes = [
@@ -180,7 +182,7 @@ def _describe_resource_file( tree_meta, resource_world, is_global = False ):
         resources_element.add_elements( [
             describe_element( 'font', attributes = [
                 identifier_attribute( 'id', mandatory = True, reference_family = 'font',
-                                      reference_world = resource_world ),
+                    display_id = True, reference_world = resource_world ),
                 path_attribute( 'path', strip_extension = '.png', mandatory = True ) # @todo also check existence of .txt
                 ] )
         ] )
@@ -196,7 +198,7 @@ _describe_resource_file( TREE_LEVEL_RESOURCE, WORLD_LEVEL )
 
 
 ELEMENT_BUTTON = describe_element( 'button', attributes = [
-        string_attribute( 'id', mandatory = True ),
+        string_attribute( 'id', display_id = True, mandatory = True ),
         real_attribute( 'x', mandatory = True, init = '0' ),
         real_attribute( 'y', mandatory = True, init = '0' ),
         real_attribute( 'depth', mandatory = True, init = '10' ),
@@ -224,7 +226,8 @@ ELEMENT_BUTTON = describe_element( 'button', attributes = [
         ] )
 
 ELEMENT_RECTANGLE = describe_element( 'rectangle', attributes = [
-    identifier_attribute( 'id', mandatory = True, reference_family = 'geometry', reference_world = WORLD_LEVEL ),
+    identifier_attribute( 'id', display_id = True, mandatory = True, 
+        reference_family = 'geometry', reference_world = WORLD_LEVEL ),
     real_attribute( 'x', mandatory = True, init = '0' ),
     real_attribute( 'y', mandatory = True, init = '0' ),
     angle_radians_attribute( 'rotation', mandatory = True, init = '0' ),
@@ -245,7 +248,8 @@ ELEMENT_RECTANGLE = describe_element( 'rectangle', attributes = [
     ] )
 
 ELEMENT_CIRCLE = describe_element( 'circle', attributes = [
-    identifier_attribute( 'id', mandatory = True, reference_family = 'geometry', reference_world = WORLD_LEVEL ),
+    identifier_attribute( 'id', display_id = True, mandatory = True, 
+        reference_family = 'geometry', reference_world = WORLD_LEVEL ),
     real_attribute( 'x', mandatory = True, init = '0' ),
     real_attribute( 'y', mandatory = True, init = '0' ),
     real_attribute( 'radius', mandatory = True, init = '75' ),
@@ -285,7 +289,7 @@ TREE_LEVEL_SCENE.add_elements( [
             real_attribute( 'animdelay', min_value = 0.0001, default = '1' ),
             real_attribute( 'animspeed' ),
             angle_degrees_attribute( 'rotation', default = '0' ),
-            string_attribute( 'name' ),
+            string_attribute( 'name', display_id = True ),
             enum_attribute( 'context', ('screen',) ),
             real_attribute( 'scalex', default='1'),
             real_attribute( 'scaley', default='1'),
@@ -302,7 +306,7 @@ TREE_LEVEL_SCENE.add_elements( [
                 ELEMENT_BUTTON
             ] ),
         describe_element( 'label', attributes = [
-            string_attribute( 'id', mandatory = True ),
+            string_attribute( 'id', display_id = True, mandatory = True ),
             real_attribute( 'x', mandatory = True, init = '0' ),
             real_attribute( 'y', mandatory = True, init = '0' ),
             reference_attribute( 'text', reference_family = 'text', reference_world = WORLD_GLOBAL ),
@@ -317,7 +321,8 @@ TREE_LEVEL_SCENE.add_elements( [
         ELEMENT_RECTANGLE,
         ELEMENT_CIRCLE,
         describe_element( 'compositegeom', attributes = [
-            identifier_attribute( 'id', mandatory = True, reference_family = 'geometry', reference_world = WORLD_LEVEL ),
+            identifier_attribute( 'id', display_id = True, mandatory = True, 
+                reference_family = 'geometry', reference_world = WORLD_LEVEL ),
             real_attribute( 'x', mandatory = True, init = '0' ),
             real_attribute( 'y', mandatory = True, init = '0' ),
             angle_radians_attribute( 'rotation', mandatory = True, init = '0' ),
@@ -337,7 +342,7 @@ TREE_LEVEL_SCENE.add_elements( [
                 ELEMENT_CIRCLE
             ] ),
         describe_element( 'line', attributes = [
-            string_attribute( 'id', mandatory = True ),
+            string_attribute( 'id', display_id = True, mandatory = True ),
             xy_attribute( 'anchor', mandatory = True, init = '0,0' ),
             xy_attribute( 'normal', mandatory = True, init = '10,0' ),
             reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
@@ -346,7 +351,7 @@ TREE_LEVEL_SCENE.add_elements( [
             string_attribute( 'tag' )
             ] ),
         describe_element( 'linearforcefield', attributes = [
-            string_attribute( 'id', mandatory = True ),
+            string_attribute( 'id', display_id = True, mandatory = True ),
             xy_attribute( 'force', mandatory = True, init = '0,-10' ),
             real_attribute( 'dampeningfactor', mandatory = True, init = '0' ),
             bool_attribute( 'antigrav', mandatory = True, init = 'false' ),
@@ -361,7 +366,7 @@ TREE_LEVEL_SCENE.add_elements( [
             bool_attribute( 'water', default = 'false' )
             ] ),
         describe_element( 'radialforcefield', attributes = [
-            string_attribute( 'id', mandatory = True ),
+            string_attribute( 'id', display_id = True, mandatory = True ),
             real_attribute( 'forceatcenter', mandatory = True, init = '10,0' ),
             real_attribute( 'forceatedge', mandatory = True, init = '0,0' ),
             real_attribute( 'dampeningfactor', mandatory = True, init = '0' ),
@@ -386,7 +391,8 @@ TREE_LEVEL_SCENE.add_elements( [
             ] ),
         describe_element( 'particles', attributes = [
             real_attribute( 'depth', mandatory = True, init = '-20' ),
-            reference_attribute( 'effect', reference_family = 'effect', reference_world = WORLD_GLOBAL, mandatory = True ),
+            reference_attribute( 'effect', mandatory = True, display_id = True, 
+                reference_family = 'effect', reference_world = WORLD_GLOBAL ),
             xy_attribute( 'pos' ),
             real_attribute( 'pretick', default = '0' )
             ] )
@@ -397,8 +403,8 @@ TREE_LEVEL_SCENE.add_elements( [
 TREE_GLOBAL_TEXT.add_elements( [
     describe_element( 'strings', exact_occurrence = 1, attributes = [], elements = [
         describe_element( 'string', min_occurrence = 1, attributes = [
-            identifier_attribute( 'id', mandatory = True, reference_family = 'text',
-                                  reference_world = WORLD_GLOBAL ),
+            identifier_attribute( 'id', mandatory = True, display_id = True, 
+                reference_family = 'text', reference_world = WORLD_GLOBAL ),
             string_attribute( 'text', mandatory = True ),  
             string_attribute( 'de' ),  
             string_attribute( 'es' ),  
@@ -443,8 +449,8 @@ ELEMENT_PARTICLE = describe_element( 'particle', min_occurrence = 1, attributes 
 TREE_GLOBAL_FX.add_elements( [
     describe_element( 'effects', exact_occurrence = 1, attributes = [], elements = [
         describe_element( 'ambientparticleeffect', attributes = [
-            identifier_attribute( 'name', mandatory = True, reference_family = 'effect',
-                                  reference_world = WORLD_GLOBAL ),
+            identifier_attribute( 'name', display_id = True, mandatory = True, 
+                reference_family = 'effect', reference_world = WORLD_GLOBAL ),
             int_attribute( 'maxparticles', min_value = 1, mandatory = True, init = '1' ),
             int_attribute( 'margin' ) # ???
             ],
@@ -452,8 +458,8 @@ TREE_GLOBAL_FX.add_elements( [
                 ELEMENT_PARTICLE
             ] ),
         describe_element( 'particleeffect', attributes = [
-            identifier_attribute( 'name', mandatory = True, reference_family = 'effect',
-                                  reference_world = WORLD_GLOBAL ),
+            identifier_attribute( 'name', display_id = True, mandatory = True, 
+                reference_family = 'effect', reference_world = WORLD_GLOBAL ),
             int_attribute( 'maxparticles', min_value = 1, mandatory = True, init = '1' ),
             real_attribute( 'rate', min_value = 0.00001 ),
             int_attribute( 'margin' ) # ???
@@ -469,8 +475,8 @@ TREE_GLOBAL_FX.add_elements( [
 TREE_GLOBAL_MATERIALS.add_elements( [
     describe_element( 'materials', exact_occurrence = 1, attributes = [], elements = [
         describe_element( 'material', attributes = [
-            identifier_attribute( 'id', mandatory = True, reference_family = 'material',
-                                  reference_world = WORLD_GLOBAL ),
+            identifier_attribute( 'id', display_id = True, mandatory = True, 
+                reference_family = 'material', reference_world = WORLD_GLOBAL ),
             real_attribute( 'bounce', min_value = 0, mandatory = True, init = '0' ),
             real_attribute( 'friction', min_value = 0, mandatory = True, init = '0' ),
             real_attribute( 'minbouncevel', min_value = 0, mandatory = True, init = '100' ),
@@ -485,8 +491,8 @@ _describe_resource_file( TREE_BALL_RESOURCE, WORLD_BALL )
 # NOTES: this has been generated from scanxmlfile with -w options. Need a lot of clean up.
 TREE_BALL_MAIN.add_elements( [
         describe_element( 'ball', min_occurrence=1, max_occurrence=1, attributes = [
-            identifier_attribute( 'name', mandatory = True, reference_family = 'ball',
-                                  reference_world = WORLD_GLOBAL ),
+            identifier_attribute( 'name', display_id = True, mandatory = True, 
+                reference_family = 'ball', reference_world = WORLD_GLOBAL ),
             int_attribute( 'mass', min_value=0.00001, mandatory = True, init = '20'),  # [8-600] Median:20 Samples: 20 | 30 | 10 | 60 | 600
             unknown_attribute( 'shape', mandatory = True, init = 'circle,30'),  # Samples: circle,30 | circle,30,0.25 | circle,24,0.1 | circle,50,0 | rectangle,50,50
             real_attribute( 'speedvariance', min_value=0, mandatory = True, init = '0.2'),  # [0.0-0.3] Median:0.2 Samples: 0.2 | 0 | 0.3 | 0.0
@@ -632,11 +638,12 @@ TREE_ISLAND.add_elements( [
         describe_element( 'island', exact_occurrence = 1, attributes = [
             reference_attribute( 'icon', reference_family = 'image', reference_world = WORLD_GLOBAL, mandatory = True ),
             string_attribute( 'map', mandatory = True, init = 'island5'),
-            string_attribute( 'name', mandatory = True, init = 'Cog in the Machine'),  # Samples: Cog in the Machine | The Goo Filled Hills | Information Superhighay | Little Miss World of Goo | End of the World
+            string_attribute( 'name', display_id = True, mandatory = True, 
+                init = 'Cog in the Machine'),  # Samples: Cog in the Machine | The Goo Filled Hills | Information Superhighay | Little Miss World of Goo | End of the World
         ], elements = [
             describe_element( 'level', min_occurrence=1, attributes = [
-                identifier_attribute( 'id', mandatory = True, reference_family = 'level',
-                                      reference_world = WORLD_ISLAND ),
+                identifier_attribute( 'id', display_id = True, mandatory = True, 
+                    reference_family = 'level', reference_world = WORLD_ISLAND ),
                 reference_attribute( 'name', reference_family = 'text', reference_world = WORLD_ISLAND, init = '', mandatory = True ),
                 reference_attribute( 'text', reference_family = 'text', reference_world = WORLD_ISLAND, init = '', mandatory = True ),
                 reference_attribute( 'depends', reference_family = 'level', reference_world = WORLD_ISLAND),
