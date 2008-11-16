@@ -72,12 +72,18 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
             item.parent().removeRow( item_row )
         # Notes: selection will be automatically switched to the previous row in the tree view.
 
+    def get_item_element(self, item):
+        return item.data( Qt.UserRole ).toPyObject()
+
+    def get_index_element(self, index):
+        return index.data( Qt.UserRole ).toPyObject()
+
     def _findItemByElement( self, element ):
         """Returns the tree view item corresponding to the specified element.
            None if the element is not in the tree.
         """
         for item in qthelper.standardModelTreeItems( self ):
-            if item.data( Qt.UserRole ).toPyObject() is element:
+            if self.get_item_element( item ) is element:
                 return item
         return None
 
@@ -110,8 +116,9 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
         return item
 
 class MetaWorldTreeView(QtGui.QTreeView):
-    def __init__( self, *args ):
+    def __init__( self, common_actions, *args ):
         QtGui.QTreeView.__init__( self, *args )
+        self._common_actions = common_actions
         # Hook context menu popup signal
         self.setContextMenuPolicy( Qt.CustomContextMenu )
         self.connect( self, QtCore.SIGNAL("customContextMenuRequested(QPoint)"),
@@ -181,12 +188,21 @@ class MetaWorldTreeView(QtGui.QTreeView):
         
     def _onTreeViewSelectionChange( self, selected, deselected ): #IGNORE:W0613
         """Called whenever the scene tree selection change."""
-        selected_indexes = selected.indexes()
-        elements = [ index.data( Qt.UserRole ).toPyObject() 
-                     for index in selected_indexes ]
-        assert None not in elements
-        if len(elements) > 0: 
-            elements[0].world.set_selection( elements )
+        model = self.model()
+        if model is not None:
+            selected_elements = [ model.get_index_element(index) 
+                                  for index in selected.indexes() ]
+            deselected_elements = [ model.get_index_element(index) 
+                                    for index in deselected.indexes() ]
+            assert None not in selected_elements
+            assert None not in deselected_elements
+            world = None
+            if selected_elements:
+                world = selected_elements[0].world
+            elif deselected_elements:
+                world = deselected_elements[0].world
+            if world is not None:
+                world.update_selection( selected_elements, deselected_elements )
 
     def _get_selected_elements(self):
         """Returns the list of selected Element in the world corresponding to this tree.
@@ -201,8 +217,8 @@ class MetaWorldTreeView(QtGui.QTreeView):
     def _onContextMenu( self, menu_pos ):
         # Select the right clicked item
         index = self.indexAt(menu_pos)
-        if index.isValid():
-            element = index.data( Qt.UserRole ).toPyObject()
+        if index.isValid() and self.model():
+            element = self.model().get_index_element(index)
             if element is None:
                 print 'Warning: somehow managed to activate context menu on non item???'
             else:
@@ -211,44 +227,20 @@ class MetaWorldTreeView(QtGui.QTreeView):
                 # Notes: a selectionChanged signal may have been emitted due to selection change.
                 # Check out FormWindow::initializePopupMenu in designer, it does plenty of interesting stuff...
                 menu = QtGui.QMenu( self )
-                self._menu_cut_action( element, menu )
-                self._menu_copy_action( menu )
-                self._menu_paste_action( menu )
+                if not element.is_root():
+                    menu.addAction( self._common_actions['cut'] )
+                menu.addAction( self._common_actions['copy'] )
+                menu.addAction( self._common_actions['paste'] )
                 menu.addSeparator()
                 self._menu_add_child_actions( element.meta, menu )
-                menu.addSeparator()
-                self._menu_remove_element_actions( element, menu )
+                if not element.is_root(): 
+                    menu.addSeparator()
+                    menu.addAction( self._common_actions['delete'] )
+                
+                for action in menu.actions():
+                    action.setShortcutContext( Qt.ApplicationShortcut )
                 
                 menu.exec_( self.viewport().mapToGlobal(menu_pos) )
-
-    def _menu_cut_action( self, element, menu ):
-        if not element.is_root():
-            menu.addAction( self.tr("Cut"), self._cut_selected_node,
-                            QtGui.QKeySequence.Cut )
-
-    def _menu_copy_action( self, menu ):
-        menu.addAction( self.tr("Copy"), self._copy_selected_node,
-                        QtGui.QKeySequence.Copy )
-
-    def _menu_paste_action( self, menu ):
-        action = menu.addAction( self.tr("Paste"), self._paste_node,
-                                 QtGui.QKeySequence.Paste )
-        clipboard = QtGui.QApplication.clipboard()
-        xml_data = clipboard.text()
-        elements = self._get_selected_elements()
-        is_pastable = False
-        if len(elements) == 1 and xml_data:
-            element = elements[0]
-            while element is not None:
-                if element.can_add_child_from_xml( xml_data ):
-                    is_pastable = True
-                    break
-                element = element.parent
-        action.setEnabled( is_pastable )
-
-    def _menu_remove_element_actions( self, element, menu ):
-        if not element.is_root(): 
-            menu.addAction( self.tr("Remove element"), self._remove_selected_node )
 
     def _menu_add_child_actions(self, element_meta, menu):
         class AddChildAction(QtCore.QObject):
@@ -270,40 +262,6 @@ class MetaWorldTreeView(QtGui.QTreeView):
                 self.connect( action, QtCore.SIGNAL("triggered()"), handler )
                 has_action = True
         return has_action
-
-    def _remove_selected_node(self):
-        elements = self._get_selected_elements()
-        for element in elements:
-            if element.parent is not None:
-                element.parent.remove( element )
-
-    def _copy_selected_node(self):
-        # Required meta data:
-        # Root-tree meta
-        elements = self._get_selected_elements()
-        if len(elements) == 1:
-            xml_data = elements[0].to_xml_with_meta()
-            clipboard = QtGui.QApplication.clipboard()
-            clipboard.setText( xml_data )
-
-    def _cut_selected_node(self):
-        self._copy_selected_node()
-        self._remove_selected_node()
-
-    def _paste_node(self):
-        clipboard = QtGui.QApplication.clipboard()
-        xml_data = clipboard.text()
-        elements = self._get_selected_elements()
-        if len(elements) == 1 and xml_data:
-            element = elements[0]
-            while element is not None:
-                child_elements = element.make_detached_child_from_xml( xml_data )
-                if child_elements:
-                    for child_element in child_elements:
-                        element.safe_identifier_insert( len(element), child_element )
-                    element.world.set_selection( child_elements[0] )
-                    break
-                element = element.parent
         
     def _appendChildTag( self, parent_element, new_element_meta ):
         """Adds the specified child tag to the specified element and update the tree view."""

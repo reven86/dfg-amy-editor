@@ -1,6 +1,62 @@
 """Some helpers to work around some ackward aspect of the pyqt API.
 """
 from PyQt4 import QtCore, QtGui
+from PyQt4.QtCore import Qt
+
+def implicit( type, value ):
+    """Simulates implicit C++ constructor.
+       If value is an instance of type, then returns value, otherwise call type constructor
+       with value as parameter.
+    """
+    if isinstance(value, type):
+        return value
+    return type(value)
+
+def key_sequence( value, translate_context ):
+    """Constructs a QtGui.QKeySequence simulating the implicit C++ constructor.
+       value: may be a QtGui.QKeySequence, QtGui.QKeySequence.StandardKey or a string.
+       If a string is provided, it will be translated. 
+    """
+    if isinstance(value, QtGui.QKeySequence):
+        return value
+    if isinstance(value, QtGui.QKeySequence.StandardKey):
+        return QtGui.QKeySequence(value)
+    assert isinstance(translate_context,QtCore.QObject), translate_context
+    return QtGui.QKeySequence( translate_context.tr( value ) )
+
+def action( parent, icon = None, text = None, 
+            shortcut = None, shortcut_context = None, status_tip = None,
+            enabled = None, checkable = None, checked = None,
+            receiver = None, handler = None, translate_context = None ):
+    """Creates a QtGui.QAction with the specified attributes.
+       text, shortcut, status_tip are automatically translated using translate_context,
+       or parent if not specified.
+       If handler is specified, then the triggered() signal is connected to handler
+       using receiver as receiver or parent if no receiver is specified.
+    """
+    tr_context = translate_context or parent
+    action = QtGui.QAction( parent )
+    if icon:
+        action.setIcon( implicit( QtGui.QIcon, icon ) )
+    if text:
+        action.setText( tr_context.tr(text) )
+    if shortcut is not None:
+        action.setShortcut( key_sequence( shortcut, tr_context ) )      
+    if shortcut_context is not None:
+        action.setShortcutContext( shortcut_context )
+    if status_tip:
+        action.setStatusTip( tr_context.tr(status_tip) )
+    if enabled is not None:
+        action.setEnabled( enabled )
+    if checked is not None:
+        action.setChecked( checked )
+    if checkable is not None:
+        action.setCheckable( checkable )
+    if handler is not None:
+        if receiver is None:
+            receiver = parent 
+        receiver.connect( action, QtCore.SIGNAL("triggered()"), handler )
+    return action
 
 def iterQTreeWidget( tree_or_item, flag = QtGui.QTreeWidgetItemIterator.All ):
     iterator = QtGui.QTreeWidgetItemIterator(tree_or_item, flag)

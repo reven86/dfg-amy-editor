@@ -88,13 +88,35 @@ class SelectedElementsTracker(object):
 
     @property
     def selected_elements(self):
+        """List of selected Elements.""" 
         return self.__selection.copy()
         
     def set_selection(self, selected_elements ):
+        """Set the list of selected Elements."""
         if isinstance(selected_elements, metaworld.Element):
             selected_elements = [selected_elements]
+        old_selection = self.__selection.copy()
+        self.__selection = set(selected_elements)  
+        self._send_selection_update( old_selection )
+
+    def update_selection( self, selected_elements, deselected_elements ):
+        """Adds and remove some Element from the selection."""
         selected_elements = set(selected_elements)
-        deselected_elements = selected_elements - self.__selection
-        self.__selection = selected_elements.copy()  
-        louie.send( WorldSelectionChanged, self.__world, 
-                    selected_elements, deselected_elements )
+        deselected_elements = set(deselected_elements)
+        old_selection = self.__selection.copy()
+        self.__selection = self.__selection | selected_elements
+        self.__selection = self.__selection - deselected_elements
+        self._send_selection_update( old_selection )
+
+    def _send_selection_update(self, old_selection):
+        """Broadcast the selection change to the world if required."""
+        selected_elements = self.__selection - old_selection
+        deselected_elements = old_selection - self.__selection
+        if selected_elements or deselected_elements: 
+#            print 'Selection changed:'
+#            print '  Selection:', self.__selection
+#            print '  Selected:',  selected_elements
+#            print '  Unselected:',  deselected_elements
+            louie.send( WorldSelectionChanged, self.__world, 
+                        selected_elements, deselected_elements )
+        

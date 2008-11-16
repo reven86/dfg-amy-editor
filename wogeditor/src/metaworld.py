@@ -1263,6 +1263,16 @@ class Element(_ElementBase):
             # Reinsert the child in its original parent
             element.safe_identifier_insert( len(element), child_element )
 
+    def previous_element(self):
+        """Returns the previous element in the tree.
+           If the element is at index 0 in its parent, then returns its parent,
+           otherwise returns its sibling at the previous index.
+        """
+        index = self.index_in_parent()
+        if index == 0:
+            return self.parent
+        return self.parent[index-1]
+
     def append( self, element ):
         """Adds a subelement to the end of this element.
            @param element The element to add.

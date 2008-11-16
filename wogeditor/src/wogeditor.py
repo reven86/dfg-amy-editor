@@ -33,6 +33,7 @@ import metaelementui
 import levelview
 from PyQt4 import QtCore, QtGui
 from PyQt4.QtCore import Qt
+import qthelper
 import editleveldialog_ui
 import newleveldialog_ui
 import wogeditor_rc #IGNORE:W0611
@@ -401,7 +402,7 @@ class LevelWorld(metaworld.World,metaworldui.SelectedElementsTracker):
         if image_element is not None:
             pixmap = self.game_model.pixmap_cache.get_pixmap( image_element )
         else:
-            print 'Warning: invalid image reference: %(ref)s' % {'ref':image_id}
+            print 'Warning: invalid image reference: "%(ref)s"' % {'ref':image_id}
         return pixmap or QtGui.QPixmap()
 
     def updateLevelResources( self ):
@@ -644,6 +645,66 @@ class MainWindow(QtGui.QMainWindow):
             <a href="http://www.sourceforge.net/projects/wogedit">http://www.sourceforge.net/projects/wogedit</a></p>
             <p>Copyright 2008, NitroZark &lt;nitrozark at users.sourceforget.net&gt;</p>"""))
 
+
+    def on_cut_action(self):
+        elements = self.on_copy_action( is_cut_action=True )
+        if elements:
+            self.on_delete_action( is_cut_action=True )
+            self.statusBar().showMessage( 
+                self.tr('Element "%s" cut to clipboard' % 
+                        elements[0].tag), 1000 )
+
+    def on_copy_action(self, is_cut_action = False):
+        level_world = self.getCurrentLevelModel()
+        if level_world:
+            elements = list(level_world.selected_elements)
+            if len(elements) == 1:
+                xml_data = elements[0].to_xml_with_meta()
+                clipboard = QtGui.QApplication.clipboard()
+                clipboard.setText( xml_data )
+                if not is_cut_action:
+                    self.statusBar().showMessage( 
+                        self.tr('Element "%s" copied to clipboard' % 
+                                elements[0].tag), 1000 )
+                return elements
+
+    def on_paste_action(self):
+        clipboard = QtGui.QApplication.clipboard()
+        xml_data = unicode(clipboard.text())
+        level_world = self.getCurrentLevelModel()
+        if level_world is None or not xml_data:
+            return
+        elements = list(level_world.selected_elements)
+        if len(elements) == 0: # Allow pasting to root when no selection
+            elements = [tree.root for tree in level_world.trees]
+        # Try to paste in one of the selected elements. Stop when succeed
+        for element in elements:
+            while element is not None:
+                child_elements = element.make_detached_child_from_xml( xml_data )
+                if child_elements:
+                    for child_element in child_elements:
+                        element.safe_identifier_insert( len(element), child_element )
+                    element.world.set_selection( child_elements[0] )
+                    break
+                element = element.parent
+
+    def on_delete_action(self, is_cut_action = False):
+        level_world = self.getCurrentLevelModel()
+        if level_world is None:
+            return
+        deleted_elements = []
+        for element in  list(level_world.selected_elements):
+            if not element.is_root():
+                deleted_elements.append( element.previous_element() )
+                element.parent.remove( element )
+                
+        if is_cut_action:
+            return len(deleted_elements)
+        if deleted_elements:
+            self.statusBar().showMessage( 
+                self.tr('Deleted %d element(s)' % len(deleted_elements)), 1000 )
+            level_world.set_selection( deleted_elements[0] )
+
     def onRefreshAction( self ):
         """Called multiple time per second. Used to refresh enabled flags of actions."""
         has_wog_dir = self._game_model is not None
@@ -662,55 +723,72 @@ class MainWindow(QtGui.QMainWindow):
         self.setCentralWidget(self.mdiArea)
     
     def createActions(self):
-        self.changeWOGDirAction = QtGui.QAction(QtGui.QIcon(":/images/open.png"), self.tr("&Change WOG directory..."), self)
-        self.changeWOGDirAction.setShortcut(self.tr("Ctrl+O"))
-        self.changeWOGDirAction.setStatusTip(self.tr("Change World Of Goo top-directory"))
-        self.connect(self.changeWOGDirAction, QtCore.SIGNAL("triggered()"), self.changeWOGDir)
+        self.changeWOGDirAction = qthelper.action( self, handler = self.changeWOGDir,
+            icon = ":/images/open.png",
+            text = "&Change WOG directory...",
+            shortcut = QtGui.QKeySequence.Open,
+            status_tip = "Change World Of Goo top-directory" )
+                                                   
+        self.editLevelAction = qthelper.action( self, handler = self.editLevel,
+            icon = ":/images/open-level.png",
+            text = "&Edit existing level...",
+            shortcut = "Ctrl+L", 
+            status_tip = "Select a level to edit" )
 
-        self.editLevelAction = QtGui.QAction(QtGui.QIcon(":/images/open-level.png"), self.tr("&Edit existing level..."), self)
-        self.editLevelAction.setShortcut(self.tr("Ctrl+L"))
-        self.editLevelAction.setStatusTip(self.tr("Select a level to edit"))
-        self.connect(self.editLevelAction, QtCore.SIGNAL("triggered()"), self.editLevel)
+        self.newLevelAction = qthelper.action(self, handler = self.newLevel,
+            icon = ":/images/new-level.png",
+            text = "&New level...",
+            shortcut = QtGui.QKeySequence.New,
+            status_tip = "Creates a new level" )
 
-        self.newLevelAction = QtGui.QAction(QtGui.QIcon(":/images/new-level.png"), self.tr("&New level..."), self)
-        self.newLevelAction.setShortcut(self.tr("Ctrl+N"))
-        self.newLevelAction.setStatusTip(self.tr("Creates a new level"))
-        self.connect(self.newLevelAction, QtCore.SIGNAL("triggered()"), self.newLevel)
-
-        self.cloneLevelAction = QtGui.QAction(QtGui.QIcon(":/images/clone-level.png"), self.tr("&Clone selected level..."), self)
-        self.cloneLevelAction.setShortcut(self.tr("Ctrl+D"))
-        self.cloneLevelAction.setStatusTip(self.tr("Clone the selected level"))
-        self.connect(self.cloneLevelAction, QtCore.SIGNAL("triggered()"), self.cloneLevel)
+        self.cloneLevelAction = qthelper.action( self, handler = self.cloneLevel,
+            icon = ":/images/clone-level.png",
+            text = "&Clone selected level...",
+            shortcut = "Ctrl+D",
+            status_tip = "Clone the selected level" )
         
-        self.saveAction = QtGui.QAction(QtGui.QIcon(":/images/save.png"), self.tr("&Save..."), self)
-        self.saveAction.setShortcut(self.tr("Ctrl+S"))
-        self.saveAction.setStatusTip(self.tr("Save all changes made to the game"))
-        self.connect(self.saveAction, QtCore.SIGNAL("triggered()"), self.save)
+        self.saveAction = qthelper.action( self, handler = self.save,
+            icon = ":/images/save.png",
+            text = "&Save...",
+            shortcut = QtGui.QKeySequence.Save,
+            status_tip = "Save all changes made to the game" )
         
-        self.playAction = QtGui.QAction(QtGui.QIcon(":/images/play.png"), self.tr("&Save and play Level..."), self)
-        self.playAction.setShortcut(self.tr("Ctrl+P"))
-        self.playAction.setStatusTip(self.tr("Save all changes and play the selected level"))
-        self.connect(self.playAction, QtCore.SIGNAL("triggered()"), self.saveAndPlayLevel)
+        self.playAction = qthelper.action( self, handler = self.saveAndPlayLevel,
+            icon = ":/images/play.png",
+            text = "&Save and play Level...",
+            shortcut = "Ctrl+P",
+            status_tip = "Save all changes and play the selected level" )
         
-        self.updateLevelResourcesAction = QtGui.QAction(QtGui.QIcon(":/images/update-level-resources.png"),
-                                                        self.tr("&Update level resources..."), self)
-        self.updateLevelResourcesAction.setShortcut(self.tr("Ctrl+U"))
-        self.updateLevelResourcesAction.setStatusTip(self.tr("Adds automatically all .png & .ogg files in the level directory to the level resources"))
-        self.connect(self.updateLevelResourcesAction, QtCore.SIGNAL("triggered()"), self.updateLevelResources)
+        self.updateLevelResourcesAction = qthelper.action( self,
+            handler = self.updateLevelResources,
+            icon = ":/images/update-level-resources.png",
+            text = "&Update level resources...",
+            shortcut = "Ctrl+U",
+            status_tip = "Adds automatically all .png & .ogg files in the level directory to the level resources" )
 
-##        self.undoAct = QtGui.QAction(QtGui.QIcon(":/images/undo.png"), self.tr("&Undo"), self)
-##        self.undoAct.setShortcut(self.tr("Ctrl+Z"))
-##        self.undoAct.setStatusTip(self.tr("Undo the last action"))
-##        self.connect(self.undoAct, QtCore.SIGNAL("triggered()"), self.undo)
-
-        self.quitAct = QtGui.QAction(self.tr("&Quit"), self)
-        self.quitAct.setShortcut(self.tr("Ctrl+Q"))
-        self.quitAct.setStatusTip(self.tr("Quit the application"))
-        self.connect(self.quitAct, QtCore.SIGNAL("triggered()"), self.close)
+        self.quitAct = qthelper.action( self, handler = self.close,
+            text = "&Quit",
+            shortcut = "Ctrl+Q",
+            status_tip = "Quit the application" )
         
-        self.aboutAct = QtGui.QAction(self.tr("&About"), self)
-        self.aboutAct.setStatusTip(self.tr("Show the application's About box"))
-        self.connect(self.aboutAct, QtCore.SIGNAL("triggered()"), self.about)
+        self.aboutAct = qthelper.action( self, handler = self.about,
+            text = "&About",
+            status_tip = "Show the application's About box" )
+
+        self.common_actions = {
+            'cut': qthelper.action( self, handler = self.on_cut_action,
+                    text = "Cu&t", 
+                    shortcut = QtGui.QKeySequence.Cut ),
+            'copy': qthelper.action( self, handler = self.on_copy_action,
+                    text = "&Copy", 
+                    shortcut = QtGui.QKeySequence.Copy ),
+            'paste': qthelper.action( self, handler = self.on_paste_action,
+                    text = "&Paste", 
+                    shortcut = QtGui.QKeySequence.Paste ),
+            'delete': qthelper.action( self, handler = self.on_delete_action,
+                    text = "&Remove Element", 
+                    shortcut = QtGui.QKeySequence.Delete )
+            }
 
         actionTimer = QtCore.QTimer( self )
         self.connect( actionTimer, QtCore.SIGNAL("timeout()"), self.onRefreshAction )
@@ -729,7 +807,11 @@ class MainWindow(QtGui.QMainWindow):
         
         self.editMenu = self.menuBar().addMenu(self.tr("&Edit"))
         self.editMenu.addAction( self.updateLevelResourcesAction )
-##        self.editMenu.addAction(self.editLevelAction)
+        self.editMenu.addAction( self.common_actions['cut'] )
+        self.editMenu.addAction( self.common_actions['copy'] )
+        self.editMenu.addAction( self.common_actions['paste'] )
+        self.editMenu.addSeparator()
+        self.editMenu.addAction( self.common_actions['delete'] )
         
         self.menuBar().addSeparator()
 
@@ -759,7 +841,7 @@ class MainWindow(QtGui.QMainWindow):
     def createElementTreeView(self, name, tree_meta, sibling_tabbed_dock = None ):
         dock = QtGui.QDockWidget( self.tr( name ), self )
         dock.setAllowedAreas( Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea )
-        element_tree_view = metatreeui.MetaWorldTreeView( dock )
+        element_tree_view = metatreeui.MetaWorldTreeView( self.common_actions, dock )
         tree_model = metatreeui.MetaWorldTreeModel(tree_meta, 0, 1, 
                                                    element_tree_view)  # nb rows, nb cols
         element_tree_view.setModel( tree_model )
