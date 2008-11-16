@@ -150,7 +150,9 @@ class MetaWorldTreeView(QtGui.QTreeView):
                 self.hide()
 
     def _on_selection_change(self, selected_elements, deselected_elements): #IGNORE:W0613
-        """Select the item corresponding to element in the tree view.
+        """Called when elements are selected in the world.
+           Notes: reflect the selection on the tree view. Element may not belong to
+           the tree of this view.
         """
         selected_meta_tree = set( [element.tree.meta 
                                    for element in selected_elements] )
@@ -175,10 +177,21 @@ class MetaWorldTreeView(QtGui.QTreeView):
     def _onTreeViewSelectionChange( self, selected, deselected ): #IGNORE:W0613
         """Called whenever the scene tree selection change."""
         selected_indexes = selected.indexes()
-        if len( selected_indexes ) == 1: # Do not handle multiple selection yet
-            item = self.model().itemFromIndex( selected_indexes[0] )
-            element = item.data( Qt.UserRole ).toPyObject()
-            element.world.set_selection( element )
+        elements = [ index.data( Qt.UserRole ).toPyObject() 
+                     for index in selected_indexes ]
+        assert None not in elements
+        if len(elements) > 0: 
+            elements[0].world.set_selection( elements )
+
+    def _get_selected_elements(self):
+        """Returns the list of selected Element in the world corresponding to this tree.
+        """
+        if self.model() is not None:
+            tree = self.model().metaworld_tree
+            if tree is not None:
+                return [ element for element in tree.world.selected_elements
+                         if element.tree == tree ]
+        return []
 
     def _onContextMenu( self, menu_pos ):
         # Select the right clicked item
@@ -193,51 +206,67 @@ class MetaWorldTreeView(QtGui.QTreeView):
                 # Notes: a selectionChanged signal may have been emitted due to selection change.
                 # Check out FormWindow::initializePopupMenu in designer, it does plenty of interesting stuff...
                 menu = QtGui.QMenu( self )
-                if not element.is_root(): 
-                    remove_action = menu.addAction( self.tr("Remove element") )
+                if self._remove_element_actions( element, menu ):
                     menu.addSeparator()
-                else:
-                    remove_action = None
-                if index.parent() is None:
-                    remove_action.setEnable( False )
-                child_element_meta_by_actions = {}
-                element_meta = element.meta
-                for tag in sorted(element_meta.immediate_child_tags()):
-                    child_element_meta = element_meta.find_immediate_child_by_tag(tag)
-                    if not child_element_meta.read_only:
-                        action = menu.addAction( self.tr("Add child %1").arg(tag) )
-                        child_element_meta_by_actions[action] = child_element_meta
-                selected_action = menu.exec_( self.viewport().mapToGlobal(menu_pos) )
-                selected_element_meta = child_element_meta_by_actions.get( selected_action )
-                if selected_element_meta:
-                    self._appendChildTag( index, selected_element_meta )
-                elif remove_action is not None and selected_action is remove_action:
-                    element_to_remove = self.model().itemFromIndex( index ).data( Qt.UserRole ).toPyObject()
-                    element_to_remove.parent.remove( element_to_remove )
+                self._add_child_actions( element.meta, menu )
+                
+                menu.exec_( self.viewport().mapToGlobal(menu_pos) )
+
+    def _remove_element_actions( self, element, menu ):
+        if not element.is_root(): 
+            remove_action = menu.addAction( self.tr("Remove element") )
+            self.connect( remove_action, QtCore.SIGNAL("triggered()"), 
+                          self._remove_selected_node )
+            return True
+        return False
+
+    def _remove_selected_node(self):
+        elements = self._get_selected_elements()
+        for element in elements:
+            if element.parent is not None:
+                element.parent.remove( element )
+
+    def _add_child_actions(self, element_meta, menu):
+        class AddChildAction(QtCore.QObject):
+            def __init__(self, tree_view, element_meta, parent):
+                QtCore.QObject.__init__( self, parent )
+                self.__tree_view = tree_view
+                self.__element_meta = element_meta
+            def __call__(self):
+                elements = self.__tree_view._get_selected_elements()
+                if len(elements) == 1:
+                    self.__tree_view._appendChildTag( elements[0], 
+                                                      self.__element_meta )
+        has_action = False
+        for tag in sorted(element_meta.immediate_child_tags()):
+            child_element_meta = element_meta.find_immediate_child_by_tag(tag)
+            if not child_element_meta.read_only:
+                action = menu.addAction( self.tr("Add child %1").arg(tag) )
+                handler = AddChildAction( self, child_element_meta, menu )
+                self.connect( action, QtCore.SIGNAL("triggered()"), handler )
+                has_action = True
+        return has_action
         
-    def _appendChildTag( self, parent_element_index, new_element_meta ):
+    def _appendChildTag( self, parent_element, new_element_meta ):
         """Adds the specified child tag to the specified element and update the tree view."""
-        parent_element = parent_element_index.data( Qt.UserRole ).toPyObject()
-        if parent_element is not None:
-            # build the list of attributes with their initial values.
-            mandatory_attributes = {}
-            for attribute_meta in new_element_meta.attributes:
-                if attribute_meta.mandatory:
-                    init_value = attribute_meta.init
-                    if init_value is None:
-                        init_value = ''
-                    if attribute_meta.type == metaworld.IDENTIFIER_TYPE:
-                        init_value = parent_element.world.generate_unique_identifier(
-                            attribute_meta )
-                    mandatory_attributes[attribute_meta.name] = init_value
-            # Notes: when the element is added, the ElementAdded signal will cause the
-            # corresponding item to be inserted into the tree.
-            child_element = parent_element.make_child( new_element_meta, 
-                                                       mandatory_attributes )
-            # Select new item in tree view
-            item_child = self.model()._findItemByElement( child_element )
-            selection_model = self.selectionModel()
-            selection_model.select( item_child.index(), QtGui.QItemSelectionModel.ClearAndSelect )
-            self.scrollTo( item_child.index() )
-        else:
-            print 'Warning: attempting to add an element to an item without associated elements!', parent_element, parent_element_index
+        assert parent_element is not None
+        # build the list of attributes with their initial values.
+        mandatory_attributes = {}
+        for attribute_meta in new_element_meta.attributes:
+            if attribute_meta.mandatory:
+                init_value = attribute_meta.init
+                if init_value is None:
+                    init_value = ''
+                if attribute_meta.type == metaworld.IDENTIFIER_TYPE:
+                    init_value = parent_element.world.generate_unique_identifier(
+                        attribute_meta )
+                mandatory_attributes[attribute_meta.name] = init_value
+        # Notes: when the element is added, the ElementAdded signal will cause the
+        # corresponding item to be inserted into the tree.
+        child_element = parent_element.make_child( new_element_meta, 
+                                                   mandatory_attributes )
+        # Select new item in tree view
+        item_child = self.model()._findItemByElement( child_element )
+        selection_model = self.selectionModel()
+        selection_model.select( item_child.index(), QtGui.QItemSelectionModel.ClearAndSelect )
+        self.scrollTo( item_child.index() )
