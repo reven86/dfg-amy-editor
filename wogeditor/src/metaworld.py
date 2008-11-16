@@ -317,9 +317,9 @@ def describe_tree( conceptual_file_name, elements = None ):
     return TreeMeta( conceptual_file_name, elements = elements )
 
 class WorldMeta(object):
-    def __init__( self, world_name, trees_meta = None, child_worlds = None ):
+    def __init__( self, name, trees_meta = None, child_worlds = None ):
         child_worlds = child_worlds or []
-        self.world_name = world_name
+        self.name = name
         self.parent_world = None
         self.child_worlds = []
         self.trees_meta_by_name = {}
@@ -351,17 +351,17 @@ class WorldMeta(object):
             tree_meta._set_world( self )
 
     def __repr__( self ):
-        return '%s(name=%s, files=[%s])' % (self.__class__.__name__, self.world_name, ','.join(self.trees_meta_by_name.keys()))
+        return '%s(name=%s, files=[%s])' % (self.__class__.__name__, self.name, ','.join(self.trees_meta_by_name.keys()))
 
-def describe_world( world_name, trees_meta = None, child_worlds = None ):
-    return WorldMeta( world_name, trees_meta = trees_meta, child_worlds = child_worlds )
+def describe_world( name, trees_meta = None, child_worlds = None ):
+    return WorldMeta( name, trees_meta = trees_meta, child_worlds = child_worlds )
 
 
 def print_world_meta( world ):
     """Diagnostic function that print the full content of a World, including its files and elements."""
-    print '* World:', world.world_name
+    print '* World:', world.name
     for child_world in world.child_worlds:
-        print '  has child world:', child_world.world_name
+        print '  has child world:', child_world.name
     for tree in world.trees_meta_by_name:
         print '  contained file:', tree
     print '  contains element:', ', '.join( sorted(world.elements_by_tag) )
@@ -375,7 +375,7 @@ def print_world_meta( world ):
 def print_tree_meta( tree_meta ):
     """Diagnostic function that print the full content of a TreeMeta, including its elements."""
     print '* File:', tree_meta.name
-    print '  belong to world:', tree_meta.world.world_name
+    print '  belong to world:', tree_meta.world.name
     print '  root element:', tree_meta.root_element_meta.tag
     print '  contains element:', ', '.join( sorted(tree_meta.all_descendant_element_metas()) )
     print '  element tree:'
@@ -1029,8 +1029,7 @@ class Tree:
            The XML is encoded using the specified encoding, or UTF-8 if none is specified.
         """
         assert self.root is not None
-        encoding = encoding or 'utf-8'
-        return xml.etree.ElementTree.tostring( self.root )
+        return self.root.to_xml( encoding )
 
     def clone( self ):
         """Makes a deep clone of the tree root element.
@@ -1109,6 +1108,81 @@ class Element(_ElementBase):
            @exception KeyError if attribute not found.
         """
         return self._element_meta.attributes_by_name[attribute_name]
+
+    def to_xml( self, encoding = None ):
+        """Outputs a XML string representing the element and its children.
+           The XML is encoded using the specified encoding, or UTF-8 if none is specified.
+        """
+        encoding = encoding or 'utf-8'
+        return xml.etree.ElementTree.tostring( self, encoding )
+
+    def xpath(self):
+        """Returns the path in XPATH format to access this element.
+        """
+        # element related paths
+        xpath = []
+        element = self
+        while element is not None:
+            # generate xpath component
+            xpath_node = u'/' + element.meta.tag
+            id_meta = element.meta.identifier_attribute
+            identifier = id_meta and id_meta.get( element ) or ''
+            if identifier:
+                xpath_node += u"[@%s='%s']" % (id_meta.name, identifier)
+            elif element.parent:
+                elements_before = element.parent[0:element.index_in_parent()]
+                tag_position = sum( [ 1 for child in elements_before
+                                      if child.meta.tag == element.meta.tag ] )
+                xpath_node += u'[%d]' % (tag_position+1)
+            xpath.insert(0, xpath_node )
+            element = element.parent
+        return ''.join( xpath )
+
+    def to_xml_with_meta(self, encoding = None, meta_attributes = None):
+        """Outputs a XML string representing the element and its children with meta information
+           for this element (Tree, type...).
+           The XML is encoded using the specified encoding, or UTF-8 if none is specified.
+           
+           The following meta-information are provided in the root XML 'MetaWorldElement':
+           world_meta_path: '/' separated list of the name of the meta world of the element
+                            Example: 'game/level'
+           world_path: '/' separated list of the name of the world of the element
+                       Example: 'game/GoingUp'
+           tree_meta: name of tree meta. Example: 'level.scene'
+           element_meta_path:  '/' separated list of the name of the meta element of the element
+                               Example: 'scene/SceneLayer'
+           element_xpath: XPATH path of the element from the root of the tree.
+                         Example: "/scene[0]/BallInstance[@id='BallInstance1']"
+           Notes: world & tree meta attributes are only set if available.
+           element_path and element_meta_path are always set.
+        """
+        encoding = encoding or 'utf-8'
+        meta_attributes = meta_attributes or {}
+        # world related paths
+        world_meta_path, world_path = [], []
+        world = self.world
+        while world is not None:
+            world_path.insert( 0, world.key )
+            world_meta_path.insert( 0, world.meta.name )
+            world = world.parent_world
+        # element related paths
+        element_meta_path = []
+        element = self
+        while element is not None:
+            element_meta_path.insert( 0, element.meta.tag )
+            element = element.parent
+        # build final element
+        if world_meta_path:
+            meta_attributes['world_meta_path'] = '/'.join( world_meta_path )
+            meta_attributes['world_path'] = '/'.join( world_path )
+        if self.tree is not None:
+            meta_attributes['tree_meta'] = self.tree.meta.name
+        meta_attributes['element_meta_path'] = '/'.join( element_meta_path )
+        meta_attributes['element_xpath'] = self.xpath()
+        meta_element = xml.etree.ElementTree.Element( 'MetaWorldElement', 
+                                                      meta_attributes )
+        meta_element.append( self )
+        return xml.etree.ElementTree.tostring( meta_element, encoding )
 
     def append( self, element ):
         """Adds a subelement to the end of this element.
@@ -1221,10 +1295,10 @@ class Element(_ElementBase):
 
     def index_in_parent( self ):
         """Returns the index of the element in its parent.
-           Returns None if the element has no parent.
+           Returns 0 if the element has no parent.
         """
         if self._parent is None:
-            return None
+            return 0
         return self._parent._children.index( self )
 
     def remove( self, element ):
@@ -1684,9 +1758,27 @@ if __name__ == "__main__":
             level_tree = world_level.make_tree_from_xml( TREE_TEST_LEVEL, xml_data )
             self.assertEqual( world_level, level_tree.world )
             self.assertEqual( world_level, level_tree.root.world )
-            
+
+# Hmm, can not figure out how to match the root with ElementTree
+#        def test_element_xpath(self):
+#            xml_data = """<inline>
+#<text id ="TEXT_HI" fr="Salut" />
+#<text id ="TEXT_HO" fr="Oh" />
+#<sign text="TEXT_HI" alt_text="TEXT_HO">
+#  <text id="TEXT_CHILD" fr="Enfant" />
+#</sign>
+#</inline>
+#"""
+#            world_level = self.world.make_world( WORLD_TEST_LEVEL, 'levelxml' )
+#            level_tree = world_level.make_tree_from_xml( TREE_TEST_LEVEL, xml_data )
+#            root_path = level_tree.root.xpath()
+#            def check_path( path, expected_element ):
+#                assert path.startswith('/')
+##                path = '.' + path
+#                tree = xml.etree.ElementTree.ElementTree( level_tree.root )
+#                self.assertEqual( expected_element, tree.find( path ) )
+#            check_path( root_path, level_tree.root )
 
 # to test:
-# clone
 
     unittest.main()

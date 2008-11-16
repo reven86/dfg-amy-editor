@@ -129,7 +129,7 @@ class GameModel(QtCore.QObject):
         properties_dir = os.path.join( self._wog_dir, u'properties' )
         self._res_dir = os.path.join( self._wog_dir, u'res' )
         self._universe = metaworld.Universe()
-        self.global_world = self._universe.make_world( metawog.WORLD_GLOBAL, 'global' )
+        self.global_world = self._universe.make_world( metawog.WORLD_GLOBAL, 'game' )
         self._effects_tree = self._loadTree( self.global_world, metawog.TREE_GLOBAL_FX,
                                              properties_dir, 'fx.xml.bin' )
         self._materials_tree = self._loadTree( self.global_world, metawog.TREE_GLOBAL_MATERIALS,

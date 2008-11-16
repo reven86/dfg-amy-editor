@@ -3,10 +3,10 @@ from metaworld import *
 
 # Declares all file types
 
-TREE_GLOBAL_FX = describe_tree( 'global.fx' )
-TREE_GLOBAL_MATERIALS = describe_tree( 'global.materials' )
-TREE_GLOBAL_RESOURCE = describe_tree( 'global.resources' )
-TREE_GLOBAL_TEXT = describe_tree( 'global.text' )
+TREE_GLOBAL_FX = describe_tree( 'game.fx' )
+TREE_GLOBAL_MATERIALS = describe_tree( 'game.materials' )
+TREE_GLOBAL_RESOURCE = describe_tree( 'game.resources' )
+TREE_GLOBAL_TEXT = describe_tree( 'game.text' )
 
 TREE_ISLAND = describe_tree( 'island' )
 
@@ -18,19 +18,19 @@ TREE_LEVEL_SCENE = describe_tree( 'level.scene' )
 TREE_LEVEL_RESOURCE = describe_tree( 'level.resource' )
 
 # Declares the world hierarchy
-WORLD_LEVEL = describe_world( 'global.level', trees_meta = [
+WORLD_LEVEL = describe_world( 'level', trees_meta = [
     TREE_LEVEL_GAME,
     TREE_LEVEL_SCENE,
     TREE_LEVEL_RESOURCE
     ] )
-WORLD_ISLAND = describe_world( 'global.island', trees_meta = [
+WORLD_ISLAND = describe_world( 'island', trees_meta = [
     TREE_ISLAND
     ] )
-WORLD_BALL = describe_world( 'global.ball', trees_meta = [
+WORLD_BALL = describe_world( 'ball', trees_meta = [
     TREE_BALL_MAIN,
     TREE_BALL_RESOURCE
     ] )
-WORLD_GLOBAL = describe_world( 'global',
+WORLD_GLOBAL = describe_world( 'game',
                                child_worlds = [ WORLD_ISLAND, WORLD_LEVEL, WORLD_BALL ],
                                trees_meta = [
     TREE_GLOBAL_RESOURCE,

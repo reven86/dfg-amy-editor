@@ -208,9 +208,24 @@ class MetaWorldTreeView(QtGui.QTreeView):
                 menu = QtGui.QMenu( self )
                 if self._remove_element_actions( element, menu ):
                     menu.addSeparator()
+                self._copy_action(menu)
+                self._clone_action(menu)
+                menu.addSeparator()
                 self._add_child_actions( element.meta, menu )
                 
                 menu.exec_( self.viewport().mapToGlobal(menu_pos) )
+
+    def _copy_action( self, menu ):
+        action = menu.addAction( self.tr("Copy") )
+        self.connect( action, QtCore.SIGNAL("triggered()"), 
+                      self._copy_selected_node )
+        return True
+
+    def _clone_action( self, menu ):
+        action = menu.addAction( self.tr("Clone") )
+        self.connect( action, QtCore.SIGNAL("triggered()"), 
+                      self._clone_selected_node )
+        return True
 
     def _remove_element_actions( self, element, menu ):
         if not element.is_root(): 
@@ -246,6 +261,18 @@ class MetaWorldTreeView(QtGui.QTreeView):
                 self.connect( action, QtCore.SIGNAL("triggered()"), handler )
                 has_action = True
         return has_action
+
+    def _copy_selected_node(self):
+        # Required meta data:
+        # Root-tree meta
+        elements = self._get_selected_elements()
+        if len(elements) == 1:
+            xml_data = elements[0].to_xml_with_meta()
+            clipboard = QtGui.QApplication.clipboard()
+            clipboard.setText( xml_data )
+
+    def _clone_selected_node(self):
+        pass
         
     def _appendChildTag( self, parent_element, new_element_meta ):
         """Adds the specified child tag to the specified element and update the tree view."""
