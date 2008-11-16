@@ -12,6 +12,11 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
         self._metaworld_tree = None
         self._meta_tree = meta_tree
         self._setHeaders()
+        self._issue_tracker = None
+        self._issue_icons = {
+            metaworldui.CRITICAL_ISSUE: QtGui.QIcon( ":/images/stop16.png" ),
+            metaworldui.WARNING_ISSUE: QtGui.QIcon( ":/images/warning16.png" ) 
+            }
 
     @property
     def metaworld_tree( self ):
@@ -33,6 +38,7 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
                 self._onElementAdded, self._onElementUpdated,
                 self._onElementAboutToBeRemoved )
         self._metaworld_tree = tree
+        self._issue_tracker = tree is not None and tree.world or None
         if tree is not None:
             self._metaworld_tree.connect_to_element_events( 
                 self._onElementAdded, self._onElementUpdated,
@@ -88,8 +94,7 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
                 return item
         return None
 
-    @staticmethod
-    def _insertElementTreeInTree( item_parent, element, index = None ):
+    def _insertElementTreeInTree( self, item_parent, element, index = None ):
         """Inserts a sub-tree of item in item_parent at the specified index corresponding to the tree of the specified element.
            Returns the new root item of the sub-tree.
            index: if None, append the new sub-tree after all the parent chidlren.
@@ -97,14 +102,13 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
         items_to_process = [ (item_parent, element, index) ]
         while items_to_process:
             item_parent, element, index = items_to_process.pop(0)
-            item = MetaWorldTreeModel._insertElementNodeInTree( item_parent, 
-                                                                    element, 
-                                                                    index )
+            item = self._insertElementNodeInTree( item_parent, 
+                                                  element, 
+                                                  index )
             for child_element in element:
                 items_to_process.append( (item, child_element, None) )
 
-    @staticmethod
-    def _insertElementNodeInTree( item_parent, element, index = None ):
+    def _insertElementNodeInTree( self, item_parent, element, index = None ):
         """Inserts a single child node in item_parent at the specified index corresponding to the specified element and returns item.
            index: if None, append the new child item after all the parent chidlren.
         """
@@ -112,10 +116,14 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
             index = item_parent.rowCount()
         display_name = element.get_display_id()
         items = []
-        for text in (element.tag, display_name):
+        for position, text in enumerate((element.tag, display_name)):
             item = QtGui.QStandardItem( text )
             item.setData( QtCore.QVariant( element ), Qt.UserRole )
             item.setFlags( item.flags() & ~Qt.ItemIsEditable )
+            if position == 0:
+                issue = self._issue_tracker.element_issue_level( element )
+                if issue is not None:
+                    item.setIcon( self._issue_icons[issue] )
             items.append( item )
         item_parent.insertRow( index, items )
         return items[0]
@@ -128,6 +136,7 @@ class MetaWorldTreeView(QtGui.QTreeView):
         self.setSelectionBehavior( QtGui.QAbstractItemView.SelectRows )
         self.setContextMenuPolicy( Qt.CustomContextMenu )
         self.setRootIsDecorated( False )
+        self.setIconSize( QtCore.QSize(16,16) )
         self.connect( self, QtCore.SIGNAL("customContextMenuRequested(QPoint)"),
                       self._onContextMenu )
         louie.connect( self._on_active_world_change, metaworldui.ActiveWorldChanged )
@@ -169,31 +178,36 @@ class MetaWorldTreeView(QtGui.QTreeView):
             else: # the new world has no tree of the type of the view
                 self.hide()
 
-    def _on_selection_change(self, selected_elements, deselected_elements): #IGNORE:W0613
+    def _on_selection_change(self, selection, #IGNORE:W0613
+                             selected_elements, deselected_elements): 
         """Called when elements are selected in the world.
            Notes: reflect the selection on the tree view. Element may not belong to
            the tree of this view.
         """
-        selected_meta_tree = set( [element.tree.meta 
-                                   for element in selected_elements] )
+        meta_trees = set( [element.tree.meta for element in selection] )
         model = self.model()
         selection_model = self.selectionModel()
-        if model is not None and selection_model is not None:
-            if model.meta_tree in selected_meta_tree:
-                element = list(selected_elements)[0] # @todo handle multiple selection
-                selected_item = model._findItemByElement( element )
-                if selected_item is not None:
-                    selected_index = selected_item.index()
-                    selection_model.select( selected_index, 
-                                            QtGui.QItemSelectionModel.ClearAndSelect |
-                                            QtGui.QItemSelectionModel.Rows )
-                    self.setExpanded( selected_index, True )
-                    self.parent().raise_() # Raise the dock windows associated to the tree view
-                    self.scrollTo( selected_index )
-                else:
-                    print 'Warning: selected item not found in tree view.', element
+        if model is None or selection_model is None:
+            return
+        if model.meta_tree not in meta_trees: # clear all selection in tree ?
+            selection_model.clear()
+        elif len(selection) > 1: # @todo handle multiple selection
+            random_element = list(selection)[0] 
+            random_element.world.set_selection( random_element )
+        else: # there is a single element on this tree
+            element = list(selection)[0] 
+            selected_item = model._findItemByElement( element )
+            if selected_item is not None:
+                selected_index = selected_item.index()
+                selection_model.select( selected_index, 
+                                        QtGui.QItemSelectionModel.ClearAndSelect |
+                                        QtGui.QItemSelectionModel.Rows )
+                self.setExpanded( selected_index, True )
+                self.parent().raise_() # Raise the dock windows associated to the tree view
+                self.scrollTo( selected_index )
             else:
-                selection_model.clear()
+                print 'Warning: selected item not found in tree view.', element
+                
         
     def _onTreeViewSelectionChange( self, selected, deselected ): #IGNORE:W0613
         """Called whenever the scene tree selection change."""
@@ -211,7 +225,13 @@ class MetaWorldTreeView(QtGui.QTreeView):
             elif deselected_elements:
                 world = deselected_elements[0].world
             if world is not None:
-                world.update_selection( selected_elements, deselected_elements )
+                meta_trees = set( [element.tree.meta 
+                                   for element in world.selected_elements] )
+                if model.meta_tree not in meta_trees:
+                    # replace selection to avoid selection spanning multiple tree views
+                    world.set_selection( selected_elements )
+                else: # update selection in tree view
+                    world.update_selection( selected_elements, deselected_elements )
 
     def _get_selected_elements(self):
         """Returns the list of selected Element in the world corresponding to this tree.

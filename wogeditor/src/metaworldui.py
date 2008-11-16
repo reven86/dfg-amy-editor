@@ -10,7 +10,7 @@ class ActiveWorldChanged(louie.Signal):
 
 class WorldSelectionChanged(louie.Signal):
     """Emitted when the selected elements change.
-       Signature: (selected,unselected)
+       Signature: (selection,selected,unselected)
        selected: set of Element that are now selected
        unselected: set of Element that are no longer selected, but were previously selected
        sender: world the element belong to
@@ -91,10 +91,16 @@ class SelectedElementsTracker(object):
         """List of selected Elements.""" 
         return self.__selection.copy()
         
+    def _check_selected_elements( self, selected_elements ):
+        for element in selected_elements:
+            assert element.tree is not None
+            assert element.tree.world == self.__world
+        
     def set_selection(self, selected_elements ):
         """Set the list of selected Elements."""
         if isinstance(selected_elements, metaworld.Element):
             selected_elements = [selected_elements]
+        self._check_selected_elements( selected_elements )
         old_selection = self.__selection.copy()
         self.__selection = set(selected_elements)  
         self._send_selection_update( old_selection )
@@ -103,6 +109,7 @@ class SelectedElementsTracker(object):
         """Adds and remove some Element from the selection."""
         selected_elements = set(selected_elements)
         deselected_elements = set(deselected_elements)
+        self._check_selected_elements(selected_elements)
         old_selection = self.__selection.copy()
         self.__selection = self.__selection | selected_elements
         self.__selection = self.__selection - deselected_elements
@@ -110,6 +117,8 @@ class SelectedElementsTracker(object):
 
     def _send_selection_update(self, old_selection):
         """Broadcast the selection change to the world if required."""
+        if None in self.__selection:
+            self.__selection.remove( None )
         selected_elements = self.__selection - old_selection
         deselected_elements = old_selection - self.__selection
         if selected_elements or deselected_elements: 
@@ -118,5 +127,48 @@ class SelectedElementsTracker(object):
 #            print '  Selected:',  selected_elements
 #            print '  Unselected:',  deselected_elements
             louie.send( WorldSelectionChanged, self.__world, 
+                        self.__selection.copy(), 
                         selected_elements, deselected_elements )
         
+        
+CRITICAL_ISSUE = 'critical'
+WARNING_ISSUE = 'warning'
+
+class ElementIssueTracker(object):
+    """Track a list of issue for all elements.
+       Tracked issues concerns invalid element property, incorrect number of children,
+       other constraints (missing mass for dynamic object...) 
+    """
+    def __init__(self, world):
+        """world: world that is tracked for change.
+        """
+        self.__world = world
+        louie.connect( self.__on_tree_added, metaworld.TreeAdded, world )
+        self._issues_by_element = {}
+
+    def element_issue_level(self, element):
+        """Returns the most critical level of issue for the element.
+           None if there is no pending issue.
+        """
+        level = self._issues_by_element.get(element)
+        return level
+
+    def __on_tree_added(self, tree):
+        for tree_meta in self.__world.meta.trees:
+            if self.__world.find_tree(tree_meta) is None: # level not ready yet
+                return
+        # all tree are available, setup the level
+        for tree in self.__world.trees:
+            tree.connect_to_element_events( self.__on_element_added,
+                                            self.__on_element_updated,
+                                            self.__on_element_about_to_be_removed )
+            self.__on_element_added( tree.root, 0 )
+
+    def __on_element_added(self, element, index_in_parent): #IGNORE:W0613
+        pass
+
+    def __on_element_about_to_be_removed(self, element, index_in_parent): #IGNORE:W0613
+        pass
+
+    def __on_element_updated(self, element, name, new_value, old_value): #IGNORE:W0613
+        pass

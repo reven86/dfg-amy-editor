@@ -28,7 +28,8 @@ class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
         louie.connect( self._on_selection_change, metaworldui.WorldSelectionChanged, 
                        active_world )
 
-    def _on_selection_change(self, selected_elements, deselected_elements): #IGNORE:W0613
+    def _on_selection_change(self, selection, #IGNORE:W0613
+                             selected_elements, deselected_elements): 
         # Order the properties so that main attributes are at the beginning
         if len(selected_elements) > 0:
             element = list(selected_elements)[0] #@todo handle multiple selection

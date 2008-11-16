@@ -350,10 +350,13 @@ class BallModel(metaworld.World):
         self.is_dirty = False
 
 
-class LevelWorld(metaworld.World,metaworldui.SelectedElementsTracker):
+class LevelWorld(metaworld.World,
+                 metaworldui.SelectedElementsTracker,
+                 metaworldui.ElementIssueTracker):
     def __init__( self, universe, world_meta, level_name, game_model, is_dirty = False ):
         metaworld.World.__init__( self, universe, world_meta, level_name )
         metaworldui.SelectedElementsTracker.__init__( self, self )
+        metaworldui.ElementIssueTracker.__init__( self, self )
         self.game_model = game_model
         self.__dirty_tracker = metaworldui.DirtyWorldTracker( self, is_dirty )
 

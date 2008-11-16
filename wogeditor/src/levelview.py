@@ -88,7 +88,8 @@ class LevelGraphicView(QtGui.QGraphicsView):
                 assert element is not None, "Hmmm, forgot to associate a data to that item..."
                 element.world.set_selection( element )
 
-    def _on_selection_change(self, selected_elements, deselected_elements): #IGNORE:W0613
+    def _on_selection_change(self, selection, #IGNORE:W0613
+                             selected_elements, deselected_elements): 
         """Ensures that the selected element is seleted in the graphic view.
            Called whenever an element is selected in the tree view or the graphic view.
         """
@@ -98,7 +99,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
         # then unselect parent, selection parent...)
         for item in self.__scene.items():
             element = item.data(0).toPyObject()
-            if element in selected_elements:
+            if element in selection:
 ##                print 'Selecting', item, 'isSelected =', item.isSelected()
 ##                print '    Group is', item.group()
                 if not item.isSelected() and item.group() is None:
