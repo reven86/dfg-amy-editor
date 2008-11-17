@@ -103,3 +103,14 @@ def index_path_str(index, separator = None):
     """
     separator = separator or ' / '
     return separator.join( ['%d:%d' % xy for xy in index_path(index) ] )
+
+
+def make_icon_overlay( source_icon, overlay_icon, size, overlay_size ):
+    """Makes a new icon by applying overlay_icon over source_icon."""
+    source_pixmap = source_icon.pixmap( size )
+    overlay_pixmap = overlay_icon.pixmap( overlay_size )
+    offset = source_pixmap.size() - overlay_pixmap.size()
+    painter = QtGui.QPainter( source_pixmap )
+    painter.drawPixmap( offset.width(), offset.height(), overlay_pixmap )
+    painter.end()
+    return QtGui.QIcon( source_pixmap )

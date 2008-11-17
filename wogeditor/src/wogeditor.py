@@ -854,7 +854,8 @@ class MainWindow(QtGui.QMainWindow):
         dock = QtGui.QDockWidget( self.tr( name ), self )
         dock.setAllowedAreas( Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea )
         element_tree_view = metatreeui.MetaWorldTreeView( self.common_actions, dock )
-        tree_model = metatreeui.MetaWorldTreeModel(tree_meta, element_tree_view)
+        tree_model = metatreeui.MetaWorldTreeModel( tree_meta, self.group_icons,
+                                                    element_tree_view )
         element_tree_view.setModel( tree_model )
         dock.setWidget( element_tree_view )
         self.addDockWidget( Qt.RightDockWidgetArea, dock )
@@ -864,6 +865,9 @@ class MainWindow(QtGui.QMainWindow):
         return dock, element_tree_view
         
     def createDockWindows(self):
+        self.group_icons = {}
+        for group in 'camera game image physic resource shape text'.split():
+            self.group_icons[group] = QtGui.QIcon( ":/images/group-%s.png" % group )
         self.tree_view_by_element_world = {} # map of all tree views
         scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', metawog.TREE_LEVEL_SCENE )
         level_dock, self.levelTree = self.createElementTreeView( 'Level', metawog.TREE_LEVEL_GAME, scene_dock )

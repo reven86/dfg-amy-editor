@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'editleveldialog.ui'
 #
-# Created: Sun Nov 16 21:36:26 2008
+# Created: Mon Nov 17 22:11:59 2008
 #      by: PyQt4 UI code generator 4.4.2
 #
 # WARNING! All changes made in this file will be lost!

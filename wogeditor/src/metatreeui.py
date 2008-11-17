@@ -7,16 +7,28 @@ import metaworldui
 
 
 class MetaWorldTreeModel(QtGui.QStandardItemModel):
-    def __init__( self, meta_tree, *args ):
+    def __init__( self, meta_tree, icons_by_group, *args ):
         QtGui.QStandardItemModel.__init__( self, 0, 2, *args ) # nb rows, nb columns
         self._metaworld_tree = None
         self._meta_tree = meta_tree
         self._setHeaders()
         self._issue_tracker = None
+        self._icons_by_group = icons_by_group 
         self._issue_icons = {
-            metaworldui.CRITICAL_ISSUE: QtGui.QIcon( ":/images/stop16.png" ),
-            metaworldui.WARNING_ISSUE: QtGui.QIcon( ":/images/warning16.png" ) 
+            None: icons_by_group, # map of QIcon by group name
+            metaworldui.CRITICAL_ISSUE: {},
+            metaworldui.WARNING_ISSUE: {} 
             }
+        for level, icon_path in ( (metaworldui.CRITICAL_ISSUE, ":/images/stop16.png"),
+                                  (metaworldui.WARNING_ISSUE, ":/images/warning16.png") ):
+            issue_icon = QtGui.QIcon( icon_path )
+            for group, group_icon in icons_by_group.iteritems():
+                size = QtCore.QSize(16,16)
+                overlay_size = QtCore.QSize(14,14)
+                icon = qthelper.make_icon_overlay( group_icon, issue_icon, 
+                                                   size, overlay_size )
+                self._issue_icons[level][group] = icon
+                
 
     @property
     def metaworld_tree( self ):
@@ -133,12 +145,18 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
         return items[0]
 
     def _refresh_item( self, item, element ):
+        group = element.meta.main_group
         issue = self._issue_tracker.element_issue_level( element )
+        icons_by_group = self._issue_icons.get( issue )
+        if icons_by_group:
+            icon = icons_by_group.get( group )
+            if icon:
+                item.setIcon( icon )
         if issue is not None:
-            item.setIcon( self._issue_icons[issue] )
+#            item.setIcon( self._issue_icons[issue] )
             item.setToolTip( self._issue_tracker.element_issue_report(element) )
         else:
-            item.setIcon( QtGui.QIcon() )
+#            item.setIcon( QtGui.QIcon() )
             item.setToolTip('')
 
     def _on_element_issues_updated( self, elements ):
@@ -171,7 +189,6 @@ class MetaWorldTreeView(QtGui.QTreeView):
         self.connect( self.selectionModel(), 
                       QtCore.SIGNAL("selectionChanged(QItemSelection,QItemSelection)"),
                       self._onTreeViewSelectionChange )
-        self.resizeColumnToContents(0)
         
     def _on_active_world_change(self, active_world):
         """Refresh a tree view with the new root element."""
@@ -191,11 +208,20 @@ class MetaWorldTreeView(QtGui.QTreeView):
                 louie.connect( self._on_selection_change, metaworldui.WorldSelectionChanged, 
                                active_world )
                 model.set_metaworld_tree( model_tree )
-                root_index = model.index(0,0)
-                self.setExpanded( root_index, True )
+                self._expand_roots()
+                self.resizeColumnToContents(0)
                 self.show()
             else: # the new world has no tree of the type of the view
                 self.hide()
+
+    def _expand_roots(self):
+        """Expands all parents with a single child starting with the root.
+        """
+        root_index = self.model().index(0,0)
+        self.setExpanded( root_index, True )
+        while self.model().rowCount( root_index ) == 1:
+            root_index = root_index.child(0,0)
+            self.setExpanded( root_index, True )
 
     def _on_selection_change(self, selection, #IGNORE:W0613
                              selected_elements, deselected_elements): 

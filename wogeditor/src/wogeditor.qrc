@@ -14,5 +14,12 @@
   <file>images/update-level-resources.png</file>
   <file>images/stop16.png</file>
   <file>images/warning16.png</file>
+  <file>images/group-game.png</file>
+  <file>images/group-image.png</file>
+  <file>images/group-physic.png</file>
+  <file>images/group-resource.png</file>
+  <file>images/group-shape.png</file>
+  <file>images/group-text.png</file>
+  <file>images/group-camera.png</file>
 </qresource>
 </RCC>

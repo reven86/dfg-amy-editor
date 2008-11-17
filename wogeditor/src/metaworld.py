@@ -341,7 +341,7 @@ class ElementMeta(ObjectsMetaOwner):
     """
     def __init__( self, tag, elements_meta = None, attributes = None,
                   min_occurrence = None, max_occurrence = None,
-                  read_only = False ):
+                  read_only = False, groups = None ):
         ObjectsMetaOwner.__init__( self, elements_meta = elements_meta or [] )
         self.tag = tag
         attributes = attributes or []
@@ -357,6 +357,10 @@ class ElementMeta(ObjectsMetaOwner):
         self.max_occurrence = max_occurrence or 2**32
         assert self.min_occurrence <= self.max_occurrence
         self.read_only = read_only
+        if isinstance( groups, (unicode,str) ):
+            groups = (groups,) 
+        self.groups = set( groups or () )
+        self.main_group = groups and list(groups)[0] or None
         self.add_attributes( attributes )
 
     def add_attributes( self, attributes ):
@@ -431,7 +435,7 @@ class ElementMeta(ObjectsMetaOwner):
             self.__class__.__name__, self.tag, ','.join([a.name for a in self.attributes_order]),
             ','.join(self.elements_by_tag.keys()))
 
-def describe_element( tag, attributes = None, elements = None,
+def describe_element( tag, attributes = None, elements = None, groups = None,
                      min_occurrence = None, max_occurrence = None, exact_occurrence = None,
                      read_only = False ):
     if exact_occurrence is not None:
@@ -439,7 +443,7 @@ def describe_element( tag, attributes = None, elements = None,
         max_occurrence = exact_occurrence
     return ElementMeta( tag, attributes = attributes, elements_meta = elements,
                        min_occurrence = min_occurrence, max_occurrence = max_occurrence,
-                       read_only = read_only )
+                       read_only = read_only, groups = groups )
 
 class TreeMeta(ObjectsMetaOwner):
     def __init__( self, conceptual_file_name, elements = None ):
