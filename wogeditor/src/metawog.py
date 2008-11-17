@@ -244,6 +244,7 @@ ELEMENT_RECTANGLE = describe_element( 'rectangle', attributes = [
     real_attribute( 'mass' ),
     reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
                          init = '' ),
+    bool_attribute( 'nogeomcollisions', default = 'false' ),
     string_attribute( 'tag' )
     ] )
 
@@ -279,6 +280,7 @@ TREE_LEVEL_SCENE.add_elements( [
         ],
         elements = [
         describe_element( 'SceneLayer', attributes = [
+            string_attribute( 'id', display_id = True ),
             real_attribute( 'x', mandatory = True, init='0' ),
             real_attribute( 'y', mandatory = True, init='0' ),
             real_attribute( 'depth', mandatory = True, init='0' ),
@@ -322,7 +324,8 @@ TREE_LEVEL_SCENE.add_elements( [
         ELEMENT_RECTANGLE,
         ELEMENT_CIRCLE,
         describe_element( 'compositegeom', attributes = [
-            identifier_attribute( 'id', display_id = True, mandatory = True, 
+            identifier_attribute( 'id', display_id = True, 
+                mandatory = True, allow_empty = True, 
                 reference_family = 'geometry', reference_world = WORLD_LEVEL ),
             real_attribute( 'x', mandatory = True, init = '0' ),
             real_attribute( 'y', mandatory = True, init = '0' ),
@@ -343,7 +346,8 @@ TREE_LEVEL_SCENE.add_elements( [
                 ELEMENT_CIRCLE
             ] ),
         describe_element( 'line', attributes = [
-            string_attribute( 'id', display_id = True, mandatory = True ),
+            string_attribute( 'id', display_id = True, mandatory = True, 
+                              allow_empty = True ),
             xy_attribute( 'anchor', mandatory = True, init = '0,0' ),
             xy_attribute( 'normal', mandatory = True, init = '10,0' ),
             reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
@@ -381,9 +385,13 @@ TREE_LEVEL_SCENE.add_elements( [
             ] ),
         describe_element( 'hinge', attributes = [
             xy_attribute( 'anchor', mandatory = True ),
-            reference_attribute( 'body1', reference_family = 'geometry', reference_world = WORLD_LEVEL, mandatory = True ),
-            reference_attribute( 'body2', reference_family = 'geometry', reference_world = WORLD_LEVEL, mandatory = True ),
-            real_attribute( 'bounce' )
+            reference_attribute( 'body1', mandatory = True, 
+                reference_family = 'geometry', reference_world = WORLD_LEVEL ),
+            reference_attribute( 'body2', 
+                reference_family = 'geometry', reference_world = WORLD_LEVEL ),
+            real_attribute( 'bounce' ),
+            real_attribute( 'histop' ),
+            real_attribute( 'lostop' )
             ] ),
         describe_element( 'motor', attributes = [
             reference_attribute( 'body', reference_family = 'geometry', reference_world = WORLD_LEVEL, mandatory = True ),

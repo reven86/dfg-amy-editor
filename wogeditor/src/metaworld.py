@@ -122,18 +122,18 @@ class ColorAttributeMeta(AttributeMeta):
             values = text.split(',')
             if len(values) != self.nb_components:
                 if self.nb_components == 3:
-                    return'RGB color must be of the form "R,G,B" were R,G,B are integer in range [0-255].', ()
-                return'ARGB color must be of the form "A,R,G,B" were A,R,G,B are integer in range [0-255].', ()
+                    return'RGB color must be of the form "R,G,B" were R,G,B are real number in range [0-255].', ()
+                return'ARGB color must be of the form "A,R,G,B" were A,R,G,B are real number in range [0-255].', ()
             components = self.nb_components == 3 and 'RGB' or 'ARGB'
             for name, value in zip(components, values):
                 try:
-                    value = int(value)
+                    value = float(value)
                     if value <0 or value >255:
                         return 'Color component "%(c)s" must be in range [0-255].', {'c':name}
                 except ValueError:
                     if self.nb_components == 3:
-                        return 'RGB color must be of the form "R,G,B" were R,G,B are integer in range [0-255].', ()
-                    return'ARGB color must be of the form "A,R,G,B" were A,R,G,B are integer in range [0-255].', ()
+                        return 'RGB color must be of the form "R,G,B" were R,G,B are real number in range [0-255].', ()
+                    return'ARGB color must be of the form "A,R,G,B" were A,R,G,B are real number in range [0-255].', ()
         return status
 
 class Vector2DAttributeMeta(AttributeMeta):
@@ -2099,6 +2099,8 @@ if __name__ == "__main__":
             check_valid( 'argb', '255,255,255,0' )
             check_not_valid( 'argb', '0,0,0' )
             check_not_valid( 'argb', '0,0,0,0,0' )
+            check_valid( 'argb', '255,76.0000030696392,49.0000008791685,15.0000000558794' )
+            
             # check enum
             check_valid( 'enumyesno', None )
             check_not_valid( 'enumyesno', '' )
@@ -2127,22 +2129,6 @@ if __name__ == "__main__":
             check_not_valid( 'xy', ',0' )
             check_not_valid( 'xy', '0' )
             check_not_valid( 'xy', '0,0,0' )
-                
-            
-#            string_attribute( 'mandatory', mandatory = True ),
-#            string_attribute( 'mandatory_empty', mandatory = True, allow_empty = True ),
-#            string_attribute( 'empty', mandatory = True, allow_empty = True ),
-#            int_attribute( 'empty_int', allow_empty = True ),
-#            int_attribute( 'empty_int_min', allow_empty = True, min_value = 10 ),
-#            int_attribute( 'empty_int_max', allow_empty = True, max_value = 20 ),
-#            int_attribute( 'int_bounded', min_value = 10, max_value = 20),
-#            int_attribute( 'empty_real', allow_empty = True ),
-#            int_attribute( 'real', allow_empty = True ),
-#            rgb_attribute( 'rgb' ),
-#            argb_attribute( 'argb' ),
-#            enum_attribute('enumyesno', ('yes','no')),
-#            bool_attribute('bool'),
-#            xy_attribute('xy')
 
 # to test:
 
