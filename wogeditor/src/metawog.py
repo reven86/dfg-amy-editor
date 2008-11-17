@@ -108,8 +108,8 @@ TREE_LEVEL_GAME.add_elements( [
             real_attribute( 'x', init = 0, mandatory = True ),
             real_attribute( 'y', init = 0, mandatory = True ),
             angle_degrees_attribute( 'angle', init = 0, mandatory = True ),
-            real_attribute( 'depth', init = 0, mandatory = True ),
-            bool_attribute( 'discovered', init = 'true', mandatory = True )
+            real_attribute( 'depth', default = '0' ),
+            bool_attribute( 'discovered', default = 'true' )
             ] ),
         describe_element( 'Strand', attributes = [
             reference_attribute( 'gb1', reference_family = 'BallInstance', reference_world = WORLD_LEVEL,
@@ -175,7 +175,7 @@ def _describe_resource_file( tree_meta, resource_world, is_global = False ):
             ] ),
         describe_element( 'SetDefaults', read_only = True, attributes = [
             string_attribute( 'path', mandatory = True ),
-            string_attribute( 'idprefix', mandatory = True )
+            string_attribute( 'idprefix', mandatory = True, allow_empty = True )
             ] )
         ] )
     if is_global:
@@ -226,7 +226,7 @@ ELEMENT_BUTTON = describe_element( 'button', attributes = [
         ] )
 
 ELEMENT_RECTANGLE = describe_element( 'rectangle', attributes = [
-    identifier_attribute( 'id', display_id = True, mandatory = True, 
+    identifier_attribute( 'id', display_id = True, mandatory = True,  allow_empty = True,
         reference_family = 'geometry', reference_world = WORLD_LEVEL ),
     real_attribute( 'x', mandatory = True, init = '0' ),
     real_attribute( 'y', mandatory = True, init = '0' ),
@@ -248,7 +248,7 @@ ELEMENT_RECTANGLE = describe_element( 'rectangle', attributes = [
     ] )
 
 ELEMENT_CIRCLE = describe_element( 'circle', attributes = [
-    identifier_attribute( 'id', display_id = True, mandatory = True, 
+    identifier_attribute( 'id', display_id = True, mandatory = True, allow_empty = True, 
         reference_family = 'geometry', reference_world = WORLD_LEVEL ),
     real_attribute( 'x', mandatory = True, init = '0' ),
     real_attribute( 'y', mandatory = True, init = '0' ),
@@ -306,7 +306,8 @@ TREE_LEVEL_SCENE.add_elements( [
                 ELEMENT_BUTTON
             ] ),
         describe_element( 'label', attributes = [
-            string_attribute( 'id', display_id = True, mandatory = True ),
+            string_attribute( 'id', display_id = True, mandatory = True, 
+                              allow_empty = True ),
             real_attribute( 'x', mandatory = True, init = '0' ),
             real_attribute( 'y', mandatory = True, init = '0' ),
             reference_attribute( 'text', reference_family = 'text', reference_world = WORLD_GLOBAL ),
@@ -351,7 +352,7 @@ TREE_LEVEL_SCENE.add_elements( [
             string_attribute( 'tag' )
             ] ),
         describe_element( 'linearforcefield', attributes = [
-            string_attribute( 'id', display_id = True, mandatory = True ),
+            string_attribute( 'id', display_id = True, allow_empty = True ),
             xy_attribute( 'force', mandatory = True, init = '0,-10' ),
             real_attribute( 'dampeningfactor', mandatory = True, init = '0' ),
             bool_attribute( 'antigrav', mandatory = True, init = 'false' ),

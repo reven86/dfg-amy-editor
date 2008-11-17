@@ -185,6 +185,9 @@ class ElementIssueTracker(object):
                     format, args = attributes[name]
                     report.append( '- "%(name)s": %(message)s' % {
                         'name':name,'message':format % args } )
+            if nodes:
+                report.append( '%(childcount)d child element(s) have issue' % {
+                    'childcount':len(nodes)} )
             return '\n'.join( report )
         return ''
 
@@ -213,18 +216,18 @@ class ElementIssueTracker(object):
         self._pending_updated[element].add( name )
 
     def __on_refresh_element_status(self):
-        import time
-        start_time = time.clock()
+#        import time
+#        start_time = time.clock()
         
         for element in self._pending_full_check:
             self._check_element( element )
         self._pending_full_check.clear()
         
-        print 'Refreshed element status: %.3fs' % (time.clock()-start_time)
-        start_time = time.clock()
+#        print 'Refreshed element status: %.3fs' % (time.clock()-start_time)
+#        start_time = time.clock()
         elements, self._modified_element_issues = self._modified_element_issues, set()
         louie.send( ElementIssuesUpdated, self.__world, elements )
-        print 'Broadcast modified element issues: %.3fs' % (time.clock()-start_time)
+#        print 'Broadcast modified element issues: %.3fs' % (time.clock()-start_time)
         
          
     def _check_element(self, element):

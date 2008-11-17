@@ -111,7 +111,8 @@ def validate_real_property( world, attribute_meta, text ):
 def validate_rgb_property( world, attribute_meta, text ):
     text = unicode(text)
     values = text.split(',')
-    if len(values) != 3:
+    # @todo bugged
+    if len(values) != attribute_meta.nb_components:
         return QtGui.QValidator.Intermediate, 'RGB color must be of the form "R,G,B" were R,G,B are integer in range [0-255].'
     for name, value in zip('RGB', values):
         try:
