@@ -37,12 +37,18 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
             self._metaworld_tree.disconnect_from_element_events( 
                 self._onElementAdded, self._onElementUpdated,
                 self._onElementAboutToBeRemoved )
+            louie.disconnect( self._on_element_issues_updated, 
+                              metaworldui.ElementIssuesUpdated,
+                              self._metaworld_tree.world )
         self._metaworld_tree = tree
         self._issue_tracker = tree is not None and tree.world or None
         if tree is not None:
             self._metaworld_tree.connect_to_element_events( 
                 self._onElementAdded, self._onElementUpdated,
                 self._onElementAboutToBeRemoved )
+            louie.connect( self._on_element_issues_updated, 
+                           metaworldui.ElementIssuesUpdated,
+                           self._metaworld_tree.world )
         self._refreshTreeRoot()
         
     def _refreshTreeRoot(self):
@@ -110,7 +116,7 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
 
     def _insertElementNodeInTree( self, item_parent, element, index = None ):
         """Inserts a single child node in item_parent at the specified index corresponding to the specified element and returns item.
-           index: if None, append the new child item after all the parent chidlren.
+           index: if None, append the new child item after all the parent children.
         """
         if index is None:
             index = item_parent.rowCount()
@@ -121,12 +127,25 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
             item.setData( QtCore.QVariant( element ), Qt.UserRole )
             item.setFlags( item.flags() & ~Qt.ItemIsEditable )
             if position == 0:
-                issue = self._issue_tracker.element_issue_level( element )
-                if issue is not None:
-                    item.setIcon( self._issue_icons[issue] )
+                self._refresh_item( item, element )
             items.append( item )
         item_parent.insertRow( index, items )
         return items[0]
+
+    def _refresh_item( self, item, element ):
+        issue = self._issue_tracker.element_issue_level( element )
+        if issue is not None:
+            item.setIcon( self._issue_icons[issue] )
+            item.setToolTip( self._issue_tracker.element_issue_report(element) )
+        else:
+            item.setIcon( QtGui.QIcon() )
+            item.setToolTip('')
+
+    def _on_element_issues_updated( self, elements ):
+        for item in qthelper.standardModelTreeItems( self ):
+            element = self.get_item_element( item ) 
+            if element in elements:
+                self._refresh_item( item, element )
 
 class MetaWorldTreeView(QtGui.QTreeView):
     def __init__( self, common_actions, *args ):

@@ -70,33 +70,122 @@ class AttributeMeta(object):
     def set( self, element, value ):
         return element.set( self.name, value )
 
+    def is_valid_value( self, value, world ): #IGNORE:W0613
+        """Checks if the specified attribute is valid on this element.
+           Returns tuple (message, args) if the value is not valid. 
+           The message should be formatted as follow: message % args.
+           Returns None if the value is valid.
+        """
+        if value is None:
+            if self.mandatory:
+                return ('mandatory attribute is missing',())
+            return None
+        if not value and not self.allow_empty:
+            return ('empty value not allowed',())
+        return None
+
     def __repr__( self ):
         return '%s(name=%s, type=%s, mandatory=%s)' % (self.__class__.__name__, self.name, self.type, self.mandatory)
 
 class NumericAttributeMeta(AttributeMeta):
-    def __init__( self, name, attribute_type, min_value = None, max_value = None, **kwargs ):
+    def __init__( self, name, attribute_type, value_type,
+                  value_type_error,
+                  min_value = None, max_value = None, **kwargs ):
         AttributeMeta.__init__( self, name, attribute_type, **kwargs )
         self.min_value = min_value
         self.max_value = max_value
+        self.value_type = value_type # python type of the value
+        self.value_type_error = value_type_error # error message on bad value type
+
+    def  is_valid_value( self, value, world ): #IGNORE:W0613
+        status = AttributeMeta.is_valid_value(self, value, world)
+        if status is None and value:
+            try:
+                value = self.value_type(str(value))
+                if self.min_value is not None and value < self.min_value:
+                    return 'Value must be >= %(v)s', {'v':str(self.min_value)}
+                if self.max_value is not None and value > self.max_value:
+                    return 'Value must be <= %(v)s', {'v':str(self.max_value)}
+            except ValueError:
+                return self.value_type_error, ()
+        return status
 
 class ColorAttributeMeta(AttributeMeta):
     def __init__( self, name, attribute_type, components, **kwargs ):
         AttributeMeta.__init__( self, name, attribute_type, **kwargs )
         self.nb_components = components
 
+    def  is_valid_value( self, value, world ): #IGNORE:W0613
+        status = AttributeMeta.is_valid_value(self, value, world)
+        if status is None and value:
+            text = unicode(value)
+            values = text.split(',')
+            if len(values) != self.nb_components:
+                if self.nb_components == 3:
+                    return'RGB color must be of the form "R,G,B" were R,G,B are integer in range [0-255].', ()
+                return'ARGB color must be of the form "A,R,G,B" were A,R,G,B are integer in range [0-255].', ()
+            components = self.nb_components == 3 and 'RGB' or 'ARGB'
+            for name, value in zip(components, values):
+                try:
+                    value = int(value)
+                    if value <0 or value >255:
+                        return 'Color component "%(c)s" must be in range [0-255].', {'c':name}
+                except ValueError:
+                    if self.nb_components == 3:
+                        return 'RGB color must be of the form "R,G,B" were R,G,B are integer in range [0-255].', ()
+                    return'ARGB color must be of the form "A,R,G,B" were A,R,G,B are integer in range [0-255].', ()
+        return status
+
 class Vector2DAttributeMeta(AttributeMeta):
     def __init__( self, name, attribute_type, **kwargs ):
         AttributeMeta.__init__( self, name, attribute_type, **kwargs )
 
+    def  is_valid_value( self, value, world ): #IGNORE:W0613
+        status = AttributeMeta.is_valid_value(self, value, world)
+        if status is None and value:
+            text = unicode(value)
+            values = text.split(',')
+            if len(values) != 2:
+                return 'Position must be of the form "X,Y" were X and Y are real number', ()
+            for component_value in values:
+                try:
+                    value = float(component_value)
+                except ValueError:
+                    return 'Position must be of the form "X,Y" were X and Y are real number', ()
+        return status
+
 class EnumeratedAttributeMeta(AttributeMeta):
-    def __init__( self, name, values, is_list = False, **kwargs ):
-        AttributeMeta.__init__( self, name, ENUMERATED_TYPE, **kwargs )
+    def __init__( self, name, values, is_list = False, 
+                  attribute_type = ENUMERATED_TYPE, **kwargs ):
+        if is_list:
+            kwargs['allow_empty'] = True
+        AttributeMeta.__init__( self, name, attribute_type, **kwargs )
         self.values = set( values )
         self.is_list = is_list
 
+    def  is_valid_value( self, value, world ): #IGNORE:W0613
+        status = AttributeMeta.is_valid_value(self, value, world)
+        if status is None and value:
+            is_list = self.is_list
+            text = unicode( value )
+            input_values = text.split(',')
+            if len(input_values) == 0:
+                if is_list:
+                    return None
+                return 'One %(enum)s value is required', {'enum':self.name}
+            elif len(input_values) != 1 and not is_list:
+                return 'Only one %(enum)s value is allowed', {'enum':self.name}
+            for input_value in input_values:
+                if input_value not in self.values:
+                    return 'Invalid %(enum)s value: "%(values)s"', {
+                        'enum':self.name,
+                        'values':','.join(self.values) }
+        return status
+
 class BooleanAttributeMeta(EnumeratedAttributeMeta):
     def __init__( self, name, **kwargs ):
-        EnumeratedAttributeMeta.__init__( self, name, ('true','false'), BOOLEAN_TYPE, **kwargs )
+        EnumeratedAttributeMeta.__init__( self, name, ('true','false'), 
+                                          attribute_type = BOOLEAN_TYPE, **kwargs )
 
 class ReferenceAttributeMeta(AttributeMeta):
     def __init__( self, name, reference_family, reference_world, **kwargs ):
@@ -107,6 +196,16 @@ class ReferenceAttributeMeta(AttributeMeta):
     def attach_to_element_meta( self, element_meta ):
         AttributeMeta.attach_to_element_meta( self, element_meta )
         element_meta._add_reference_attribute( self )
+
+    def  is_valid_value( self, value, world ): #IGNORE:W0613
+        status = AttributeMeta.is_valid_value(self, value, world)
+        if status is None and value:
+            reference_value = unicode(value)
+            if not world.is_valid_attribute_reference( self, reference_value ):
+                return ('"%(v)s" is not a valid reference to an element of type %(family)s',
+                         { 'v':reference_value,
+                           'family':self.reference_family } )
+        return status
 
 class IdentifierAttributeMeta(AttributeMeta):
     def __init__( self, name, reference_family, reference_world, **kwargs ):
@@ -127,10 +226,14 @@ def bool_attribute( name, **kwargs ):
     return BooleanAttributeMeta( name, **kwargs )
 
 def int_attribute( name, min_value = None, **kwargs ):
-    return NumericAttributeMeta( name, INTEGER_TYPE, min_value = min_value, **kwargs )
+    return NumericAttributeMeta( name, INTEGER_TYPE, int,
+                                 'value must be an integer', 
+                                 min_value = min_value, **kwargs )
 
 def real_attribute( name, min_value = None, max_value = None, **kwargs ):
-    return NumericAttributeMeta( name, REAL_TYPE, min_value = min_value, max_value = max_value, **kwargs )
+    return NumericAttributeMeta( name, REAL_TYPE, float, 
+                                 'value must be a real number',
+                                 min_value = min_value, max_value = max_value, **kwargs )
 
 def rgb_attribute( name, **kwargs ):
     return ColorAttributeMeta( name, RGB_COLOR_TYPE, components = 3, **kwargs )
@@ -148,10 +251,14 @@ def string_attribute( name, **kwargs ):
     return AttributeMeta( name, STRING_TYPE, **kwargs )
 
 def angle_degrees_attribute( name, min_value = None, max_value = None, **kwargs ):
-    return NumericAttributeMeta( name, ANGLE_DEGREES_TYPE, min_value = min_value, max_value = max_value, **kwargs )
+    return NumericAttributeMeta( name, ANGLE_DEGREES_TYPE, float,
+                                 'value must be a real number',
+                                 min_value = min_value, max_value = max_value, **kwargs )
 
 def angle_radians_attribute( name, min_value = None, max_value = None, **kwargs ):
-    return NumericAttributeMeta( name, ANGLE_RADIANS_TYPE, min_value = min_value, max_value = max_value, **kwargs )
+    return NumericAttributeMeta( name, ANGLE_RADIANS_TYPE, float,
+                                 'value must be a real number', 
+                                 min_value = min_value, max_value = max_value, **kwargs )
 
 def reference_attribute( name, reference_family, reference_world, **kwargs ):
     return ReferenceAttributeMeta( name, reference_family = reference_family, 
@@ -1290,6 +1397,13 @@ class Element(_ElementBase):
                 return value
         return ''
 
+    def is_attribute_valid(self, attribute_meta, world):
+        """Checks if the specified attribute is valid on this element.
+           Returns tuple (is_valid, message)
+        """
+        value = attribute_meta.get(self)
+        return attribute_meta.is_valid_value( value, world )
+
     def append( self, element ):
         """Adds a subelement to the end of this element.
            @param element The element to add.
@@ -1481,12 +1595,13 @@ if __name__ == "__main__":
     import unittest
 
     TREE_TEST_GLOBAL = describe_tree( 'testglobal' )
+    TREE_TEST_VALIDATION  = describe_tree( 'testvalidation' )
     TREE_TEST_LEVEL = describe_tree( 'testlevel' )
 
     WORLD_TEST_LEVEL = describe_world( 'testworld.level', trees_meta = [TREE_TEST_LEVEL] )
 
     WORLD_TEST_GLOBAL = describe_world( 'testworld',
-                                        trees_meta = [TREE_TEST_GLOBAL],
+                                        trees_meta = [TREE_TEST_GLOBAL, TREE_TEST_VALIDATION],
                                         child_worlds = [WORLD_TEST_LEVEL] )
 
     GLOBAL_TEXT = describe_element( 'text', attributes = [
@@ -1495,8 +1610,26 @@ if __name__ == "__main__":
         string_attribute( 'fr' )
         ] )
 
+    GLOBAL_VALIDATION = describe_element( 'validatin', attributes = [
+            string_attribute( 'mandatory', mandatory = True ),
+            string_attribute( 'mandatory_empty', mandatory = True, allow_empty = True ),
+            string_attribute( 'empty', allow_empty = True ),
+            int_attribute( 'empty_int', allow_empty = True ),
+            int_attribute( 'empty_int_min', allow_empty = True, min_value = 10 ),
+            int_attribute( 'empty_int_max', allow_empty = True, max_value = 20 ),
+            int_attribute( 'int_bounded', min_value = 10, max_value = 20),
+            real_attribute( 'empty_real', allow_empty = True ),
+            real_attribute( 'real', allow_empty = True ),
+            rgb_attribute( 'rgb' ),
+            argb_attribute( 'argb' ),
+            enum_attribute('enumyesno', ('yes','no')),
+            enum_attribute('enumlist', ('blue','red','green','yelllow'), is_list = True ),
+            bool_attribute('bool'),
+            xy_attribute('xy')
+        ] )
 
     TREE_TEST_GLOBAL.add_elements( [ GLOBAL_TEXT ] )
+    TREE_TEST_VALIDATION.add_elements( [ GLOBAL_VALIDATION ] )
 
     LEVEL_TEXT = describe_element( 'text', attributes = [
         identifier_attribute( 'id', mandatory = True, reference_family = 'text',
@@ -1882,6 +2015,134 @@ if __name__ == "__main__":
 #                tree = xml.etree.ElementTree.ElementTree( level_tree.root )
 #                self.assertEqual( expected_element, tree.find( path ) )
 #            check_path( root_path, level_tree.root )
+
+        def test_validation(self):
+            root = self._make_element( GLOBAL_VALIDATION )
+            tree = self.world.make_tree( TREE_TEST_VALIDATION, root )
+            assert tree.universe == self.universe
+            # check missing mandatory
+            def validate( attribute_name, value ):
+                if value is None:
+                    if root.get(attribute_name) is not None:
+                        root.unset(attribute_name)
+                else:
+                    root.set(attribute_name, value)
+                attribute_meta = root.meta.attribute_by_name( attribute_name )
+                assert attribute_meta is not None
+                return root.is_attribute_valid(attribute_meta, self.world)
+
+            def check_not_valid( attribute_name, value ):
+                status = validate( attribute_name, value )
+                self.assert_( status is not None )
+                message, args = status
+                return message % args # check formatting
+
+            def check_valid( attribute_name, value ):
+                status = validate( attribute_name, value )
+                self.assert_( status is None, status )
+
+            # mandatory check
+            check_not_valid( 'mandatory', None )
+            check_not_valid( 'mandatory_empty', None )
+            check_not_valid( 'mandatory', None )
+            check_not_valid( 'mandatory', '' )
+            check_valid( 'mandatory', 'abc' )
+            # allow empty check
+            check_valid( 'mandatory_empty', '' )
+            check_valid( 'empty', None )
+            check_valid( 'empty', '' )
+            # numeric check
+            check_valid( 'empty_int', None )
+            check_valid( 'empty_int', '' )
+            check_valid( 'empty_int', '-12345678' )
+            check_valid( 'empty_int', '12345678' )
+            check_not_valid( 'empty_int', '1234.5678' )
+            check_not_valid( 'empty_int', '1e10' )
+            check_not_valid( 'empty_int', '0x1234' )
+            check_not_valid( 'empty_int', 'abc' )
+            check_not_valid( 'empty_int_min', '9' )
+            check_not_valid( 'empty_int_min', '-15' )
+            check_valid( 'empty_int_min', '10' )
+            check_valid( 'empty_int_min', '15' )
+            check_not_valid( 'empty_int_max', '21' )
+            check_valid( 'empty_int_max', '-21' )
+            check_valid( 'empty_int_max', '20' )
+            check_valid( 'empty_int_max', '15' )
+            check_valid( 'int_bounded', '10' )
+            check_valid( 'int_bounded', '15' )
+            check_valid( 'int_bounded', '20' )
+            check_not_valid( 'int_bounded', '9' )
+            check_not_valid( 'int_bounded', '21' )
+            # numeric real
+            check_valid( 'empty_real', None )
+            check_valid( 'empty_real', '' )
+            check_valid( 'empty_real', '1.234' )
+            check_valid( 'real', '1.234' )
+            check_valid( 'real', '1.234e10' )
+            check_valid( 'real', '1' )
+            check_valid( 'real', '-4.1' )
+            # rgb
+            check_valid( 'rgb', None )
+            check_not_valid( 'rgb', '' )
+            check_valid( 'rgb', '0,0,0' )
+            check_valid( 'rgb', '255,255,255' )
+            check_not_valid( 'rgb', '0' )
+            check_not_valid( 'rgb', '0,,' )
+            check_not_valid( 'rgb', '0,0,' )
+            check_not_valid( 'rgb', '0,0,0,' )
+            check_not_valid( 'rgb', ',0,0,' )
+            check_not_valid( 'rgb', '0,0,0,0' )
+            # argb
+            check_valid( 'argb', None )
+            check_not_valid( 'argb', '' )
+            check_valid( 'argb', '0,0,0,0' )
+            check_valid( 'argb', '255,255,255,0' )
+            check_not_valid( 'argb', '0,0,0' )
+            check_not_valid( 'argb', '0,0,0,0,0' )
+            # check enum
+            check_valid( 'enumyesno', None )
+            check_not_valid( 'enumyesno', '' )
+            check_valid( 'enumyesno', 'yes' )
+            check_valid( 'enumyesno', 'no' )
+            check_not_valid( 'enumyesno', 'NO' )
+            check_not_valid( 'enumyesno', 'true' )
+            # check enumlist
+            check_valid( 'enumlist', None )
+            check_valid( 'enumlist', '' )
+            check_valid( 'enumlist', 'blue' )
+            check_valid( 'enumlist', 'blue,red' )
+            check_valid( 'enumlist', 'blue,red,green' )
+            check_not_valid( 'enumlist', ',red,green' )
+            # check bool
+            check_valid( 'bool', None )
+            check_not_valid( 'bool', '' )
+            check_valid( 'bool', 'true' )
+            check_valid( 'bool', 'false' )
+            check_not_valid( 'bool', 'False' )
+            # check xy
+            check_valid( 'xy', None )
+            check_not_valid( 'xy', '' )
+            check_valid( 'xy', '0,0' )
+            check_not_valid( 'xy', '0,' )
+            check_not_valid( 'xy', ',0' )
+            check_not_valid( 'xy', '0' )
+            check_not_valid( 'xy', '0,0,0' )
+                
+            
+#            string_attribute( 'mandatory', mandatory = True ),
+#            string_attribute( 'mandatory_empty', mandatory = True, allow_empty = True ),
+#            string_attribute( 'empty', mandatory = True, allow_empty = True ),
+#            int_attribute( 'empty_int', allow_empty = True ),
+#            int_attribute( 'empty_int_min', allow_empty = True, min_value = 10 ),
+#            int_attribute( 'empty_int_max', allow_empty = True, max_value = 20 ),
+#            int_attribute( 'int_bounded', min_value = 10, max_value = 20),
+#            int_attribute( 'empty_real', allow_empty = True ),
+#            int_attribute( 'real', allow_empty = True ),
+#            rgb_attribute( 'rgb' ),
+#            argb_attribute( 'argb' ),
+#            enum_attribute('enumyesno', ('yes','no')),
+#            bool_attribute('bool'),
+#            xy_attribute('xy')
 
 # to test:
 

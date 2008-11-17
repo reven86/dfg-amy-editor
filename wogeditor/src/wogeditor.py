@@ -721,6 +721,10 @@ class MainWindow(QtGui.QMainWindow):
         self.playAction.setEnabled( is_level_selected )
         self.updateLevelResourcesAction.setEnabled( is_level_selected )
 
+    def _on_refresh_element_status(self):
+        # broadcast the event to all ElementIssueTracker 
+        louie.send_minimal( metaworldui.RefreshElementIssues )
+
     def createMDIArea( self ):
         self.mdiArea = QtGui.QMdiArea()
         self.setCentralWidget(self.mdiArea)
@@ -796,6 +800,11 @@ class MainWindow(QtGui.QMainWindow):
         actionTimer = QtCore.QTimer( self )
         self.connect( actionTimer, QtCore.SIGNAL("timeout()"), self.onRefreshAction )
         actionTimer.start( 250 )    # Refresh action enabled flag every 250ms.
+
+        statusTimer = QtCore.QTimer( self )
+        self.connect( statusTimer, QtCore.SIGNAL("timeout()"), 
+                      self._on_refresh_element_status )
+        statusTimer.start( 1000 )    # Refresh element status every 1s.
 
     def createMenus(self):
         self.fileMenu = self.menuBar().addMenu(self.tr("&File"))

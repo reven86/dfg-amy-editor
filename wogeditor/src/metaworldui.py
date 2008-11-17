@@ -16,6 +16,17 @@ class WorldSelectionChanged(louie.Signal):
        sender: world the element belong to
     """
 
+class RefreshElementIssues(louie.Signal):
+    """Emitted periodically from a timer to refresh element issue status.
+       Signature: (), sender: Anonymous
+    """ 
+
+class ElementIssuesUpdated(louie.Signal):
+    """Emitted when existing element issues have been updated
+       Signature: (elements), sender: world
+       elements: list of Element with modified issue
+    """ 
+
 
 class DirtyWorldTracker(object):
     """Provides the list of tree that have been modified in a world.
@@ -144,14 +155,38 @@ class ElementIssueTracker(object):
         """
         self.__world = world
         louie.connect( self.__on_tree_added, metaworld.TreeAdded, world )
-        self._issues_by_element = {}
+        louie.connect( self.__on_refresh_element_status, RefreshElementIssues )
+        self._issues_by_element = {} #dict element:(child,attribute,node)
+        self._pending_full_check = set()
+        self._pending_updated = {}
+        self._modified_element_issues = set()
 
     def element_issue_level(self, element):
         """Returns the most critical level of issue for the element.
            None if there is no pending issue.
         """
-        level = self._issues_by_element.get(element)
-        return level
+        if element in self._issues_by_element:
+            return CRITICAL_ISSUE
+        return None
+
+    def element_issue_report(self, element):
+        """Returns a small report of all the element issues.
+        """
+        issues = self._issues_by_element[element]
+        if issues:
+            nodes, attributes, occurrences = issues
+            report = []
+            if occurrences:
+                for format, args in occurrences.itervalues():
+                    report.append( format % args )
+            if attributes:
+                report.append( 'Attribute issue:')
+                for name in sorted(attributes):
+                    format, args = attributes[name]
+                    report.append( '- "%(name)s": %(message)s' % {
+                        'name':name,'message':format % args } )
+            return '\n'.join( report )
+        return ''
 
     def __on_tree_added(self, tree):
         for tree_meta in self.__world.meta.trees:
@@ -165,10 +200,85 @@ class ElementIssueTracker(object):
             self.__on_element_added( tree.root, 0 )
 
     def __on_element_added(self, element, index_in_parent): #IGNORE:W0613
-        pass
+        self._pending_full_check.add( element )
 
     def __on_element_about_to_be_removed(self, element, index_in_parent): #IGNORE:W0613
-        pass
+        parent = element.parent
+        if parent is not None:
+            self._pending_full_check.add(parent)
 
     def __on_element_updated(self, element, name, new_value, old_value): #IGNORE:W0613
-        pass
+        if element not in self._pending_updated:
+            self._pending_updated[element] = set()
+        self._pending_updated[element].add( name )
+
+    def __on_refresh_element_status(self):
+        import time
+        start_time = time.clock()
+        
+        for element in self._pending_full_check:
+            self._check_element( element )
+        self._pending_full_check.clear()
+        
+        print 'Refreshed element status: %.3fs' % (time.clock()-start_time)
+        start_time = time.clock()
+        elements, self._modified_element_issues = self._modified_element_issues, set()
+        louie.send( ElementIssuesUpdated, self.__world, elements )
+        print 'Broadcast modified element issues: %.3fs' % (time.clock()-start_time)
+        
+         
+    def _check_element(self, element):
+        if element.parent is None and element.tree is None:  # deleted element
+            return None
+        # check child for issues
+        child_issues = {}
+        children_by_meta = {}
+        for child in element:
+            issue = self._check_element(child)
+            if issue is not None:
+                child_issues[child] = issue
+            if child.meta not in children_by_meta: 
+                children_by_meta[child.meta] = []
+            children_by_meta[child.meta].append(child)
+        # check attribute for issues
+        attribute_issues = {}
+        for attribute_meta in element.meta.attributes:
+            status = element.is_attribute_valid( attribute_meta, self.__world )
+            if status is not None:
+                attribute_issues[attribute_meta.name] = status 
+        # check node issues (mandatory children...)
+        node_issues = {}
+        for child_meta in element.meta.immediate_child_elements():
+            status = self._check_child_occurrences( child_meta, children_by_meta )
+            if status is not None:
+                node_issues[child_meta] = status
+        # synthesis of issues
+        if child_issues or attribute_issues or node_issues:
+            self._issues_by_element[element] = (child_issues, 
+                                                attribute_issues, 
+                                                node_issues)
+            self._modified_element_issues.add( element )
+            return True
+        return None
+            
+    def _check_child_occurrences(self, meta, children_by_meta):
+        occurrences = len(children_by_meta.get(meta,()))
+        if ( meta.min_occurrence is not None 
+             and occurrences < meta.min_occurrence ):
+            if meta.min_occurrence == meta.max_occurrence:
+                if meta.min_occurrence == 1:
+                    return 'Element must have one %(type)s child', {'type':meta}
+                return 'Element must have exactly %(count)d %(type)s children', {
+                    'type':meta,'count':meta.min_occurrence}
+            if meta.min_occurrence == 1:
+                return 'Element must have at least one %(type)s child', {'type':meta}
+            return 'Element must have at least %(count)d %(type)s children', {
+                'type':meta,'count':meta.min_occurrence}
+        if ( meta.max_occurrence is not None 
+             and occurrences > meta.max_occurrence ):
+            if meta.max_occurrence == 1:
+                return 'Element must have no more than one %(type)s child', {'type':meta}
+            return 'Element must have no more than %(count)d %(type)s children', {
+                'type':meta,'count':meta.max_occurrence}
+        return None
+        
