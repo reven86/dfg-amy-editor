@@ -59,6 +59,7 @@ class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
             if property_name == name:
                 attribute_meta = element.meta.attribute_by_name( name )
                 self._update_property_name_face(element, attribute_meta, item)  
+            #@todo refresh value (in future future, when modified in graphic view)
 
     def _on_element_issues_updated( self, elements ):
         if self._element in elements:
@@ -91,7 +92,13 @@ class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
         data = top_left_index.data( Qt.UserRole ).toPyObject()
         if data:
             world, tree_meta, element_meta, element, property_name = data
-            element.set( property_name, str(new_value) )
+            attribute_meta = element.meta.attribute_by_name(property_name)
+            assert attribute_meta is not None
+            new_value = unicode(new_value)
+            if len(new_value) == 0 and attribute_meta.mandatory:
+                element.unset( property_name )
+            else:
+                element.set( property_name, new_value )
         else:
             print 'Warning: no data on edited item!'
 
@@ -203,11 +210,14 @@ class PropertyValidator(QtGui.QValidator):
            Valid values for state are: QtGui.QValidator.Invalid, QtGui.QValidator.Acceptable, QtGui.QValidator.Intermediate.
            Returning Invalid actually prevent the user from inputing that a value that would make the text invalid. It is
            better to avoid returning this at it prevent temporary invalid value (when using cut'n'paste for example)."""
-        status = self.attribute_meta.is_valid_value( unicode(text), self.world )
-        if status: # error found
-            message = status[0] % status[1]
-            self.status_bar.showMessage(message, 1000)
-            return (QtGui.QValidator.Intermediate,pos)
+        text = unicode(text)
+        # An empty mandatory input will be modified in an unset attribute action
+        if text or not self.attribute_meta.mandatory:
+            status = self.attribute_meta.is_valid_value( text, self.world )
+            if status: # error found
+                message = status[0] % status[1]
+                self.status_bar.showMessage(message, 1000)
+                return (QtGui.QValidator.Intermediate,pos)
         return (QtGui.QValidator.Acceptable,pos)
 
 
@@ -297,8 +307,8 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
         if need_specific_converter:
             handler_data['converter']( editor, model, index, attribute_meta )
         else:
-##            value = editor.text()
-##            model.setData(index, QtCore.QVariant( value ), Qt.EditRole)
+#            value = editor.text()
+#            model.setData(index, QtCore.QVariant( value ), Qt.EditRole)
             QtGui.QStyledItemDelegate.setModelData( self, editor, model, index )
     
 

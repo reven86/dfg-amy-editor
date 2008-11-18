@@ -93,7 +93,7 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
                 item = self._findItemByElement( element )
                 name_item = qthelper.get_row_item_sibling( item, 1 )
                 if name_item is not None:
-                    name_item.setText( new_value )
+                    name_item.setText( new_value or '' )
 
     def _onElementAboutToBeRemoved(self, element, index_in_parent ): #IGNORE:W0613
         item = self._findItemByElement( element )

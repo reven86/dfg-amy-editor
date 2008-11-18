@@ -1,3 +1,4 @@
+* Can unset a mandatory attribute by input an empty string
 * Element issues are shown with an icon overlay in the tree view. A tooltip provides details.
 * Attribute with issue have their name in red
 * Add child now only propose child that are valid to add to the selected item.
