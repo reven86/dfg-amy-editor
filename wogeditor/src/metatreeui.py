@@ -84,11 +84,16 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
             else:
                 print 'Warning: parent_element not found in tree view', element.parent
 
-    def _onElementUpdated(self, element, attribute_name, new_value, old_value):
-        pass # for later when name will be displayed in tree view
-#        print
-#        print '************ Element updated', attribute_name, new_value
-#        print
+    def _onElementUpdated(self, element, attribute_name, new_value, old_value): #IGNORE:W0613
+        """Updates id/name column if one of those attributes changed."""
+        if element.tree == self.metaworld_tree:
+            attribute_meta = element.meta.attribute_by_name( attribute_name )
+            assert attribute_meta is not None
+            if attribute_meta in element.meta.display_id_attributes:
+                item = self._findItemByElement( element )
+                name_item = qthelper.get_row_item_sibling( item, 1 )
+                if name_item is not None:
+                    name_item.setText( new_value )
 
     def _onElementAboutToBeRemoved(self, element, index_in_parent ): #IGNORE:W0613
         item = self._findItemByElement( element )

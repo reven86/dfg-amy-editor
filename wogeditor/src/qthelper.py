@@ -83,7 +83,13 @@ def standardModelTreeItems( model, root_index = None ):
         parent_indexes.extend( [ index.child(row,0) for row in xrange(0,model.rowCount(index)) ] )
         items.append( model.itemFromIndex(index) )
     return items
-    
+
+def get_row_item_sibling( item, column ):
+    """Returns the item corresponding to the column column on the same row as item.
+    """
+    column_index = item.index().sibling( item.row(), column )
+    return item.model().itemFromIndex(column_index)
+
 def index_path( index ):
     """Returns a list of tuple (row,column) corresponding to the index path starting from
        the root.
