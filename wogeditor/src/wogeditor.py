@@ -537,21 +537,6 @@ class MainWindow(QtGui.QMainWindow):
             return window.widget().getLevelModel()
         return None
 
-    def _onPropertyListValueChanged( self, top_left_index, bottom_right_index ):
-        """Called the data of a property list item changed.
-           Update the corresponding value in the level model and broadcast the event to refresh the scene view.
-           """
-        if top_left_index.row() != bottom_right_index.row():
-            print 'Warning: edited non editable row!!!'
-            return # not the result of an edit
-        new_value = top_left_index.data( Qt.DisplayRole ).toString()
-        data = top_left_index.data( Qt.UserRole ).toPyObject()
-        if data:
-            world, tree_meta, element_meta, element, property_name = data
-            element.set( property_name, str(new_value) )
-        else:
-            print 'Warning: no data on edited item!'
-
     def save(self):
         """Saving all modified elements.
         """
@@ -804,7 +789,7 @@ class MainWindow(QtGui.QMainWindow):
         statusTimer = QtCore.QTimer( self )
         self.connect( statusTimer, QtCore.SIGNAL("timeout()"), 
                       self._on_refresh_element_status )
-        statusTimer.start( 1000 )    # Refresh element status every 1s.
+        statusTimer.start( 300 )    # Refresh element status every 300ms.
 
     def createMenus(self):
         self.fileMenu = self.menuBar().addMenu(self.tr("&File"))
@@ -885,9 +870,6 @@ class MainWindow(QtGui.QMainWindow):
         self.propertiesList.setModel( self.propertiesListModel )
         dock.setWidget(self.propertiesList)
         self.addDockWidget(Qt.RightDockWidgetArea, dock)
-
-        self.connect(self.propertiesListModel, QtCore.SIGNAL("dataChanged(const QModelIndex&,const QModelIndex&)"),
-                     self._onPropertyListValueChanged)
 
     def _readSettings( self ):
         """Reads setting from previous session & restore window state."""

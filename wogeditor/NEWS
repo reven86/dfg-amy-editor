@@ -1,3 +1,5 @@
+* Element issues are shown with an icon overlay in the tree view. A tooltip provides details.
+* Attribute with issue have their name in red
 * Add child now only propose child that are valid to add to the selected item.
 * Completion is provided for ball type
 * Completion list is now sorted in non case-sensitive order

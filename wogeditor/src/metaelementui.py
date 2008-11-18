@@ -15,15 +15,24 @@ class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
         self._active_world = None
         # Selection change event are on a per world basis, so listen for the current world
         louie.connect( self._on_active_world_change, metaworldui.ActiveWorldChanged )
+        self.connect( self, QtCore.SIGNAL("dataChanged(const QModelIndex&,const QModelIndex&)"),
+                      self._onPropertyListValueChanged )
         self._resetPropertyListModel()
 
     def _on_active_world_change(self, active_world):
         if self._active_world is not None:
             louie.disconnect( self._on_selection_change, metaworldui.WorldSelectionChanged, 
                               self._active_world )
+            louie.disconnect( self._on_element_issues_updated, 
+                              metaworldui.ElementIssuesUpdated,
+                              self._active_world )
         self._active_world = active_world
-        louie.connect( self._on_selection_change, metaworldui.WorldSelectionChanged, 
-                       active_world )
+        if active_world is not None:
+            louie.connect( self._on_selection_change, metaworldui.WorldSelectionChanged, 
+                           active_world )
+            louie.connect( self._on_element_issues_updated, 
+                           metaworldui.ElementIssuesUpdated,
+                           self._active_world )
 
     def _resetPropertyListModel( self, element = None ):
         """Change the element displayed in the property list.
@@ -44,13 +53,51 @@ class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
     def __on_element_updated(self, element, name, new_value, old_value): #IGNORE:W0613
         if element != self._element:
             return
+        # An attribute of the element has been modified, find it & refresh it
         for item in qthelper.standardModelTreeItems( self ): # returns first columns item
             element, property_name = self.get_item_element_and_property( item )
             if property_name == name:
                 attribute_meta = element.meta.attribute_by_name( name )
                 self._update_property_name_face(element, attribute_meta, item)  
 
+    def _on_element_issues_updated( self, elements ):
+        if self._element in elements:
+            # Element issues have changed, refresh all properties name face
+            for item in qthelper.standardModelTreeItems( self ): # returns first columns item
+                element, property_name = self.get_item_element_and_property( item )
+                attribute_meta = element.meta.attribute_by_name( property_name )
+                self._update_property_name_face(element, attribute_meta, item)  
+
+    def _on_selection_change(self, selection, #IGNORE:W0613
+                             selected_elements, deselected_elements):
+        # On selection change, display the attributes of the new selected element 
+        if len(selected_elements) > 0:
+            element = list(selected_elements)[0] #@todo handle multiple selection
+            self._resetPropertyListModel( element )
+            self._refreshPropertyList()
+        else:
+            self._resetPropertyListModel()
+
+    def _onPropertyListValueChanged( self, top_left_index, bottom_right_index ):
+        """Called the data of a property list item changed.
+           Update the corresponding value in the level model and broadcast the event to refresh the scene view.
+           """
+        if top_left_index.row() != bottom_right_index.row():
+            print 'Warning: edited non editable row!!!'
+            return # not the result of an edit
+        if top_left_index.column() == 0: # Property name modified, ignore
+            return
+        new_value = top_left_index.data( Qt.DisplayRole ).toString()
+        data = top_left_index.data( Qt.UserRole ).toPyObject()
+        if data:
+            world, tree_meta, element_meta, element, property_name = data
+            element.set( property_name, str(new_value) )
+        else:
+            print 'Warning: no data on edited item!'
+
     def get_item_element_and_property( self, item ):
+        """Returns the element and the property name associated to an item.
+        """
         assert isinstance( item, QtGui.QStandardItem )
         data =  item.data( Qt.UserRole )
         assert data.isValid() # if this fails, then we are trying to edit the item was added incorrectly.
@@ -58,26 +105,26 @@ class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
         world, tree_meta, element_meta, element, property_name = data
         return element, property_name
 
-    def _update_property_name_face( self, element, attribute_meta, item_name ):
+    def _update_property_name_face( self, element, attribute_meta, item_name, 
+                                    world = None ):
+        """Apply the style on property name according to its status. 
+           Style: 
+           - Bold face if the attribute is defined on the element
+           - Property name displayed in red if there is an associated issue
+        """
+        world = world or element.world
         font = item_name.font()
         # bold property name for defined property
         attribute_value = attribute_meta.get(element)
         font.setBold( attribute_value is not None )
-#            if attribute_value is None and attribute_meta.mandatory:
-#                # @todo Also put name in red if value is not valid.
-#                brush = QtGui.QBrush( QtGui.QColor( 255, 0, 0 ) )
-#                font.setForeground( brush )
+        issue = world.element_attribute_issue( element, attribute_meta.name )
+        if issue:
+            brush = QtGui.QBrush( QtGui.QColor( 255, 0, 0 ) )
+            item_name.setForeground( brush )
+            item_name.setToolTip( issue )
+        else: # Restore default foreground color
+            item_name.setData( QtCore.QVariant(), Qt.ForegroundRole )
         item_name.setFont( font )
-
-    def _on_selection_change(self, selection, #IGNORE:W0613
-                             selected_elements, deselected_elements): 
-        # Order the properties so that main attributes are at the beginning
-        if len(selected_elements) > 0:
-            element = list(selected_elements)[0] #@todo handle multiple selection
-            self._resetPropertyListModel( element )
-            self._refreshPropertyList()
-        else:
-            self._resetPropertyListModel()
     
     def _refreshPropertyList(self):
         element = self._element
@@ -91,7 +138,7 @@ class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
             attribute_value = element.get( attribute_name )
             item_name = QtGui.QStandardItem( attribute_name )
             item_name.setEditable( False )
-            self._update_property_name_face( element, attribute_meta, item_name )
+            self._update_property_name_face( element, attribute_meta, item_name, world )
 #                if attribute_value is not None: # bold property name for defined property
 #                    font = item_name.font()
 #                    font.setBold( True )

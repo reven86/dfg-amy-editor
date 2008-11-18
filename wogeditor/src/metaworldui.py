@@ -158,7 +158,7 @@ class ElementIssueTracker(object):
         louie.connect( self.__on_refresh_element_status, RefreshElementIssues )
         self._issues_by_element = {} #dict element:(child,attribute,node)
         self._pending_full_check = set()
-        self._pending_updated = {}
+        self._pending_updated = set()
         self._modified_issues = set()
 
     def element_issue_level(self, element):
@@ -167,6 +167,19 @@ class ElementIssueTracker(object):
         """
         if element in self._issues_by_element:
             return CRITICAL_ISSUE
+        return None
+
+    def element_attribute_issue(self, element, attribute_name):
+        """Returns the issue associated to the specified element atttribute if any.
+           Returns None if there is no issue.
+        """
+        element_issues = self._issues_by_element.get( element )
+        if element_issues:
+            attributes = element_issues[1]
+            issue = attributes.get( attribute_name )
+            if issue:
+                format, args = issue
+                return format % args 
         return None
 
     def element_issue_report(self, element):
@@ -219,14 +232,13 @@ class ElementIssueTracker(object):
             if id_value:
                 family = id_meta.reference_family
                 references = self.__world.universe.list_references( family, id_value )
-                for element in references:
+                for element, attribute_meta in references: #IGNORE:W0612
                     if element.world == self.__world:
                         self._pending_full_check.add(element) 
 
     def __on_element_updated(self, element, name, new_value, old_value): #IGNORE:W0613
-        if element not in self._pending_updated:
-            self._pending_updated[element] = set()
-        self._pending_updated[element].add( name )
+        # Schedule non-recursive check
+        self._pending_updated.add(element) 
         # if the identifier was updated, then also check all back-references
         id_meta = element.meta.identifier_attribute
         if id_meta is not None and id_meta.name == name:
@@ -241,6 +253,10 @@ class ElementIssueTracker(object):
         for element in self._pending_full_check:
             self._check_element( element, checked_elements, recurse = True )
         self._pending_full_check.clear()
+        # Scan updated elements, but not their children
+        for element in self._pending_updated:
+            self._check_element( element, checked_elements, recurse = False )
+        self._pending_updated.clear()
 
         # Scan parents elements of any modified issue (need to escalate warning)
         all_issue_elements = set()
@@ -253,10 +269,12 @@ class ElementIssueTracker(object):
                 if element not in checked_elements:
                     self._check_element( element, checked_elements, recurse = False )
         
-#        print 'Refreshed element status: %.3fs' % (time.clock()-start_time)
-#        start_time = time.clock()
-        louie.send( ElementIssuesUpdated, self.__world, all_issue_elements )
-#        print 'Broadcast modified element issues: %.3fs' % (time.clock()-start_time)
+        if  all_issue_elements:
+#            print 'Refreshed element status: %.3fs' % (time.clock()-start_time)
+#            start_time = time.clock()
+#            print 'Broadcasting issues:', all_issue_elements
+            louie.send( ElementIssuesUpdated, self.__world, all_issue_elements )
+#            print 'Broadcast modified element issues: %.3fs' % (time.clock()-start_time)
         
          
     def _check_element(self, element, checked_elements, recurse = True):
@@ -293,6 +311,11 @@ class ElementIssueTracker(object):
                                                 attribute_issues, 
                                                 node_issues)
             self._modified_issues.add( element )
+#            print 'Issue found on', element
+        elif element in self._issues_by_element:
+#            print 'Removing issue on ', element
+            del self._issues_by_element[element]
+            self._modified_issues.add( element ) 
             
     def _check_child_occurrences(self, meta, children_by_meta):
         occurrences = len(children_by_meta.get(meta,()))

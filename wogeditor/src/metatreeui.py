@@ -153,10 +153,8 @@ class MetaWorldTreeModel(QtGui.QStandardItemModel):
             if icon:
                 item.setIcon( icon )
         if issue is not None:
-#            item.setIcon( self._issue_icons[issue] )
             item.setToolTip( self._issue_tracker.element_issue_report(element) )
         else:
-#            item.setIcon( QtGui.QIcon() )
             item.setToolTip('')
 
     def _on_element_issues_updated( self, elements ):
