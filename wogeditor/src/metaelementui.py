@@ -1,6 +1,6 @@
 from PyQt4 import QtCore, QtGui
 from PyQt4.QtCore import Qt
-#import qthelper
+import qthelper
 import louie
 import metaworld
 import metaworldui
@@ -10,23 +10,64 @@ import metaworldui
 class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
     def __init__( self, *args ):
         QtGui.QStandardItemModel.__init__( self, *args )
-        self.metaworld_element = None
-        self.__previous_world = None
+        self._element = None
+        self._element_tree = None
+        self._active_world = None
+        # Selection change event are on a per world basis, so listen for the current world
         louie.connect( self._on_active_world_change, metaworldui.ActiveWorldChanged )
         self._resetPropertyListModel()
 
-    def _resetPropertyListModel( self, element = None ):
-        self.clear()
-        self.setHorizontalHeaderLabels( [self.tr('Name'), self.tr('Value')] )
-        self.metaworld_element = element
-
     def _on_active_world_change(self, active_world):
-        if self.__previous_world is not None:
+        if self._active_world is not None:
             louie.disconnect( self._on_selection_change, metaworldui.WorldSelectionChanged, 
-                              self.__previous_world )
-        self.__previous_world = active_world
+                              self._active_world )
+        self._active_world = active_world
         louie.connect( self._on_selection_change, metaworldui.WorldSelectionChanged, 
                        active_world )
+
+    def _resetPropertyListModel( self, element = None ):
+        """Change the element displayed in the property list.
+           Subscribe to update event for the element and unsubscribe from the old one.
+        """
+        self.clear()
+        self.setHorizontalHeaderLabels( [self.tr('Name'), self.tr('Value')] )
+        if self._element_tree is not None:
+            louie.disconnect( self.__on_element_updated, metaworld.AttributeUpdated, 
+                              self._element_tree )
+            self._element_tree = None
+        self._element = element
+        if element is not None:
+            self._element_tree = element.tree
+            louie.connect( self.__on_element_updated, metaworld.AttributeUpdated, 
+                           self._element_tree )
+
+    def __on_element_updated(self, element, name, new_value, old_value): #IGNORE:W0613
+        if element != self._element:
+            return
+        for item in qthelper.standardModelTreeItems( self ): # returns first columns item
+            element, property_name = self.get_item_element_and_property( item )
+            if property_name == name:
+                attribute_meta = element.meta.attribute_by_name( name )
+                self._update_property_name_face(element, attribute_meta, item)  
+
+    def get_item_element_and_property( self, item ):
+        assert isinstance( item, QtGui.QStandardItem )
+        data =  item.data( Qt.UserRole )
+        assert data.isValid() # if this fails, then we are trying to edit the item was added incorrectly.
+        data = data.toPyObject() 
+        world, tree_meta, element_meta, element, property_name = data
+        return element, property_name
+
+    def _update_property_name_face( self, element, attribute_meta, item_name ):
+        font = item_name.font()
+        # bold property name for defined property
+        attribute_value = attribute_meta.get(element)
+        font.setBold( attribute_value is not None )
+#            if attribute_value is None and attribute_meta.mandatory:
+#                # @todo Also put name in red if value is not valid.
+#                brush = QtGui.QBrush( QtGui.QColor( 255, 0, 0 ) )
+#                font.setForeground( brush )
+        item_name.setFont( font )
 
     def _on_selection_change(self, selection, #IGNORE:W0613
                              selected_elements, deselected_elements): 
@@ -34,32 +75,38 @@ class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
         if len(selected_elements) > 0:
             element = list(selected_elements)[0] #@todo handle multiple selection
             self._resetPropertyListModel( element )
-            element_meta = element.meta
-            world = element.world
-            missing_attributes = set( element.keys() )
-            for attribute_meta in element_meta.attributes_order:
-                attribute_name = attribute_meta.name
-                if attribute_name in missing_attributes:
-                    missing_attributes.remove( attribute_name )
-                attribute_value = element.get( attribute_name )
-                item_name = QtGui.QStandardItem( attribute_name )
-                item_name.setEditable( False )
-                if attribute_value is not None: # bold property name for defined property
-                    font = item_name.font()
-                    font.setBold( True )
-                    if attribute_value is None and attribute_meta.mandatory:
-                        # @todo Also put name in red if value is not valid.
-                        brush = QtGui.QBrush( QtGui.QColor( 255, 0, 0 ) )
-                        font.setForeground( brush )
-                    item_name.setFont( font )
-                item_value = QtGui.QStandardItem( attribute_value or '' )
-                item_value.setData( QtCore.QVariant( (world, element.tree, element_meta, element, attribute_name) ),
-                                    Qt.UserRole )
-                self.appendRow( [ item_name, item_value ] )
-            if missing_attributes:
-                print 'Warning: The following attributes of "%s" are missing in metaworld:' % element.tag, ', '.join( missing_attributes )
+            self._refreshPropertyList()
         else:
             self._resetPropertyListModel()
+    
+    def _refreshPropertyList(self):
+        element = self._element
+        element_meta = element.meta
+        world = element.world
+        missing_attributes = set( element.keys() )
+        for attribute_meta in element_meta.attributes_order:
+            attribute_name = attribute_meta.name
+            if attribute_name in missing_attributes:
+                missing_attributes.remove( attribute_name )
+            attribute_value = element.get( attribute_name )
+            item_name = QtGui.QStandardItem( attribute_name )
+            item_name.setEditable( False )
+            self._update_property_name_face( element, attribute_meta, item_name )
+#                if attribute_value is not None: # bold property name for defined property
+#                    font = item_name.font()
+#                    font.setBold( True )
+#                    if attribute_value is None and attribute_meta.mandatory:
+#                        # @todo Also put name in red if value is not valid.
+#                        brush = QtGui.QBrush( QtGui.QColor( 255, 0, 0 ) )
+#                        font.setForeground( brush )
+#                    item_name.setFont( font )
+            item_value = QtGui.QStandardItem( attribute_value or '' )
+            data = (world, element.tree, element_meta, element, attribute_name)
+            for item in (item_name, item_value):
+                item.setData( QtCore.QVariant( data ), Qt.UserRole )
+            self.appendRow( [ item_name, item_value ] )
+        if missing_attributes:
+            print 'Warning: The following attributes of "%s" are missing in metaworld:' % element.tag, ', '.join( missing_attributes )
 
 class MetaWorldPropertyListView(QtGui.QTreeView):
     def __init__(self, status_bar, *args):
@@ -69,77 +116,8 @@ class MetaWorldPropertyListView(QtGui.QTreeView):
         delegate = PropertyListItemDelegate( self, status_bar )
         self.setItemDelegate( delegate )
         
-
-
-def validate_enumerated_property( world, attribute_meta, text ):
-    type_name = attribute_meta.name
-    is_list = attribute_meta.is_list
-    text = unicode( text )
-    input_values = text.split(',')
-    if len(input_values) == 0:
-        if is_list:
-            return QtGui.QValidator.Acceptable
-        return QtGui.QValidator.Intermediate, 'One %s value is required' % type_name
-    elif len(input_values) != 1 and not is_list:
-        return QtGui.QValidator.Intermediate, 'Only one %s value is allowed' % type_name
-    for input_value in input_values:
-        if input_value not in attribute_meta.values:
-            return ( QtGui.QValidator.Intermediate, 'Invalid %s value: "%%1". Valid values: %%2' % type_name,
-                     input_value, ','.join(attribute_meta.values) )
-    return QtGui.QValidator.Acceptable
-
-def complete_enumerated_property( world, attribute_meta ):
+def complete_enumerated_property( world, attribute_meta ): #IGNORE:W0613
     return sorted(attribute_meta.values)
-
-def do_validate_numeric_property( attribute_meta, text, value_type, error_message ):
-    try:
-        value = value_type(str(text))
-        if attribute_meta.min_value is not None and value < attribute_meta.min_value:
-            return QtGui.QValidator.Intermediate, 'Value must be >= %1', str(attribute_meta.min_value)
-        if attribute_meta.max_value is not None and value > attribute_meta.max_value:
-            return QtGui.QValidator.Intermediate, 'Value must be < %1', str(attribute_meta.max_value)
-        return QtGui.QValidator.Acceptable
-    except ValueError:
-        return QtGui.QValidator.Intermediate, error_message
-
-def validate_integer_property( world, attribute_meta, text ):
-    return do_validate_numeric_property( attribute_meta, text, int, 'Value must be an integer' )
-
-def validate_real_property( world, attribute_meta, text ):
-    return do_validate_numeric_property( attribute_meta, text, float, 'Value must be a real number' )
-
-def validate_rgb_property( world, attribute_meta, text ):
-    text = unicode(text)
-    values = text.split(',')
-    # @todo bugged
-    if len(values) != attribute_meta.nb_components:
-        return QtGui.QValidator.Intermediate, 'RGB color must be of the form "R,G,B" were R,G,B are integer in range [0-255].'
-    for name, value in zip('RGB', values):
-        try:
-            value = int(value)
-            if value <0 or value >255:
-                return QtGui.QValidator.Intermediate, 'RGB color component "%s" must be in range [0-255].' % name
-        except ValueError:
-            return QtGui.QValidator.Intermediate, 'RGB color must be of the form "R,G,B" were R,G,B are integer in range [0-255].'
-    return QtGui.QValidator.Acceptable
-
-def validate_xy_property( world, attribute_meta, text ):
-    text = unicode(text)
-    values = text.split(',')
-    if len(values) != 2:
-        return QtGui.QValidator.Intermediate, 'Position must be of the form "X,Y" were X and Y are real number'
-    for name, value in zip('XY', values):
-        try:
-            value = float(value)
-        except ValueError:
-            return QtGui.QValidator.Intermediate, 'Position must be of the form "X,Y" were X and Y are real number'
-    return QtGui.QValidator.Acceptable
-
-def validate_reference_property( world, attribute_meta, reference_value ):
-    reference_value = unicode(reference_value)
-    if world.is_valid_attribute_reference( attribute_meta, reference_value ):
-        return QtGui.QValidator.Acceptable
-    return QtGui.QValidator.Intermediate, '"%%1" is not a valid reference to an element of type %s' % attribute_meta.reference_family, reference_value
 
 def complete_reference_property( world, attribute_meta ):
     return world.list_identifiers( attribute_meta.reference_family )
@@ -161,25 +139,16 @@ def complete_reference_property( world, attribute_meta ):
 # converter: called when the user valid the text (enter key usualy) to store the edited value into the model.
 #            a callable(editor, model, index, attribute_meta).
 ATTRIBUTE_TYPE_EDITOR_HANDLERS = {
-    metaworld.BOOLEAN_TYPE: { 'validator': validate_enumerated_property,
-                              'converter': complete_enumerated_property },
-    metaworld.ENUMERATED_TYPE: { 'validator': validate_enumerated_property,
-                                 'completer': complete_enumerated_property },
-    metaworld.INTEGER_TYPE: { 'validator': validate_integer_property },
-    metaworld.REAL_TYPE: { 'validator': validate_real_property },
-    metaworld.RGB_COLOR_TYPE: { 'validator': validate_rgb_property },
-    metaworld.XY_TYPE: { 'validator': validate_xy_property },
-    metaworld.ANGLE_DEGREES_TYPE:  { 'validator': validate_real_property },
-    metaworld.REFERENCE_TYPE: { 'validator': validate_reference_property,
-                                'completer': complete_reference_property }
+    metaworld.BOOLEAN_TYPE: { 'completer': complete_enumerated_property },
+    metaworld.ENUMERATED_TYPE: { 'completer': complete_enumerated_property },
+    metaworld.REFERENCE_TYPE: { 'completer': complete_reference_property }
     }
 
 class PropertyValidator(QtGui.QValidator):
-    def __init__( self, parent, status_bar, world, attribute_meta, validator ):
+    def __init__( self, parent, status_bar, world, attribute_meta ):
         QtGui.QValidator.__init__( self, parent )
         self.status_bar = status_bar
         self.attribute_meta = attribute_meta
-        self.validator = validator
         self.world = world
 
     def validate( self, text, pos ):
@@ -187,16 +156,12 @@ class PropertyValidator(QtGui.QValidator):
            Valid values for state are: QtGui.QValidator.Invalid, QtGui.QValidator.Acceptable, QtGui.QValidator.Intermediate.
            Returning Invalid actually prevent the user from inputing that a value that would make the text invalid. It is
            better to avoid returning this at it prevent temporary invalid value (when using cut'n'paste for example)."""
-        status = self.validator( self.world, self.attribute_meta, text )
-        if type(status) == tuple:
-            message = status[1]
-            args = status[2:]
-            status = status[0]
-            message = self.tr(message)
-            for arg in args:
-                message = message.arg(arg)
+        status = self.attribute_meta.is_valid_value( unicode(text), self.world )
+        if status: # error found
+            message = status[0] % status[1]
             self.status_bar.showMessage(message, 1000)
-        return ( status, pos )
+            return (QtGui.QValidator.Intermediate,pos)
+        return (QtGui.QValidator.Acceptable,pos)
 
 
 class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
@@ -218,9 +183,11 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
             editor = handler_data['editor']( parent, option, index, element, attribute_meta, DefaultEditorFactory() )
         else: # No specific, use default QLineEditor
             editor = QtGui.QStyledItemDelegate.createEditor( self, parent, option, index )
-        if handler_data and handler_data.get('validator'):
-            validator = PropertyValidator( editor, self.status_bar, world, attribute_meta, handler_data['validator'] )
-            editor.setValidator( validator )
+
+        # Set attribute meta validation adapter
+        validator = PropertyValidator( editor, self.status_bar, world, attribute_meta )
+        editor.setValidator( validator )
+        
         if handler_data and handler_data.get('completer'):
             word_list = QtCore.QStringList()
             completer = handler_data['completer'] 

@@ -1,15 +1,18 @@
-* Fixed bug of missing water attribute on linearforcefield.
 * Add child now only propose child that are valid to add to the selected item.
 * Completion is provided for ball type
 * Completion list is now sorted in non case-sensitive order
-* Missing SceneLayer colorize attribute
-* Missing signpost image attribute
 * Added check to prefix removing the root of the tree
 * Added unique identifier generation when adding child
 * Added support for cut/copy/paste of node and composite. The element XML is stored in the clipboard and can be used to mess around.
 * Keyboard shortcut for cut/copy/paste/delete works in all views.
 * Added id/name column in tree view
 * Made validation issues visible as icon in the tree, detail as tooltip.
+
+Fixed bugs:
+- In property list, property name does not change to bold once the property is set
+- many metawog model bugs, major blocking one was the missing water attribute on linearforcefield
+
+
 
 - Version 0.3.1:
 * Fixed bug that prevented adding/editing a new pipe in a level
