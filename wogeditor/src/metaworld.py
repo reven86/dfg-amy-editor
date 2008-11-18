@@ -1244,6 +1244,12 @@ class Element(_ElementBase):
         encoding = encoding or 'utf-8'
         return xml.etree.ElementTree.tostring( self, encoding )
 
+    def is_detached(self):
+        """Indicates if the element does not belong to a tree. 
+           Can be used to detect a deleted element.           
+        """
+        return self.parent is None and self.tree is None
+
     def xpath(self):
         """Returns the path in XPATH format to access this element.
         """

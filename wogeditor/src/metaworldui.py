@@ -159,7 +159,7 @@ class ElementIssueTracker(object):
         self._issues_by_element = {} #dict element:(child,attribute,node)
         self._pending_full_check = set()
         self._pending_updated = {}
-        self._modified_element_issues = set()
+        self._modified_issues = set()
 
     def element_issue_level(self, element):
         """Returns the most critical level of issue for the element.
@@ -186,7 +186,7 @@ class ElementIssueTracker(object):
                     report.append( '- "%(name)s": %(message)s' % {
                         'name':name,'message':format % args } )
             if nodes:
-                report.append( '%(childcount)d child element(s) have issue' % {
+                report.append( 'Has %(childcount)d child element(s) with issue' % {
                     'childcount':len(nodes)} )
             return '\n'.join( report )
         return ''
@@ -209,35 +209,67 @@ class ElementIssueTracker(object):
         parent = element.parent
         if parent is not None:
             self._pending_full_check.add(parent)
+        self._schedule_back_references( element )
+    
+    def _schedule_back_references( self, element ):
+        """Schedule any back-references for check as they may have become invalid."""
+        id_meta = element.meta.identifier_attribute
+        if id_meta is not None:
+            id_value = id_meta.get( element )
+            if id_value:
+                family = id_meta.reference_family
+                references = self.__world.universe.list_references( family, id_value )
+                for element in references:
+                    if element.world == self.__world:
+                        self._pending_full_check.add(element) 
 
     def __on_element_updated(self, element, name, new_value, old_value): #IGNORE:W0613
         if element not in self._pending_updated:
             self._pending_updated[element] = set()
         self._pending_updated[element].add( name )
+        # if the identifier was updated, then also check all back-references
+        id_meta = element.meta.identifier_attribute
+        if id_meta is not None and id_meta.name == name:
+            self._schedule_back_references( element )
 
     def __on_refresh_element_status(self):
 #        import time
 #        start_time = time.clock()
-        
+
+        checked_elements = set()
+        # Scan added or parent of removed elements and all their children
         for element in self._pending_full_check:
-            self._check_element( element )
+            self._check_element( element, checked_elements, recurse = True )
         self._pending_full_check.clear()
+
+        # Scan parents elements of any modified issue (need to escalate warning)
+        all_issue_elements = set()
+        while self._modified_issues:
+            self._modified_issues, modified_issues = set(), self._modified_issues
+            all_issue_elements |= modified_issues
+            parents_to_check = set( [ element.parent for element in modified_issues
+                                      if element.parent is not None ] )
+            for element in parents_to_check:
+                if element not in checked_elements:
+                    self._check_element( element, checked_elements, recurse = False )
         
 #        print 'Refreshed element status: %.3fs' % (time.clock()-start_time)
 #        start_time = time.clock()
-        elements, self._modified_element_issues = self._modified_element_issues, set()
-        louie.send( ElementIssuesUpdated, self.__world, elements )
+        louie.send( ElementIssuesUpdated, self.__world, all_issue_elements )
 #        print 'Broadcast modified element issues: %.3fs' % (time.clock()-start_time)
         
          
-    def _check_element(self, element):
-        if element.parent is None and element.tree is None:  # deleted element
-            return None
+    def _check_element(self, element, checked_elements, recurse = True):
+        checked_elements.add( self )
+        if element.is_detached():  # deleted element
+            return
         # check child for issues
         child_issues = {}
         children_by_meta = {}
         for child in element:
-            issue = self._check_element(child)
+            if recurse:
+                self._check_element(child, checked_elements)
+            issue = self._issues_by_element.get(child)
             if issue is not None:
                 child_issues[child] = issue
             if child.meta not in children_by_meta: 
@@ -260,9 +292,7 @@ class ElementIssueTracker(object):
             self._issues_by_element[element] = (child_issues, 
                                                 attribute_issues, 
                                                 node_issues)
-            self._modified_element_issues.add( element )
-            return True
-        return None
+            self._modified_issues.add( element )
             
     def _check_child_occurrences(self, meta, children_by_meta):
         occurrences = len(children_by_meta.get(meta,()))
@@ -270,18 +300,18 @@ class ElementIssueTracker(object):
              and occurrences < meta.min_occurrence ):
             if meta.min_occurrence == meta.max_occurrence:
                 if meta.min_occurrence == 1:
-                    return 'Element must have one %(type)s child', {'type':meta}
+                    return 'Element must have one %(type)s child', {'type':meta.tag}
                 return 'Element must have exactly %(count)d %(type)s children', {
-                    'type':meta,'count':meta.min_occurrence}
+                    'type':meta.tag,'count':meta.min_occurrence}
             if meta.min_occurrence == 1:
-                return 'Element must have at least one %(type)s child', {'type':meta}
+                return 'Element must have at least one %(type)s child', {'type':meta.tag}
             return 'Element must have at least %(count)d %(type)s children', {
-                'type':meta,'count':meta.min_occurrence}
+                'type':meta.tag,'count':meta.min_occurrence}
         if ( meta.max_occurrence is not None 
              and occurrences > meta.max_occurrence ):
             if meta.max_occurrence == 1:
-                return 'Element must have no more than one %(type)s child', {'type':meta}
+                return 'Element must have no more than one %(type)s child', {'type':meta.tag}
             return 'Element must have no more than %(count)d %(type)s children', {
-                'type':meta,'count':meta.max_occurrence}
+                'type':meta.tag,'count':meta.max_occurrence}
         return None
         
