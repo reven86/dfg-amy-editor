@@ -127,7 +127,7 @@ TREE_LEVEL_GAME.add_elements( [
             ] ),
         describe_element( 'levelexit', groups = 'game', attributes = [
             string_attribute( 'id', mandatory = True, display_id = True, init = 'theExit' ),
-            string_attribute( 'filter', mandatory = True, init = '' ),  # @todo revisit 0..1 occ of enum occurrence
+            string_attribute( 'filter', mandatory = True, init = '', allow_empty = True ),  # @todo revisit 0..1 occ of enum occurrence
             xy_attribute( 'pos', mandatory = True, init = '0,0' ),
             real_attribute( 'radius', mandatory = True, init = '75' )
             ] ),
@@ -695,9 +695,9 @@ LEVEL_SCENE_TEMPLATE = """\
 <scene minx="-500" miny="0" maxx="500" maxy="1000" backgroundcolor="0,0,0" >
 	<linearforcefield type="gravity" force="0,-10" dampeningfactor="0" antigrav="true" geomonly="false" />
 
-	<line id="" static="true" tag="detaching" material="rock" anchor="500,300" normal="-1,0" />
-	<line id="" static="true" tag="detaching" material="rock" anchor="-500,300" normal="1,0" />
-	<line id="" static="true" material="rock" anchor="0,20" normal="0,1" />
+	<line id="right" static="true" tag="detaching" material="rock" anchor="500,300" normal="-1,0" />
+	<line id="left" static="true" tag="detaching" material="rock" anchor="-500,300" normal="1,0" />
+	<line id="ground" static="true" material="rock" anchor="0,20" normal="0,1" />
 </scene>"""
 
 LEVEL_RESOURCE_TEMPLATE = """\
