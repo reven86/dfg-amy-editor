@@ -191,8 +191,8 @@ def _describe_resource_file( tree_meta, resource_world, is_global = False ):
     
     tree_meta.add_elements( [
         # DUPLICATED FROM GLOBAL SCOPE => makes FACTORY function ?
-        describe_element( 'ResourceManifest', exact_occurrence = 1, attributes = [], 
-                          elements = [
+        describe_element( 'ResourceManifest', exact_occurrence = 1, groups = 'resource',
+                          attributes = [], elements = [
             resources_element
             ] )
         ] )
@@ -274,7 +274,7 @@ ELEMENT_CIRCLE = describe_element( 'circle', groups = 'shape', attributes = [
 
 
 TREE_LEVEL_SCENE.add_elements( [
-    describe_element( 'scene', exact_occurrence = 1, attributes = [
+    describe_element( 'scene', exact_occurrence = 1, groups = 'image', attributes = [
         rgb_attribute( 'backgroundcolor', mandatory = True, init = '0,0,0' ),
         real_attribute( 'minx', init='-500' ),
         real_attribute( 'miny', init='-500' ),
