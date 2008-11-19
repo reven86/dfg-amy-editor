@@ -10,6 +10,10 @@ import metaworldui
 Z_LEVEL_ITEMS = 10000.0
 Z_PHYSIC_ITEMS = 9000.0
 
+TOOL_SELECT = 'select'
+TOOL_PAN = 'pan'
+TOOL_MOVE = 'move'
+
 
 class LevelGraphicView(QtGui.QGraphicsView):
     """A graphics view that display scene and level elements.
@@ -17,9 +21,10 @@ class LevelGraphicView(QtGui.QGraphicsView):
        QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)')
          => when the mouse mouse in the map. parameters: x,y in scene coordinate.
     """
-    def __init__( self, level_world ):
+    def __init__( self, level_world, common_actions ):
         QtGui.QGraphicsView.__init__( self )
         self.__world = level_world 
+        self.__common_actions = common_actions
         self.setWindowTitle( self.tr( u'Level - %1' ).arg( self.__world.key ) )
         self.setAttribute( Qt.WA_DeleteOnClose )
         self.__scene = QtGui.QGraphicsScene()
@@ -47,6 +52,17 @@ class LevelGraphicView(QtGui.QGraphicsView):
     @property
     def world(self):
         return self.__world
+
+    def get_enabled_view_tools(self):
+        return set( [TOOL_PAN, TOOL_SELECT, TOOL_MOVE] )
+
+    def tool_activated( self, tool_name ):
+        """Activates the corresponding tool in the view and commit any pending change.
+        """
+        if tool_name == TOOL_SELECT:
+            self.setDragMode( QtGui.QGraphicsView.NoDrag )
+        elif tool_name == TOOL_PAN:
+            self.setDragMode( QtGui.QGraphicsView.ScrollHandDrag )
 
     def selectLevelOnSubWindowActivation( self ):
         """Called when the user switched MDI window."""

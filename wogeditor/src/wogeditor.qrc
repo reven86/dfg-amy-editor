@@ -21,5 +21,9 @@
   <file>images/group-shape.png</file>
   <file>images/group-text.png</file>
   <file>images/group-camera.png</file>
+  <file>images/tool-move.png</file>
+  <file>images/tool-pan.png</file>
+  <file>images/tool-resize.png</file>
+  <file>images/tool-select.png</file>
 </qresource>
 </RCC>

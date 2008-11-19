@@ -508,7 +508,7 @@ class MainWindow(QtGui.QMainWindow):
 
     def _addLevelGraphicView( self, level_world ):
         """Adds a new MDI LevelGraphicView window for the specified level."""
-        level_view = levelview.LevelGraphicView( level_world )
+        level_view = levelview.LevelGraphicView( level_world, self.common_actions )
         sub_window = self.mdiArea.addSubWindow( level_view )
         self.connect( level_view, QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)'),
                       self._updateMouseScenePosInStatusBar )
@@ -528,6 +528,15 @@ class MainWindow(QtGui.QMainWindow):
             sub_window = window.widget()
             if sub_window.world == world:
                 return window
+        return None
+        
+    def get_active_view(self):
+        """Returns the view of the active MDI window. 
+           Returns None if no view is active.
+        """
+        window = self.mdiArea.activeSubWindow()
+        if window:
+            return window.widget()
         return None
         
     def getCurrentLevelModel( self ):
@@ -693,6 +702,20 @@ class MainWindow(QtGui.QMainWindow):
                 self.tr('Deleted %d element(s)' % len(deleted_elements)), 1000 )
             level_world.set_selection( deleted_elements[0] )
 
+    def _on_view_tool_actived( self, tool_name ):
+        active_view = self.get_active_view()
+        if active_view is not None:
+            active_view.tool_activated( tool_name )
+
+    def on_select_tool_action(self):
+        self._on_view_tool_actived( levelview.TOOL_SELECT )
+
+    def on_pan_tool_action(self):
+        self._on_view_tool_actived( levelview.TOOL_PAN )
+
+    def on_move_tool_action(self):
+        self._on_view_tool_actived( levelview.TOOL_MOVE )
+
     def onRefreshAction( self ):
         """Called multiple time per second. Used to refresh enabled flags of actions."""
         has_wog_dir = self._game_model is not None
@@ -705,6 +728,17 @@ class MainWindow(QtGui.QMainWindow):
         self.saveAction.setEnabled( can_save and True or False )
         self.playAction.setEnabled( is_level_selected )
         self.updateLevelResourcesAction.setEnabled( is_level_selected )
+        
+        active_view = self.get_active_view()
+        enabled_view_tools = set()
+        if active_view:
+            enabled_view_tools = active_view.get_enabled_view_tools()
+        for name, action in self.view_actions.iteritems():
+            is_enabled = name in enabled_view_tools
+            action.setEnabled( is_enabled )
+        if self.view_action_group.checkedAction() is None:
+            self.view_actions[levelview.TOOL_SELECT].setChecked( True )
+        
 
     def _on_refresh_element_status(self):
         # broadcast the event to all ElementIssueTracker 
@@ -780,7 +814,30 @@ class MainWindow(QtGui.QMainWindow):
             'delete': qthelper.action( self, handler = self.on_delete_action,
                     text = "&Remove Element", 
                     shortcut = QtGui.QKeySequence.Delete )
+        }
+        self.view_action_group = QtGui.QActionGroup(self)
+        self.view_actions = { 
+            levelview.TOOL_SELECT: qthelper.action( self, 
+                    handler = self.on_select_tool_action,
+                    icon = ":/images/tool-select.png",
+                    text = "&Select element",
+                    shortcut = QtGui.QKeySequence( Qt.Key_Space),
+                    checked = True,
+                    checkable = True ),
+            levelview.TOOL_PAN: qthelper.action( self, 
+                    handler = self.on_pan_tool_action,
+                    icon = ":/images/tool-pan.png",
+                    text = "&Pan view",
+                    shortcut = 'F',
+                    checkable = True ),
+            levelview.TOOL_MOVE: qthelper.action( self, 
+                    handler = self.on_move_tool_action,
+                    icon = ":/images/tool-move.png",
+                    text = "&Move element",
+                    checkable = True )
             }
+        for action in self.view_actions.itervalues():
+            self.view_action_group.addAction( action )
 
         actionTimer = QtCore.QTimer( self )
         self.connect( actionTimer, QtCore.SIGNAL("timeout()"), self.onRefreshAction )
@@ -829,6 +886,11 @@ class MainWindow(QtGui.QMainWindow):
         self.editToolBar = self.addToolBar(self.tr("Edit"))
         self.editToolBar.addAction( self.updateLevelResourcesAction )
 ##        self.editToolBar.addAction(self.undoAct)
+        
+        self.levelViewToolBar = self.addToolBar(self.tr("Level View"))
+        for name in ('select', 'pan', 'move'): 
+            action = self.view_actions[name]
+            self.levelViewToolBar.addAction( action )
         
     def createStatusBar(self):
         self.statusBar().showMessage(self.tr("Ready"))
