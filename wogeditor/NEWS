@@ -1,3 +1,9 @@
+- Version 0.5.0:
+
+* Added pan tool, also available in selection tool by middle clicking or holding left & right buttons
+* Level view selection is now a tool.
+
+
 - Version 0.4.0:
 
 * Add child now only propose child that are valid to add to the selected item.

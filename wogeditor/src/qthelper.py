@@ -120,3 +120,7 @@ def make_icon_overlay( source_icon, overlay_icon, size, overlay_size ):
     painter.drawPixmap( offset.width(), offset.height(), overlay_pixmap )
     painter.end()
     return QtGui.QIcon( source_pixmap )
+
+def clone_mouse_event( event ):
+    return QtGui.QMouseEvent( QtCore.QEvent.MouseMove, event.pos(), event.globalPos(),
+                              event.button(), event.buttons(), event.modifiers() )

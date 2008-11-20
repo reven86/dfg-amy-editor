@@ -465,6 +465,7 @@ class MainWindow(QtGui.QMainWindow):
         self._game_model = None
         if self._wog_path:
             self._reloadGameModel()
+            self.open_level_view_by_name( 'AB3' ) # @todo remove this for release
         else:
             print self._wog_path
 
@@ -494,21 +495,24 @@ class MainWindow(QtGui.QMainWindow):
                 ui.levelList.addItem( level_name )
             if dialog.exec_() and ui.levelList.currentItem:
                 level_name = unicode( ui.levelList.currentItem().text() )
-                try:
-                    level_world = self._game_model.selectLevel( level_name )
-                except GameModelException, e:
-                    QtGui.QMessageBox.warning(self, self.tr("Failed to load level!"),
-                              unicode(e))
-                else:
-                    sub_window = self._findWorldMDIView( level_world )
-                    if sub_window:
-                        self.mdiArea.setActiveSubWindow( sub_window )
-                    else:
-                        self._addLevelGraphicView( level_world )
+                self.open_level_view_by_name( level_name )
+                
+    def open_level_view_by_name( self, level_name ):
+        try:
+            level_world = self._game_model.selectLevel( level_name )
+        except GameModelException, e:
+            QtGui.QMessageBox.warning(self, self.tr("Failed to load level!"),
+                      unicode(e))
+        else:
+            sub_window = self._findWorldMDIView( level_world )
+            if sub_window:
+                self.mdiArea.setActiveSubWindow( sub_window )
+            else:
+                self._addLevelGraphicView( level_world )
 
     def _addLevelGraphicView( self, level_world ):
         """Adds a new MDI LevelGraphicView window for the specified level."""
-        level_view = levelview.LevelGraphicView( level_world, self.common_actions )
+        level_view = levelview.LevelGraphicView( level_world, self.view_actions )
         sub_window = self.mdiArea.addSubWindow( level_view )
         self.connect( level_view, QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)'),
                       self._updateMouseScenePosInStatusBar )

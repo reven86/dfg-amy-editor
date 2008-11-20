@@ -6,6 +6,7 @@ from PyQt4.QtCore import Qt
 import math
 import louie
 import metaworldui
+import qthelper
 
 Z_LEVEL_ITEMS = 10000.0
 Z_PHYSIC_ITEMS = 9000.0
@@ -14,6 +15,142 @@ TOOL_SELECT = 'select'
 TOOL_PAN = 'pan'
 TOOL_MOVE = 'move'
 
+# Workflow:
+# left click: do whatever the current tool is selected to do.
+#             for move tool, determine move/resize based on click location
+# middle click or left+right click: start panning
+# right click: context menu selection
+
+
+class BasicTool(object):
+    def __init__(self, view):
+        self._view = view
+        self._last_event = None
+        self._press_event = None
+        self.activated = False
+        self.in_use = False
+        self.override_tool = None
+        
+    def on_mouse_press_event(self, event):
+        """Handles tool overriding with mouse button and dispatch press event.
+           Middle click or left+right mouse button override the current tool
+           with the PanTool.
+        """
+        if ( (event.buttons() == Qt.MidButton) or 
+             (event.buttons() == (Qt.LeftButton|Qt.RightButton)) ):
+            if self.override_tool is None:
+                self.stop_using_tool()
+                self.override_tool = PanTool(self._view)
+                return self.override_tool._handle_press_event(event)
+            return True
+        elif self.override_tool is None and event.buttons() == Qt.LeftButton: 
+            return self._handle_press_event(event)
+        return False
+    
+    def _handle_press_event(self, event):
+        """Handle press event for the tool."""
+        if not self.in_use:
+            self.start_using_tool()
+        self._press_event = qthelper.clone_mouse_event(event)
+        self._last_event = self._press_event 
+        self.activated = True
+        return True
+    
+    def on_mouse_release_event(self, event):
+        if self.override_tool is not None:
+            self.override_tool.on_mouse_release_event(event)
+            self.override_tool.stop_using_tool()
+            self.override_tool = None
+        self.start_using_tool()
+        self.activated = False
+        return self._handle_release_event(event)
+    
+    def _handle_release_event(self, event):
+        return True
+    
+    def on_mouse_move_event(self, event):
+        if self.override_tool is not None:
+            return self.override_tool.on_mouse_move_event(event)
+        self.start_using_tool()
+        accepted = self._handle_move_event(event)
+        self._last_event = qthelper.clone_mouse_event(event)
+        return accepted
+
+    def _handle_move_event(self, event):
+        return False
+
+    def start_using_tool(self):
+        if not self.in_use:
+            self.in_use = True
+            self._on_start_using_tool()
+
+    def stop_using_tool(self):
+        if self.in_use:
+            self._on_stop_using_tool()
+            self._last_event = None
+            self.in_use = False
+
+    def _on_start_using_tool(self):
+        pass
+    
+    def _on_stop_using_tool(self):
+        pass
+
+class SelectTool(BasicTool):
+    def _on_start_using_tool(self):
+        self._view.setInteractive( True )
+        self._view.viewport().setCursor( Qt.ArrowCursor )
+        
+    def _handle_press_event(self, event):
+        BasicTool._handle_press_event( self, event )
+        return False # always redirect to default implementation for selection
+    
+    def _handle_release_event(self, event):
+        return False # always redirect to default implementation for selection
+
+class PanTool(BasicTool):
+    def _on_start_using_tool(self):
+        self._view.setInteractive( False )
+        self._view.viewport().setCursor( Qt.OpenHandCursor )
+
+    def _handle_press_event(self, event):
+        BasicTool._handle_press_event(self, event)
+        self._view.viewport().setCursor( Qt.ClosedHandCursor )
+        return True
+    
+    def _handle_release_event(self, event):
+        self._view.viewport().setCursor( Qt.OpenHandCursor )
+        return True
+    
+    def _handle_move_event(self, event):
+        if self._last_event and self.activated:
+            view = self._view
+            h_bar = self._view.horizontalScrollBar()
+            v_bar = self._view.verticalScrollBar()
+            delta = event.pos() - self._last_event.pos()
+            x_value = h_bar.value()
+            if view.isRightToLeft():
+                x_value += delta.x()
+            else:
+                x_value -= delta.x()
+            h_bar.setValue( x_value )
+            v_bar.setValue( v_bar.value() - delta.y() )
+        return True
+
+
+class MoveTool(BasicTool):
+    pass
+
+class ResizeTool(BasicTool):
+    pass
+
+class MoveOrResizeTool(BasicTool):
+    def __init__(self, view):
+        BasicTool.__init__( self, view )
+        self._resize_tool = ResizeTool(view)
+        self._move_tool = MoveTool(view)
+        self._active_tool = None
+
 
 class LevelGraphicView(QtGui.QGraphicsView):
     """A graphics view that display scene and level elements.
@@ -21,10 +158,9 @@ class LevelGraphicView(QtGui.QGraphicsView):
        QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)')
          => when the mouse mouse in the map. parameters: x,y in scene coordinate.
     """
-    def __init__( self, level_world, common_actions ):
+    def __init__( self, level_world, tools_actions ):
         QtGui.QGraphicsView.__init__( self )
         self.__world = level_world 
-        self.__common_actions = common_actions
         self.setWindowTitle( self.tr( u'Level - %1' ).arg( self.__world.key ) )
         self.setAttribute( Qt.WA_DeleteOnClose )
         self.__scene = QtGui.QGraphicsScene()
@@ -33,6 +169,17 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.__lines = []
         self.__scene_elements = set()
         self.__level_elements = set()
+        self.__tools_by_actions = {}
+        self.__tools_group = None 
+        for name, action in tools_actions.iteritems():
+            self.__tools_by_actions[action] = name
+            self.__tools_group = self.__tools_group or action.actionGroup()
+        self._tools_by_name = {
+            TOOL_SELECT: SelectTool(self),
+            TOOL_PAN: PanTool(self),
+            TOOL_MOVE: MoveOrResizeTool(self)
+            }
+        self._active_tool = None 
         self.setScene( self.__scene )
         self.refreshFromModel()
         self.scale( 1.0, 1.0 )
@@ -59,19 +206,52 @@ class LevelGraphicView(QtGui.QGraphicsView):
     def tool_activated( self, tool_name ):
         """Activates the corresponding tool in the view and commit any pending change.
         """
-        if tool_name == TOOL_SELECT:
-            self.setDragMode( QtGui.QGraphicsView.NoDrag )
-        elif tool_name == TOOL_PAN:
-            self.setDragMode( QtGui.QGraphicsView.ScrollHandDrag )
+        if self._active_tool:
+            self._active_tool.stop_using_tool()
+        self._get_active_tool().start_using_tool()
+#        if tool_name == TOOL_SELECT:
+#            self.setDragMode( QtGui.QGraphicsView.NoDrag )
+#        elif tool_name == TOOL_PAN:
+#            self.setDragMode( QtGui.QGraphicsView.ScrollHandDrag )
 
     def selectLevelOnSubWindowActivation( self ):
         """Called when the user switched MDI window."""
         self.__world.game_model.selectLevel( self.__world.key )
 
+    def _get_active_tool(self):
+        name = self.__tools_by_actions.get( self.__tools_group.checkedAction() )
+        tool = self._tools_by_name.get(name)
+        if tool is None:
+            tool =  self._tools_by_name[TOOL_SELECT]
+        self._active_tool = tool
+        return tool
+
+    def mousePressEvent(self, event):
+        accepted = self._get_active_tool().on_mouse_press_event( event )
+        assert accepted is not None  
+        if not accepted:
+            QtGui.QGraphicsView.mousePressEvent( self, event )
+        else:
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        accepted = self._get_active_tool().on_mouse_release_event( event )
+        assert accepted is not None  
+        if not accepted:
+            QtGui.QGraphicsView.mouseReleaseEvent( self, event )
+        else:
+            event.accept()
+
     def mouseMoveEvent( self, event):
         pos = self.mapToScene( event.pos() ) 
         self.emit( QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)'), pos.x(), pos.y() )
-        return QtGui.QGraphicsView.mouseMoveEvent( self, event )
+
+        accepted = self._get_active_tool().on_mouse_move_event( event )
+        assert accepted is not None  
+        if not accepted:
+            QtGui.QGraphicsView.mouseMoveEvent( self, event )
+        else:
+            event.accept()
 
     def wheelEvent(self, event):
         """Handle zoom when wheel is rotated."""
