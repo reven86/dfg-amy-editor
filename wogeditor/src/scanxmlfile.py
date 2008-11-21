@@ -172,16 +172,38 @@ Will dump all the value of the attribute "letterboxed" found in node "level"
     if options.unique_value:
         occurrences = find_xml_attribute_value_in_directory( xml_dir, target_node_name, target_attribute_name )
         unique_values = find_node_attribute_unique_values( xml_dir, target_node_name, target_attribute_name )
+        if options.metaworld:
+            if None in unique_values:
+                print 'mandatory = False, ',
+            if '' in unique_values:
+                print 'allow_empty = True, ',
+            print 'values = ('
+        max_occurrence = 0
+        max_value = None
         for value, occurrences in unique_values.iteritems():
-            if value is None:
-                attribute_message = 'no attribute "%s"' % target_attribute_name
+            if options.metaworld:
+                if value:
+                    for v in value.split(','):
+                        print "'%s', " % v
             else:
-                attribute_message = 'attribute "%s"="%s"' % (target_attribute_name, value)
-            print '* %d occurrences of node "%s" with %s' % (
-                len(occurrences), target_node_name, attribute_message)
-            for path, node_element, attribute_value in occurrences:
-              print '  - "%s"' % path
-        print '%d distinct values found' % len(unique_values)
+                if value is None:
+                    attribute_message = 'no attribute "%s"' % target_attribute_name
+                else:
+                    attribute_message = 'attribute "%s"="%s"' % (target_attribute_name, value)
+                print '* %d occurrences of node "%s" with %s' % (
+                    len(occurrences), target_node_name, attribute_message)
+                for path, node_element, attribute_value in occurrences:
+                  print '  - "%s"' % path
+                if len(occurrences) > max_occurrence:
+                    max_occurrence = len(occurrences)
+                    max_value = max_value
+        if not options.metaworld:
+            print '%d distinct values found' % len(unique_values)
+        else:
+            if max_value is not None:
+                print "), init = '%s'" % max_value
+            else:
+                print ")"
     elif target_attribute_name:
         occurrences = find_xml_attribute_value_in_directory( xml_dir, target_node_name, target_attribute_name )
         for path, node_element, attribute_value in occurrences:
