@@ -127,7 +127,9 @@ TREE_LEVEL_GAME.add_elements( [
             ] ),
         describe_element( 'levelexit', groups = 'game', attributes = [
             string_attribute( 'id', mandatory = True, display_id = True, init = 'theExit' ),
-            string_attribute( 'filter', mandatory = True, init = '', allow_empty = True ),  # @todo revisit 0..1 occ of enum occurrence
+            reference_attribute( 'filter', mandatory = True, init = '', allow_empty = True,
+                                 is_list = True, 
+                                 reference_family = 'ball', reference_world = WORLD_GLOBAL ),
             xy_attribute( 'pos', mandatory = True, init = '0,0' ),
             real_attribute( 'radius', mandatory = True, init = '75' )
             ] ),
@@ -200,6 +202,10 @@ def _describe_resource_file( tree_meta, resource_world, is_global = False ):
 _describe_resource_file( TREE_LEVEL_RESOURCE, WORLD_LEVEL )
 
 
+# Values for Tag attribute
+_TAG_VALUES = ('ballbuster', 'break=1', 'break=2', 'deadly', 'detaching', 'geomkiller', 
+     'kindasticky', 'mostlydeadly', 'stopsign', 'unwalkable', 'walkable' )
+
 ELEMENT_BUTTON = describe_element( 'button', groups = 'image', attributes = [
         string_attribute( 'id', display_id = True, mandatory = True ),
         real_attribute( 'x', mandatory = True, init = '0' ),
@@ -214,7 +220,7 @@ ELEMENT_BUTTON = describe_element( 'button', groups = 'image', attributes = [
                              init = '', mandatory = True ),
         reference_attribute( 'over', reference_family = 'image', reference_world = WORLD_LEVEL,
                              init = '', mandatory = True ),
-        string_attribute( 'context' ),
+        enum_attribute( 'context', ('screen') ),
         reference_attribute( 'disabled', reference_family = 'image', reference_world = WORLD_LEVEL ),
         reference_attribute( 'font', reference_family = 'font', reference_world = WORLD_GLOBAL ),
         string_attribute( 'onclick' ),
@@ -248,7 +254,7 @@ ELEMENT_RECTANGLE = describe_element( 'rectangle', groups = 'shape', attributes 
     reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
                          init = '' ),
     bool_attribute( 'nogeomcollisions', default = 'false' ),
-    string_attribute( 'tag' )
+    enum_attribute( 'tag', _TAG_VALUES, is_list = True )
     ] )
 
 ELEMENT_CIRCLE = describe_element( 'circle', groups = 'shape', attributes = [
@@ -264,7 +270,7 @@ ELEMENT_CIRCLE = describe_element( 'circle', groups = 'shape', attributes = [
     xy_attribute( 'imagescale' ),
     real_attribute( 'rotspeed' ),
     bool_attribute( 'static', default = 'false', init = 'true' ), # Notes: if static = false, then mass is required.
-    string_attribute( 'tag' ),
+    enum_attribute( 'tag', _TAG_VALUES, is_list = True ),
     bool_attribute( 'contacts' ),
     real_attribute( 'mass' ),
     reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
@@ -290,7 +296,7 @@ TREE_LEVEL_SCENE.add_elements( [
             reference_attribute( 'image', reference_family = 'image', reference_world = WORLD_LEVEL,
                                  init = '', mandatory = True ),
             real_attribute( 'alpha', min_value = 0, max_value = 1, default = '1' ),
-            string_attribute( 'anim' ),     # @todo where is that defined ???
+            string_attribute( 'anim' ),     # @todo Animation are filename in res/anim/*.bintl
             real_attribute( 'animdelay', min_value = 0.0001, default = '1' ),
             real_attribute( 'animspeed' ),
             angle_degrees_attribute( 'rotation', default = '0' ),
@@ -318,7 +324,8 @@ TREE_LEVEL_SCENE.add_elements( [
             reference_attribute( 'text', reference_family = 'text', reference_world = WORLD_GLOBAL ),
             angle_radians_attribute( 'rotation', mandatory = True, init = '0' ),
             real_attribute( 'scale', mandatory = True, init = '1' ),
-            string_attribute( 'font', mandatory = True ),
+            reference_attribute( 'font', reference_family = 'font', reference_world = WORLD_GLOBAL,
+                                 mandatory = True ),
             enum_attribute( 'align', ('right', 'center', 'left'), mandatory = True, init = 'center' ),
             real_attribute( 'depth', mandatory = True, init = '10' ),
             bool_attribute( 'overlay', mandatory = True, init = 'false' ),
@@ -336,7 +343,7 @@ TREE_LEVEL_SCENE.add_elements( [
             reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
                                  init = '', mandatory = True ),
             bool_attribute( 'static', mandatory = True, init = 'true' ),
-            string_attribute( 'tag' ),
+            enum_attribute( 'tag', _TAG_VALUES, is_list = True ),
             reference_attribute( 'image', reference_family = 'image', reference_world = WORLD_LEVEL ),
             xy_attribute( 'imagepos', default = '0,0' ),
             angle_radians_attribute( 'imagerot' ),
@@ -356,7 +363,7 @@ TREE_LEVEL_SCENE.add_elements( [
             reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
                                  init = '', mandatory = True ),
             bool_attribute( 'static', init = 'true', mandatory = True ),
-            string_attribute( 'tag' )
+            enum_attribute( 'tag', _TAG_VALUES, is_list = True )
             ] ),
         describe_element( 'linearforcefield', groups = 'physic', attributes = [
             string_attribute( 'id', display_id = True, allow_empty = True ),

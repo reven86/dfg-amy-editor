@@ -87,6 +87,53 @@ class AttributeMeta(object):
     def __repr__( self ):
         return '%s(name=%s, type=%s, mandatory=%s)' % (self.__class__.__name__, self.name, self.type, self.mandatory)
 
+class ComponentsAttributeMeta(AttributeMeta):
+    def __init__(self, name, attribute_type, 
+                 min_components = None, max_components = None, components = None,
+                 error_message = None,
+                 error_messages = None,
+                 **kwargs):
+        AttributeMeta.__init__( self, name, attribute_type, **kwargs )
+        if components is not None:
+            self.min_components = components
+            self.max_components = components
+        else:
+            self.min_components = min_components
+            self.max_components = max_components
+        assert max_components is None or max_components >= min_components
+        if error_message is not None:
+            assert isinstance(error_message, (str, unicode))
+            self.error_messages = {'missing': error_message, 'extra': error_message} 
+        else:
+            self.error_messages = error_messages
+
+    def  is_valid_value( self, text, world ): #IGNORE:W0613
+        status = AttributeMeta.is_valid_value(self, text, world)
+        if status is None and text:
+            values = text.split(',')
+            nb_components = len(values)
+            if nb_components < self.min_components:
+                message = self.error_messages.get('missing')
+                if not message:
+                    message = 'Value must have at least %{nb}d component(s). ' \
+                              'Components are separated by a comma: ",".' 
+                return message, {'nb':self.min_components}
+            if self.max_components is not None and nb_components > self.max_components: 
+                message = self.error_messages.get('extra')
+                if not message:
+                    message = 'Value must have no more than %{nb}d component(s). ' \
+                              'Components are separated by a comma: ",".'
+                return message, {'nb':self.min_components}
+            for index, component in enumerate(values):
+                status = self._is_component_valid( index, component, world )
+                if status is not None:
+                    break
+        return status
+    
+    def _is_component_valid( self, index, component, world ):
+        raise NotImplemented()
+
+
 class NumericAttributeMeta(AttributeMeta):
     def __init__( self, name, attribute_type, value_type,
                   value_type_error,
@@ -110,86 +157,71 @@ class NumericAttributeMeta(AttributeMeta):
                 return self.value_type_error, ()
         return status
 
-class ColorAttributeMeta(AttributeMeta):
+class ColorAttributeMeta(ComponentsAttributeMeta):
     def __init__( self, name, attribute_type, components, **kwargs ):
-        AttributeMeta.__init__( self, name, attribute_type, **kwargs )
-        self.nb_components = components
+        message = 'RGB color must be of the form "R,G,B" were R,G,B are real number in range [0-255].'
+        if components == 4:
+            message = 'ARGB color must be of the form "A,R,G,B" were A,R,G,B are real number in range [0-255].'
+        ComponentsAttributeMeta.__init__( self, name, attribute_type, 
+            error_message = message, components = components, **kwargs )
 
-    def  is_valid_value( self, value, world ): #IGNORE:W0613
-        status = AttributeMeta.is_valid_value(self, value, world)
-        if status is None and value:
-            text = unicode(value)
-            values = text.split(',')
-            if len(values) != self.nb_components:
-                if self.nb_components == 3:
-                    return'RGB color must be of the form "R,G,B" were R,G,B are real number in range [0-255].', ()
-                return'ARGB color must be of the form "A,R,G,B" were A,R,G,B are real number in range [0-255].', ()
-            components = self.nb_components == 3 and 'RGB' or 'ARGB'
-            for name, value in zip(components, values):
-                try:
-                    value = float(value)
-                    if value <0 or value >255:
-                        return 'Color component "%(c)s" must be in range [0-255].', {'c':name}
-                except ValueError:
-                    if self.nb_components == 3:
-                        return 'RGB color must be of the form "R,G,B" were R,G,B are real number in range [0-255].', ()
-                    return'ARGB color must be of the form "A,R,G,B" were A,R,G,B are real number in range [0-255].', ()
-        return status
+    def  _is_component_valid( self, index, component, world ): #IGNORE:W0613
+        components = self.min_components == 3 and 'RGB' or 'ARGB'
+        try:
+            value = float(component)
+            if value < 0 or value > 255:
+                return '%(type)s color component "%(c)s" must be in range [0-255].', {
+                    'c':components[index], 'type':components}
+        except ValueError:
+            return self.error_messages['missing'], {}
+        return None
 
-class Vector2DAttributeMeta(AttributeMeta):
+class Vector2DAttributeMeta(ComponentsAttributeMeta):
     def __init__( self, name, attribute_type, **kwargs ):
-        AttributeMeta.__init__( self, name, attribute_type, **kwargs )
+        ComponentsAttributeMeta.__init__( self, name, attribute_type, error_message =
+            'Position must be of the form "X,Y" were X and Y are real number',
+            components = 2, **kwargs )
 
-    def  is_valid_value( self, value, world ): #IGNORE:W0613
-        status = AttributeMeta.is_valid_value(self, value, world)
-        if status is None and value:
-            text = unicode(value)
-            values = text.split(',')
-            if len(values) != 2:
-                return 'Position must be of the form "X,Y" were X and Y are real number', ()
-            for component_value in values:
-                try:
-                    value = float(component_value)
-                except ValueError:
-                    return 'Position must be of the form "X,Y" were X and Y are real number', ()
-        return status
+    def  _is_component_valid( self, index, component, world ): #IGNORE:W0613
+        try:
+            float(component)
+            return None
+        except ValueError:
+            return self.error_messages['missing'], {}
 
-class EnumeratedAttributeMeta(AttributeMeta):
-    def __init__( self, name, values, is_list = False, 
-                  attribute_type = ENUMERATED_TYPE, **kwargs ):
-        if is_list:
+class EnumeratedAttributeMeta(ComponentsAttributeMeta):
+    def __init__( self, name, values, attribute_type = ENUMERATED_TYPE, 
+                  is_list = False, **kwargs ):
+        if is_list and 'allow_empty' not in kwargs:
             kwargs['allow_empty'] = True
-        AttributeMeta.__init__( self, name, attribute_type, **kwargs )
+        min_components = not is_list and 1 or 0 
+        max_components = not is_list and 1 or None 
+        ComponentsAttributeMeta.__init__( self, name, attribute_type, 
+            min_components = min_components, max_components = max_components,
+            **kwargs )
         self.values = set( values )
         self.is_list = is_list
 
-    def  is_valid_value( self, value, world ): #IGNORE:W0613
-        status = AttributeMeta.is_valid_value(self, value, world)
-        if status is None and value:
-            is_list = self.is_list
-            text = unicode( value )
-            input_values = text.split(',')
-            if len(input_values) == 0:
-                if is_list:
-                    return None
-                return 'One %(enum)s value is required', {'enum':self.name}
-            elif len(input_values) != 1 and not is_list:
-                return 'Only one %(enum)s value is allowed', {'enum':self.name}
-            for input_value in input_values:
-                if input_value not in self.values:
-                    return 'Invalid %(enum)s value: "%(values)s"', {
-                        'enum':self.name,
-                        'values':','.join(self.values) }
-        return status
+    def  _is_component_valid( self, index, component, world ): #IGNORE:W0613
+        if component not in self.values:
+            return 'Invalid %(enum)s value: "%(values)s"', {
+                'enum':self.name,
+                'values':','.join(self.values) }
 
 class BooleanAttributeMeta(EnumeratedAttributeMeta):
     def __init__( self, name, **kwargs ):
         EnumeratedAttributeMeta.__init__( self, name, ('true','false'), 
                                           attribute_type = BOOLEAN_TYPE, **kwargs )
 
-class ReferenceAttributeMeta(AttributeMeta):
-    def __init__( self, name, reference_family, reference_world, **kwargs ):
-        AttributeMeta.__init__( self, name, REFERENCE_TYPE, **kwargs )
+class ReferenceAttributeMeta(ComponentsAttributeMeta):
+    def __init__( self, name, reference_family, reference_world, is_list = False,
+                  **kwargs ):
+        if is_list and 'allow_empty' not in kwargs:
+            kwargs['allow_empty'] = True
+        min_components = not is_list and 1 or 0 
+        max_components = not is_list and 1 or None 
+        ComponentsAttributeMeta.__init__( self, name, REFERENCE_TYPE, 
+            min_components = min_components, max_components = max_components, **kwargs )
         self.reference_family = reference_family
         self.reference_world = reference_world
 
@@ -197,15 +229,12 @@ class ReferenceAttributeMeta(AttributeMeta):
         AttributeMeta.attach_to_element_meta( self, element_meta )
         element_meta._add_reference_attribute( self )
 
-    def  is_valid_value( self, value, world ): #IGNORE:W0613
-        status = AttributeMeta.is_valid_value(self, value, world)
-        if status is None and value:
-            reference_value = unicode(value)
-            if not world.is_valid_attribute_reference( self, reference_value ):
-                return ('"%(v)s" is not a valid reference to an element of type %(family)s',
-                         { 'v':reference_value,
-                           'family':self.reference_family } )
-        return status
+    def  _is_component_valid( self, index, component, world ): #IGNORE:W0613
+        if not world.is_valid_attribute_reference( self, component ):
+            return ('"%(v)s" is not a valid reference to an element of type %(family)s',
+                     { 'v':component,
+                       'family':self.reference_family } )
+        return None
 
 class IdentifierAttributeMeta(AttributeMeta):
     def __init__( self, name, reference_family, reference_world, **kwargs ):
@@ -244,8 +273,8 @@ def argb_attribute( name, **kwargs ):
 def xy_attribute( name, **kwargs ):
     return Vector2DAttributeMeta( name, XY_TYPE, **kwargs )
 
-def enum_attribute( name, values, **kwargs ):
-    return EnumeratedAttributeMeta( name, values, **kwargs )
+def enum_attribute( name, values, is_list = False, **kwargs ):
+    return EnumeratedAttributeMeta( name, values, is_list = is_list, **kwargs )
 
 def string_attribute( name, **kwargs ):
     return AttributeMeta( name, STRING_TYPE, **kwargs )
