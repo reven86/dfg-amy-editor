@@ -145,11 +145,53 @@ class ResizeTool(BasicTool):
     pass
 
 class MoveOrResizeTool(BasicTool):
+    """
+Need to get current selected item to:
+- apply transformation to
+- detect tool to activate on click (translate, rotate, resize)
+    """
     def __init__(self, view):
         BasicTool.__init__( self, view )
         self._resize_tool = ResizeTool(view)
         self._move_tool = MoveTool(view)
         self._active_tool = None
+
+    def _handle_move_event(self, event):
+        item = self._view.scene().focusItem()
+        if item is not None:
+            if isinstance( item, QtGui.QGraphicsPixmapItem ):
+                print 'Pixmap moving'
+            else:
+                print 'Not pixmap'
+        else:
+            print 'No focus'
+        return True
+
+class ToolSelector(object):
+    def __init__(self, item):
+        self.item = item
+
+    def select_tool(self, scene_x, scene_y, unit_x, unit_y):
+        """Called when the user press the left mouse button.
+           Returns the activated tool, or None if no tool was activated.
+           @param unit_x: Size of 1 pixel on the x axis mapped to scene coordinate. 
+           @param unit_y: Size of 1 pixel on the y axis mapped to scene coordinate. 
+        """
+        item_pos = item.mapFromScene( scene_x, scene_y )
+        item_unit = item.mapFromScene( unit_x, unit_y )
+        return self._select_tool( item_pos, item_unit )
+
+class CircleToolSelector(ToolSelector):
+    def _select_tool(self, item_pos, item_unit):
+        x, y = item_pos
+        ux, uy = item_unit
+        distance = math.sqrt( x*x + y*y )
+        unit = math.sqrt( ux*ux + uy*uy )
+        radius = max(5*unit, radius) # if radius small than 5 pixels, then enlarge
+        if distance <= radius:
+            return self.MoveToolDelegate( self.item )
+        elif distance <= radius + 5 * unit:
+            return self.RadiusToolDelegate( self.item )
 
 
 class LevelGraphicView(QtGui.QGraphicsView):
@@ -202,6 +244,9 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
     def get_enabled_view_tools(self):
         return set( [TOOL_PAN, TOOL_SELECT, TOOL_MOVE] )
+
+    def get_selected_item_tool_delegate(self):
+        return None
 
     def tool_activated( self, tool_name ):
         """Activates the corresponding tool in the view and commit any pending change.
@@ -423,8 +468,8 @@ class LevelGraphicView(QtGui.QGraphicsView):
                  float(element.get('scaley',1.0)) )
 
     @staticmethod
-    def _elementRotationInRadians( element, attribute = 'rotation', default_value = 0.0 ):
-        return math.degrees( LevelGraphicView._elementReal( element, attribute, default_value ) )
+    def _elementRotationInDegrees( element, attribute = 'rotation', default_value = 0.0 ):
+        return LevelGraphicView._elementReal( element, attribute, default_value )
 
     @staticmethod
     def _elementV2( element, attribute, default_value = (0.0,0.0) ):
@@ -444,7 +489,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
         image = element.get('image')
         imagepos = LevelGraphicView._elementV2Pos( element, 'imagepos' )
         imagescale = LevelGraphicView._elementV2( element, 'imagescale', (1.0,1.0) )
-        imagerot = LevelGraphicView._elementRotationInRadians( element, 'imagerot' )
+        imagerot = LevelGraphicView._elementRotationInDegrees( element, 'imagerot' )
         return image, imagepos, imagescale, imagerot
 
     @staticmethod
@@ -624,7 +669,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
     def _sceneRectangleBuilder( self, scene, element ):
         x, y = self._elementXY( element )
-        rotation = self._elementRotationInRadians( element )
+        rotation = self._elementRotationInDegrees( element )
         width = self._elementReal( element, 'width', 1.0 )
         height = self._elementReal( element, 'height', 1.0 )
         image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
@@ -675,7 +720,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
     def _sceneCompositeGeometryBuilder( self, scene, element ):
         x, y = self._elementXY( element )
-        rotation = self._elementRotationInRadians( element )
+        rotation = self._elementRotationInDegrees( element )
         image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
         sub_items = []
         if image:

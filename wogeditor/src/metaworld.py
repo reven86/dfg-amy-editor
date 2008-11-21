@@ -22,7 +22,8 @@ Attribute description can indicate if the attribute is mandatory, its value doma
 import xml.etree.ElementTree
 # Publish/subscribe framework
 # See http://louie.berlios.de/ and http://pydispatcher.sf.net/
-import louie 
+import louie
+import math 
 
 
 # Different type of attributes
@@ -44,7 +45,8 @@ PATH_TYPE = 'path'
 
 class AttributeMeta(object):
     def __init__( self, name, attribute_type, init = None, default = None, 
-                  allow_empty = False, mandatory = False, display_id = False ):
+                  allow_empty = False, mandatory = False, display_id = False,
+                  map_to = None ):
         """display_id: if True indicates that the attribute may be used to 
                        visually identify the element (typically name).
         """
@@ -58,11 +60,24 @@ class AttributeMeta(object):
         self.mandatory = mandatory
         self.element_meta = None
         self.display_id = display_id
+        self.map_to = map_to or self.name
 
     def attach_to_element_meta( self, element_meta ):
         self.element_meta = element_meta
         if self.display_id:
             self.element_meta.display_id_attributes.add( self )
+
+    def from_xml(self, xml_element, attributes_by_name):
+        """Set attributes values in attributes_by_name using xml_element attributes
+           as input."""
+        value = xml_element.get(self.map_to)
+        if value is not None:
+            attributes_by_name[self.name] = value
+    
+    def to_xml(self, element, attributes_by_name):
+        value = element.get(self.name)
+        if value is not None:
+            attributes_by_name[self.map_to] = value
 
     def get( self, element ):
         return element.get( self.name )
@@ -93,6 +108,10 @@ class ComponentsAttributeMeta(AttributeMeta):
                  error_message = None,
                  error_messages = None,
                  **kwargs):
+        """Comma separated value attributes.
+           map_to if defined may be a list of attribute. In that case, each component
+           will be mapped to the corresponding attribute in the XML document.
+        """
         AttributeMeta.__init__( self, name, attribute_type, **kwargs )
         if components is not None:
             self.min_components = components
@@ -106,6 +125,40 @@ class ComponentsAttributeMeta(AttributeMeta):
             self.error_messages = {'missing': error_message, 'extra': error_message} 
         else:
             self.error_messages = error_messages
+
+    def from_xml(self, xml_element, attributes_by_name):
+        """Set attributes values in attributes_by_name using xml_element attributes
+           as input.
+           If map_to is a list, then map each component to the corresponding attribute
+           specified in map_to. For example if map_to is ('x','y'), then the first
+           component of the attribute is obtains from the 'x' attribute of the
+           XML element, and the second component of the attribute from the 'y'
+           attribute of the XML element."""
+        if isinstance(self.map_to, (str,unicode)):
+            AttributeMeta.from_xml(self, xml_element, attributes_by_name)
+        else:
+            values = []
+            defined = False
+            for name in self.map_to:
+                value = xml_element.get(name)
+                values.append( value or '' )
+                defined = defined or value is not None
+            if defined:
+                attributes_by_name[self.name] = ','.join( values )
+    
+    def to_xml(self, element, attributes_by_name):
+        """Set attribute values in attributes_by_name using the world Element
+           attributes' as input."""
+        if isinstance(self.map_to, (str,unicode)):
+            AttributeMeta.to_xml(self, element, attributes_by_name)
+        else:
+            values = element.get(self.name)
+            if values is not None:
+                values = values.split(',')
+                for index, name in enumerate(self.map_to):
+                    if index >= len(values):
+                        break
+                    attributes_by_name[name] = values[index]
 
     def  is_valid_value( self, text, world ): #IGNORE:W0613
         status = AttributeMeta.is_valid_value(self, text, world)
@@ -156,6 +209,27 @@ class NumericAttributeMeta(AttributeMeta):
             except ValueError:
                 return self.value_type_error, ()
         return status
+
+class RadiansAngleAttributeMeta(NumericAttributeMeta):
+
+    def from_xml(self, xml_element, attributes_by_name):
+        """Convert radians to degree."""
+        value = xml_element.get(self.map_to)
+        if value is not None:
+            try:
+                attributes_by_name[self.name] = str(math.degrees(float(value)))
+            except ValueError:
+                attributes_by_name[self.name] = float(value)
+    
+    def to_xml(self, element, attributes_by_name):
+        """Convert degree to radians."""
+        value = element.get(self.name)
+        if value is not None:
+            try:
+                attributes_by_name[self.map_to] = str(math.radians(float(value)))
+            except ValueError:
+                attributes_by_name[self.map_to] = value
+    
 
 class ColorAttributeMeta(ComponentsAttributeMeta):
     def __init__( self, name, attribute_type, components, **kwargs ):
@@ -285,7 +359,7 @@ def angle_degrees_attribute( name, min_value = None, max_value = None, **kwargs 
                                  min_value = min_value, max_value = max_value, **kwargs )
 
 def angle_radians_attribute( name, min_value = None, max_value = None, **kwargs ):
-    return NumericAttributeMeta( name, ANGLE_RADIANS_TYPE, float,
+    return RadiansAngleAttributeMeta( name, ANGLE_RADIANS_TYPE, float,
                                  'value must be a real number', 
                                  min_value = min_value, max_value = max_value, **kwargs )
 
@@ -434,17 +508,21 @@ class ElementMeta(ObjectsMetaOwner):
         assert self.tag == xml_element.tag
         # Map element attributes
         known_attributes = {}
-        missing_attributes = set( xml_element.keys() )
         for attribute_meta in self.attributes_by_name.itervalues():
-            attribute_value = xml_element.get( attribute_meta.name )
-            if attribute_value is not None:
-                # @todo Warning if attribute already in dict
-                known_attributes[ attribute_meta.name ] = attribute_value
-                missing_attributes.remove( attribute_meta.name )
-        if missing_attributes and warning is not None:
-            warning( u'Element %(tag)s, the following attributes are missing in the element description: %(attributes)s.',
-                     tag = xml_element.tag,
-                     attributes = ', '.join( sorted( missing_attributes ) ) )
+            attribute_meta .from_xml( xml_element, known_attributes )
+
+# Old code used to detect missing. We no longer do that.
+#        missing_attributes = set( xml_element.keys() )
+#        for attribute_meta in self.attributes_by_name.itervalues():
+#            attribute_value = xml_element.get( attribute_meta.name )
+#            if attribute_value is not None:
+#                # @todo Warning if attribute already in dict
+#                known_attributes[ attribute_meta.name ] = attribute_value
+#                missing_attributes.remove( attribute_meta.name )
+#        if missing_attributes and warning is not None:
+#            warning( u'Element %(tag)s, the following attributes are missing in the element description: %(attributes)s.',
+#                     tag = xml_element.tag,
+#                     attributes = ', '.join( sorted( missing_attributes ) ) )
         # Map element children
         children = []
         for xml_element_child in xml_element:
@@ -1271,7 +1349,21 @@ class Element(_ElementBase):
            The XML is encoded using the specified encoding, or UTF-8 if none is specified.
         """
         encoding = encoding or 'utf-8'
-        return xml.etree.ElementTree.tostring( self, encoding )
+        xml_element = self._to_xml_element()
+        return xml.etree.ElementTree.tostring( xml_element, encoding )
+    
+    def _to_xml_element( self ):
+        """Returns the element and its children as a xml.etree element for serialization.
+           Takes care of expanding mapped attribute (center => x,y).
+        """
+        attributes_by_name = {}
+        for attribute in self.meta.attributes:
+            attribute.to_xml( self, attributes_by_name )
+        element = xml.etree.ElementTree.Element( self.meta.tag, attributes_by_name )
+        for child in self:
+            element.append( child._to_xml_element() )
+        return element
+        
 
     def is_detached(self):
         """Indicates if the element does not belong to a tree. 
@@ -1680,7 +1772,8 @@ if __name__ == "__main__":
         reference_attribute( 'text', reference_family = 'text',
                              reference_world = WORLD_TEST_LEVEL, init = '', mandatory = True ),
         reference_attribute( 'alt_text', reference_family = 'text',
-                             reference_world = WORLD_TEST_LEVEL )
+                             reference_world = WORLD_TEST_LEVEL ),
+        xy_attribute( 'pos', map_to = ('x','y') )
         ], elements = [ LEVEL_TEXT ] )
 
     LEVEL_INLINE = describe_element( 'inline', elements= [ LEVEL_SIGN, LEVEL_TEXT ] )
@@ -1988,7 +2081,7 @@ if __name__ == "__main__":
             xml_data = """<inline>
 <text id ="TEXT_HI" fr="Salut" />
 <text id ="TEXT_HO" fr="Oh" />
-<sign text="TEXT_HI" alt_text="TEXT_HO">
+<sign text="TEXT_HI" alt_text="TEXT_HO" x="1234" y="4567">
   <text id="TEXT_CHILD" fr="Enfant" />
 </sign>
 </inline>
@@ -2012,7 +2105,7 @@ if __name__ == "__main__":
                 self.assertEqual( 1, len(inline[2]) )
                 self.assertEqual( sorted( [('fr','Salut'),('id','TEXT_HI')] ), sorted(inline[0].items()) )
                 self.assertEqual( sorted( [('fr','Oh'),('id','TEXT_HO')] ), sorted(inline[1].items()) )
-                self.assertEqual( sorted( [('alt_text','TEXT_HO'),('text','TEXT_HI')] ), sorted(inline[2].items()) )
+                self.assertEqual( sorted( [('alt_text','TEXT_HO'),('pos','1234,4567'),('text','TEXT_HI')] ), sorted(inline[2].items()) )
                 self.assertEqual( sorted( [('fr','Enfant'),('id','TEXT_CHILD')] ), sorted(inline[2][0].items()) )
                 self.world.remove_world( world_level )
                 return level_tree
