@@ -3,7 +3,10 @@
 * Added pan tool, also available in selection tool by middle clicking or holding left & right buttons
 * Level view selection is now a tool.
 * Geometry tag and levelExit filter now provides auto-completion
-* All angles are now displayed/edited in degrees
+* All angles are now displayed in degrees
+* 'scalex', 'scaley' attributes are now displayed as a single 'scale' attribute
+* 'x', 'y' attributes are now displayed as a single 'pos' or 'center' attribute
+* 'width', 'height' attributes are now displayed as a single 'size' attribute
 
 
 - Version 0.4.0:

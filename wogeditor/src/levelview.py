@@ -438,58 +438,16 @@ class LevelGraphicView(QtGui.QGraphicsView):
         return item
 
     @staticmethod
-    def _elementReal( element, attribute, default_value = 0.0 ):
-        """Returns the specified element attribute as a float, defaulting to default_value if it does not exist."""
-        return float( element.get(attribute, default_value) )
-
-    @staticmethod
-    def _elementXY( element ):
-        """Returns 'x' & 'y' attribute. y is negated (0 is bottom of the screen)."""
-        return (float(element.get('x')), -float(element.get('y')))
-
-    @staticmethod
-    def _elementXYR( element ):
-        """Returns 'x' & 'y' & 'radius' attribute. y is negated (0 is bottom of the screen)."""
-        return LevelGraphicView._elementXY(element) + (float(element.get('radius')),)
-
-    @staticmethod
-    def _elementXYDepth( element ):
-        """Returns 'x' & 'y' & 'depth' attribute. y is negated (0 is bottom of the screen)."""
-        return LevelGraphicView._elementXY(element) + (float(element.get('depth')),)
-
-    @staticmethod
-    def _elementRotationScaleXY( element ):
-        """Returns 'rotation', 'scalex' and 'scaley' element's attribute converted to float.
-           rotation is defaulted to 0 if not defined, and is in degrees.
-           scalex and scaley are defaulted to 1 if not defined.
-        """
-        return ( float(element.get('rotation',0.0)),
-                 float(element.get('scalex',1.0)),
-                 float(element.get('scaley',1.0)) )
-
-    @staticmethod
-    def _elementRotationInDegrees( element, attribute = 'rotation', default_value = 0.0 ):
-        return LevelGraphicView._elementReal( element, attribute, default_value )
-
-    @staticmethod
-    def _elementV2( element, attribute, default_value = (0.0,0.0) ):
-        value = element.get(attribute)
-        if value is None:
-            return default_value
-        v1, v2 = [ float(v) for v in value.split(',') ]
-        return (v1, v2)
-
-    @staticmethod
     def _elementV2Pos( element, attribute, default_value = (0.0,0.0) ): # y=0 is bottom => Negate y
-        x, y = LevelGraphicView._elementV2( element, attribute, default_value )
+        x, y = element.get_native( attribute, default_value )
         return x, -y
 
     @staticmethod
     def _elementImageWithPosScaleRot( element ):
-        image = element.get('image')
+        image = element.get_native('image')
         imagepos = LevelGraphicView._elementV2Pos( element, 'imagepos' )
-        imagescale = LevelGraphicView._elementV2( element, 'imagescale', (1.0,1.0) )
-        imagerot = LevelGraphicView._elementRotationInDegrees( element, 'imagerot' )
+        imagescale = element.get_native( 'imagescale', (1.0,1.0) )
+        imagerot = element.get_native( 'imagerot' )
         return image, imagepos, imagescale, imagerot
 
     @staticmethod
@@ -516,7 +474,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
 #        image = element.get('image')
 ##        pixmap = self.getImagePixmap( image )
 ##        if pixmap:
-        x, y = self._elementXY( element )
+        x, y = self._elementV2Pos( element, 'center' )
         font = QtGui.QFont()
         font.setPointSize( 24.0 )
         font.setBold( True )
@@ -529,7 +487,9 @@ class LevelGraphicView(QtGui.QGraphicsView):
     def _levelPipeBuilder( self, scene, element ):
         vertexes = []
         for vertex_element in element:
-            vertexes.append( self._elementXY(vertex_element) )
+            pos = self._elementV2Pos( vertex_element, 'pos' )
+            if pos is not None:
+                vertexes.append( pos )
         if vertexes:
             path = QtGui.QPainterPath()
             path.moveTo( *vertexes[0] )
@@ -544,7 +504,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
             return item
 
     def _levelBallInstanceBuilder( self, scene, element ):
-        x, y = self._elementXY( element )
+        x, y = self._elementV2Pos( element, 'pos' )
         r = 10
         item = scene.addEllipse( -r/2, -r/2, r, r )
         self._setLevelItemXYZ( item, x, y )
@@ -573,7 +533,8 @@ class LevelGraphicView(QtGui.QGraphicsView):
         pen.setWidth( 10 )
 
     def _levelFireBuilder( self, scene, element ):
-        x, y, r = self._elementXYR( element )
+        x, y = self._elementV2Pos( element, 'center' )
+        r = element.get_native( 'radius', 1.0 )
         pen = QtGui.QPen( QtGui.QColor( 255, 64, 0 ) )
         pen.setWidth( 3 )
         item = scene.addEllipse( -r/2, -r/2, r, r, pen )
@@ -581,11 +542,13 @@ class LevelGraphicView(QtGui.QGraphicsView):
         return item
 
     def _sceneSceneLayerBuilder( self, scene, element ):
-        x, y, depth = self._elementXYDepth( element )
+        x, y = self._elementV2Pos( element, 'center' )
+        depth = element.get_native( 'depth', 0.0 ) 
         image = element.get('image')
-#        alpha = self._elementReal( element, 'alpha', 1.0 )
+#        alpha = element.get_native( 'alpha', 1.0 )
         pixmap = self.getImagePixmap( image )
-        rotation, scalex, scaley = self._elementRotationScaleXY( element )
+        rotation = element.get_native( 'rotation', 0.0 )
+        scalex, scaley = element.get_native( 'scale', (1.0,1.0) )
 ##        tilex = self._elementBool( element, 'tilex', False )
 ##        tiley = self._elementBool( element, 'tiley', False )
         if pixmap:
@@ -620,8 +583,10 @@ class LevelGraphicView(QtGui.QGraphicsView):
         item.setZValue( depth )
             
     def _sceneButtonBuilder( self, scene, element ):
-        x, y, depth = self._elementXYDepth( element )
-        rotation, scalex, scaley = self._elementRotationScaleXY( element )
+        x, y = self._elementV2Pos( element, 'center' )
+        depth = element.get_native( 'depth', 0.0 )
+        rotation = element.get_native( 'rotation', 0.0 )
+        scalex, scaley = element.get_native( 'scale', (1.0,1.0) )
         pixmap = self.getImagePixmap( element.get('up') )
         if pixmap:
             item = scene.addPixmap( pixmap )
@@ -635,9 +600,9 @@ class LevelGraphicView(QtGui.QGraphicsView):
         pass
 
     def _sceneLabelBuilder( self, scene, element ):
-        x, y = self._elementXY( element )
-        rotation = self._elementReal( element, 'rotation', 0.0 )
-        scale = self._elementReal( element, 'scale', 1.0 )
+        x, y = self._elementV2Pos( element, 'center' )
+        rotation = element.get_native( 'rotation', 0.0 )
+        scale = element.get_native( 'scale', 1.0 )
         font = QtGui.QFont()
         font.setPointSize( 24.0 )
         font.setBold( True )
@@ -648,7 +613,8 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
     def _sceneCircleBuilder( self, scene, element ):
         # Still buggy: when in composite, likely position is likely relative to composite geometry
-        x, y, r = self._elementXYR( element )
+        x, y = self._elementV2Pos( element, 'center' )
+        r = element.get_native( 'radius', 1.0 )
         image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
         if image: # draw only the pixmap for now, but we should probably draw both the physic & pixmap
             pixmap = self.getImagePixmap( image )
@@ -668,10 +634,9 @@ class LevelGraphicView(QtGui.QGraphicsView):
             
 
     def _sceneRectangleBuilder( self, scene, element ):
-        x, y = self._elementXY( element )
-        rotation = self._elementRotationInDegrees( element )
-        width = self._elementReal( element, 'width', 1.0 )
-        height = self._elementReal( element, 'height', 1.0 )
+        x, y = self._elementV2Pos( element, 'center' )
+        rotation = element.get_native( 'rotation', 0.0 )
+        width, height = element.get_native( 'size', (1.0,1.0) )
         image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
         if image: # draw only the pixmap for now, but we should probably draw both the physic & pixmap
             pixmap = self.getImagePixmap( image )
@@ -719,8 +684,8 @@ class LevelGraphicView(QtGui.QGraphicsView):
         return item
 
     def _sceneCompositeGeometryBuilder( self, scene, element ):
-        x, y = self._elementXY( element )
-        rotation = self._elementRotationInDegrees( element )
+        x, y = self._elementV2Pos( element, 'center' )
+        rotation = element.get_native( 'rotation', 0.0 )
         image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
         sub_items = []
         if image:
@@ -737,11 +702,10 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
     def _sceneLinearForceFieldBuidler( self, scene, element ):
         # @todo ? Should we bother: gravity field usually does not have center, width & height
-        x, y = self._elementV2Pos( element, 'center', (0, 0) )
-        width = self._elementReal( element, 'width', 1.0 )
-        height = self._elementReal( element, 'height', 1.0 )
+        x, y = self._elementV2Pos( element, 'center' )
+        width, height = element.get_native( 'size', (1.0,1.0) )
         forcex, forcey = self._elementV2Pos( element, 'force', (0, 0.1) )
-        depth = self._elementReal( element, 'height', Z_PHYSIC_ITEMS )
+        depth = element.get_native( 'depth', Z_PHYSIC_ITEMS )
         # force zone item
         pen = QtGui.QPen( QtGui.QColor( 255, 224, 0 ) )
         pen.setWidth( 5 )
@@ -755,10 +719,10 @@ class LevelGraphicView(QtGui.QGraphicsView):
         return item
 
     def _sceneRadialForceFieldBuilder( self, scene, element ):
-        x, y = self._elementV2Pos( element, 'center', (0, 0) )
-        r = self._elementReal( element, 'radius', 1.0 )
-        force_at_edge = self._elementReal( element, 'forceatedge', 0.0 )
-        force_at_center = self._elementReal( element, 'forceatcenter', 0.0 )
+        x, y = self._elementV2Pos( element, 'center' )
+        r = element.get_native( 'radius', 1.0 )
+        force_at_edge = element.get_native( 'forceatedge', 0.0 )
+        force_at_center = element.get_native( 'forceatcenter', 0.0 )
         # circular zone item
         pen = QtGui.QPen( QtGui.QColor( 255, 224, 0 ) )
         pen.setWidth( 5 )

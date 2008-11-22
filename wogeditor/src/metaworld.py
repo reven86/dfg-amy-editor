@@ -34,6 +34,10 @@ REAL_TYPE = 'real'
 RGB_COLOR_TYPE = 'rgb_color'
 ARGB_COLOR_TYPE = 'argb_color'
 XY_TYPE = 'xy'
+SCALE_TYPE = 'scalewh'
+DXDY_TYPE = 'dxdy'
+SIZE_TYPE = 'wh'
+RADIUS_TYPE = 'radius'
 ENUMERATED_TYPE = 'enumerated'
 STRING_TYPE = 'string'
 ANGLE_DEGREES_TYPE = 'angle.degrees'
@@ -85,6 +89,16 @@ class AttributeMeta(object):
     def set( self, element, value ):
         return element.set( self.name, value )
 
+    def get_native( self, element, default = None ):
+        """Gets the value in python native type: float for real, int for integer...
+           Returns default if the value is not convertible in the native type or not
+           set.
+        """
+        raw = self.get( element )
+        if raw is None:
+            return default
+        return raw
+
     def is_valid_value( self, value, world ): #IGNORE:W0613
         """Checks if the specified attribute is valid on this element.
            Returns tuple (message, args) if the value is not valid. 
@@ -125,6 +139,26 @@ class ComponentsAttributeMeta(AttributeMeta):
             self.error_messages = {'missing': error_message, 'extra': error_message} 
         else:
             self.error_messages = error_messages
+
+    def get_native(self, element, default = None):
+        raw = self.get(element)
+        if raw is None:
+            return default
+        components = raw.split(',')
+        try:
+            native_values = [ self._get_native_component(component) 
+                              for component in components ]
+            if len(native_values) < self.min_components:
+                return default
+            return tuple(native_values)
+        except ValueError:
+            return default
+        
+    def _get_native_component(self, component):
+        """Returns a component converted to its python native type.
+           The caller handle ValueError conversion error.
+        """
+        return component
 
     def from_xml(self, xml_element, attributes_by_name):
         """Set attributes values in attributes_by_name using xml_element attributes
@@ -197,6 +231,15 @@ class NumericAttributeMeta(AttributeMeta):
         self.value_type = value_type # python type of the value
         self.value_type_error = value_type_error # error message on bad value type
 
+    def get_native(self, element, default=None):
+        try:
+            raw = self.get(element)
+            if raw is not None:
+                return self.value_type(raw)
+            return default
+        except ValueError:
+            return default
+
     def  is_valid_value( self, value, world ): #IGNORE:W0613
         status = AttributeMeta.is_valid_value(self, value, world)
         if status is None and value:
@@ -238,6 +281,12 @@ class ColorAttributeMeta(ComponentsAttributeMeta):
             message = 'ARGB color must be of the form "A,R,G,B" were A,R,G,B are real number in range [0-255].'
         ComponentsAttributeMeta.__init__( self, name, attribute_type, 
             error_message = message, components = components, **kwargs )
+        
+    def _get_native_component(self, component):
+        """Returns a component converted to its python native type.
+           The caller handle ValueError conversion error.
+        """
+        return int(component)
 
     def  _is_component_valid( self, index, component, world ): #IGNORE:W0613
         components = self.min_components == 3 and 'RGB' or 'ARGB'
@@ -251,14 +300,23 @@ class ColorAttributeMeta(ComponentsAttributeMeta):
         return None
 
 class Vector2DAttributeMeta(ComponentsAttributeMeta):
-    def __init__( self, name, attribute_type, **kwargs ):
+    def __init__( self, name, attribute_type, min_value = None, **kwargs ):
         ComponentsAttributeMeta.__init__( self, name, attribute_type, error_message =
-            'Position must be of the form "X,Y" were X and Y are real number',
+            'Value must be of the form "X,Y" were X and Y are real number',
             components = 2, **kwargs )
+        self.min_value = min_value
+        
+    def _get_native_component(self, component):
+        """Returns a component converted to its python native type.
+           The caller handle ValueError conversion error.
+        """
+        return float(component)
 
     def  _is_component_valid( self, index, component, world ): #IGNORE:W0613
         try:
-            float(component)
+            value = float(component)
+            if self.min_value and value < self.min_value:
+                return 'Component must be >= %(min_value)g', {'min_value':self.min_value} 
             return None
         except ValueError:
             return self.error_messages['missing'], {}
@@ -286,6 +344,14 @@ class BooleanAttributeMeta(EnumeratedAttributeMeta):
     def __init__( self, name, **kwargs ):
         EnumeratedAttributeMeta.__init__( self, name, ('true','false'), 
                                           attribute_type = BOOLEAN_TYPE, **kwargs )
+
+    def get_native(self, element, default=None):
+        raw = self.get(element)
+        if raw == 'true':
+            return True
+        elif raw == 'false':
+            return False
+        return default
 
 class ReferenceAttributeMeta(ComponentsAttributeMeta):
     def __init__( self, name, reference_family, reference_world, is_list = False,
@@ -344,8 +410,22 @@ def rgb_attribute( name, **kwargs ):
 def argb_attribute( name, **kwargs ):
     return ColorAttributeMeta( name, ARGB_COLOR_TYPE, components = 4, **kwargs )
 
+def radius_attribute( name, max_value = None, **kwargs ):
+    return NumericAttributeMeta( name, RADIUS_TYPE, float, 
+                                 'value must be a real number',
+                                 min_value = 0, max_value = max_value, **kwargs )
+
 def xy_attribute( name, **kwargs ):
     return Vector2DAttributeMeta( name, XY_TYPE, **kwargs )
+
+def dxdy_attribute( name, **kwargs ):
+    return Vector2DAttributeMeta( name, DXDY_TYPE, **kwargs )
+
+def size_attribute( name, **kwargs ):
+    return Vector2DAttributeMeta( name, SIZE_TYPE, **kwargs )
+
+def scale_attribute( name, **kwargs ):
+    return Vector2DAttributeMeta( name, SCALE_TYPE, **kwargs )
 
 def enum_attribute( name, values, is_list = False, **kwargs ):
     return EnumeratedAttributeMeta( name, values, is_list = is_list, **kwargs )
@@ -1343,6 +1423,12 @@ class Element(_ElementBase):
            @exception KeyError if attribute not found.
         """
         return self._element_meta.attributes_by_name[attribute_name]
+
+    def get_native(self, attribute_name, default=None):
+        """Returns the specified attribute as its python type value.
+           Returns default if the attribute is not defined or not convertible to
+           its python type."""
+        return self.attribute_meta(attribute_name).get_native(self, default)
 
     def to_xml( self, encoding = None ):
         """Outputs a XML string representing the element and its children.

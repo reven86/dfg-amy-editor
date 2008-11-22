@@ -75,14 +75,12 @@ TREE_LEVEL_GAME.add_elements( [
             real_attribute( 'depth', init = 0, mandatory = True ),
             string_attribute( 'name', init = 'SIGN_POST_', mandatory = 'True' ),
             # @todo makes x,y a composite attribute
-            real_attribute( 'x', init = 0, mandatory = True ),
-            real_attribute( 'y', init = 0, mandatory = True ),
+            xy_attribute( 'center', init = 0, mandatory = True, map_to = ('x','y') ),
             angle_degrees_attribute( 'rotation', init = 0, mandatory = True ),
             reference_attribute( 'image', reference_family = 'image', reference_world = WORLD_LEVEL,
                                  init = '', mandatory = True ),
-            # @todo makes scalex,scaley a composite attribute
-            real_attribute( 'scalex', init = 1, min_value = 0.0000001, mandatory = True ),
-            real_attribute( 'scaley', init = 1, min_value = 0.0000001, mandatory = True ),
+            scale_attribute( 'scale', init = '1,1', min_value = 0.0000001, mandatory = True,
+                             map_to = ('scalex', 'scaley') ),
             reference_attribute( 'text', reference_family = 'text', reference_world = WORLD_LEVEL, init = '', mandatory = True ),
             reference_attribute( 'particles', reference_family = 'effect', reference_world = WORLD_GLOBAL )
             ] ),
@@ -94,9 +92,7 @@ TREE_LEVEL_GAME.add_elements( [
             ],
             elements = [
             describe_element( 'Vertex', min_occurrence = 2, attributes = [
-                # @todo makes x,y a composite attribute
-                real_attribute( 'x', init = 0, mandatory = True ),
-                real_attribute( 'y', init = 0, mandatory = True ),
+                xy_attribute( 'pos', init = 0, mandatory = True, map_to = ('x','y') )
                 ] ),
             ] ),
         describe_element( 'BallInstance', groups = 'game', attributes = [
@@ -105,8 +101,7 @@ TREE_LEVEL_GAME.add_elements( [
             reference_attribute( 'type', mandatory = True,
                                  reference_family = 'ball', reference_world = WORLD_GLOBAL ),
             # @todo makes x,y a composite attribute
-            real_attribute( 'x', init = 0, mandatory = True ),
-            real_attribute( 'y', init = 0, mandatory = True ),
+            xy_attribute( 'pos', init = '0,0', mandatory = True, map_to = ('x','y') ),
             angle_degrees_attribute( 'angle', init = 0, mandatory = True ),
             real_attribute( 'depth', default = '0' ),
             bool_attribute( 'discovered', default = 'true' )
@@ -131,7 +126,7 @@ TREE_LEVEL_GAME.add_elements( [
                                  is_list = True, 
                                  reference_family = 'ball', reference_world = WORLD_GLOBAL ),
             xy_attribute( 'pos', mandatory = True, init = '0,0' ),
-            real_attribute( 'radius', mandatory = True, init = '75' )
+            radius_attribute( 'radius', mandatory = True, init = '75' )
             ] ),
         describe_element( 'endoncollision', groups = 'game', attributes = [
             reference_attribute( 'id1', reference_family = 'geometry', reference_world = WORLD_LEVEL, mandatory = True ),
@@ -142,9 +137,8 @@ TREE_LEVEL_GAME.add_elements( [
             string_attribute( 'id', display_id = True, mandatory = True )  # values seems to be hard-coded
             ] ),
         describe_element( 'fire', groups = 'game', attributes = [
-            real_attribute( 'x', mandatory = True, init = '0' ),
-            real_attribute( 'y', mandatory = True, init = '0' ),
-            real_attribute( 'radius', mandatory = True, init = '50' ),
+            xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ('x','y') ),
+            radius_attribute( 'radius', mandatory = True, init = '50' ),
             real_attribute( 'depth', mandatory = True, init = '0' ),
             reference_attribute( 'particles', reference_family = 'effect',
                                  reference_world = WORLD_GLOBAL, mandatory = True )
@@ -208,13 +202,12 @@ _TAG_VALUES = ('ballbuster', 'break=1', 'break=2', 'deadly', 'detaching', 'geomk
 
 ELEMENT_BUTTON = describe_element( 'button', groups = 'image', attributes = [
         string_attribute( 'id', display_id = True, mandatory = True ),
-        real_attribute( 'x', mandatory = True, init = '0' ),
-        real_attribute( 'y', mandatory = True, init = '0' ),
+        xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ('x','y') ),
         real_attribute( 'depth', mandatory = True, init = '10' ),
         real_attribute( 'alpha', mandatory = True, init = '1' ),
         real_attribute( 'rotation', mandatory = True, init = '0' ),
-        real_attribute( 'scalex', mandatory = True, init = '1' ),
-        real_attribute( 'scaley', mandatory = True, init = '1' ),
+        scale_attribute( 'scale', init = '1,1', min_value = 0.0000001, mandatory = True,
+                         map_to = ('scalex', 'scaley') ),
         rgb_attribute( 'colorize', mandatory = True, init = '255,255,255' ),
         reference_attribute( 'up', reference_family = 'image', reference_world = WORLD_LEVEL,
                              init = '', mandatory = True ),
@@ -237,17 +230,15 @@ ELEMENT_BUTTON = describe_element( 'button', groups = 'image', attributes = [
 ELEMENT_RECTANGLE = describe_element( 'rectangle', groups = 'shape', attributes = [
     identifier_attribute( 'id', display_id = True, mandatory = True,  allow_empty = True,
         reference_family = 'geometry', reference_world = WORLD_LEVEL ),
-    real_attribute( 'x', mandatory = True, init = '0' ),
-    real_attribute( 'y', mandatory = True, init = '0' ),
+    xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ('x','y') ),
     angle_radians_attribute( 'rotation', mandatory = True, init = '0' ),
-    real_attribute( 'width', mandatory = True, init = '100' ),
-    real_attribute( 'height', mandatory = True, init = '100' ),
+    size_attribute( 'size', mandatory = True, init = '100,100', map_to = ('width', 'height') ),
     bool_attribute( 'contacts' ),
     reference_attribute( 'image', reference_family = 'image', reference_world = WORLD_LEVEL,
                          init = '' ),
     xy_attribute( 'imagepos' ),
     angle_radians_attribute( 'imagerot' ),
-    xy_attribute( 'imagescale' ),
+    scale_attribute( 'imagescale' ),
     real_attribute( 'rotspeed' ),
     bool_attribute( 'static', default = 'false', init = 'true' ), # Notes: if static = false, then mass is required.
     real_attribute( 'mass' ),
@@ -260,14 +251,13 @@ ELEMENT_RECTANGLE = describe_element( 'rectangle', groups = 'shape', attributes 
 ELEMENT_CIRCLE = describe_element( 'circle', groups = 'shape', attributes = [
     identifier_attribute( 'id', display_id = True, mandatory = True, allow_empty = True, 
         reference_family = 'geometry', reference_world = WORLD_LEVEL ),
-    real_attribute( 'x', mandatory = True, init = '0' ),
-    real_attribute( 'y', mandatory = True, init = '0' ),
-    real_attribute( 'radius', mandatory = True, init = '75' ),
+    xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ('x','y') ),
+    radius_attribute( 'radius', mandatory = True, init = '75' ),
     reference_attribute( 'image', reference_family = 'image', reference_world = WORLD_LEVEL,
                          init = '' ),
     xy_attribute( 'imagepos' ),
     angle_radians_attribute( 'imagerot' ),
-    xy_attribute( 'imagescale' ),
+    scale_attribute( 'imagescale' ),
     real_attribute( 'rotspeed' ),
     bool_attribute( 'static', default = 'false', init = 'true' ), # Notes: if static = false, then mass is required.
     enum_attribute( 'tag', _TAG_VALUES, is_list = True ),
@@ -290,8 +280,7 @@ TREE_LEVEL_SCENE.add_elements( [
         elements = [
         describe_element( 'SceneLayer', groups = 'image', attributes = [
             string_attribute( 'id', display_id = True ),
-            real_attribute( 'x', mandatory = True, init='0' ),
-            real_attribute( 'y', mandatory = True, init='0' ),
+            xy_attribute( 'center', mandatory = True, init='0,0', map_to = ('x','y') ),
             real_attribute( 'depth', mandatory = True, init='0' ),
             reference_attribute( 'image', reference_family = 'image', reference_world = WORLD_LEVEL,
                                  init = '', mandatory = True ),
@@ -302,8 +291,8 @@ TREE_LEVEL_SCENE.add_elements( [
             angle_degrees_attribute( 'rotation', default = '0' ),
             string_attribute( 'name', display_id = True ),
             enum_attribute( 'context', ('screen',) ),
-            real_attribute( 'scalex', default='1'),
-            real_attribute( 'scaley', default='1'),
+            scale_attribute( 'scale', default = '1,1', min_value = 0.0000001, 
+                             map_to = ('scalex', 'scaley') ),
             bool_attribute( 'tilex', default='false'),
             bool_attribute( 'tiley', default='false'),
             rgb_attribute( 'colorize', init = '255,255,255'),
@@ -319,10 +308,9 @@ TREE_LEVEL_SCENE.add_elements( [
         describe_element( 'label', groups = 'text', attributes = [
             string_attribute( 'id', display_id = True, mandatory = True, 
                               allow_empty = True ),
-            real_attribute( 'x', mandatory = True, init = '0' ),
-            real_attribute( 'y', mandatory = True, init = '0' ),
+            xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ('x','y') ),
             reference_attribute( 'text', reference_family = 'text', reference_world = WORLD_GLOBAL ),
-            angle_radians_attribute( 'rotation', mandatory = True, init = '0' ),
+            angle_degrees_attribute( 'rotation', mandatory = True, init = '0' ),
             real_attribute( 'scale', mandatory = True, init = '1' ),
             reference_attribute( 'font', reference_family = 'font', reference_world = WORLD_GLOBAL,
                                  mandatory = True ),
@@ -337,8 +325,7 @@ TREE_LEVEL_SCENE.add_elements( [
             identifier_attribute( 'id', display_id = True, 
                 mandatory = True, allow_empty = True, 
                 reference_family = 'geometry', reference_world = WORLD_LEVEL ),
-            real_attribute( 'x', mandatory = True, init = '0' ),
-            real_attribute( 'y', mandatory = True, init = '0' ),
+            xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ('x','y') ),
             angle_radians_attribute( 'rotation', mandatory = True, init = '0' ),
             reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
                                  init = '', mandatory = True ),
@@ -347,7 +334,7 @@ TREE_LEVEL_SCENE.add_elements( [
             reference_attribute( 'image', reference_family = 'image', reference_world = WORLD_LEVEL ),
             xy_attribute( 'imagepos', default = '0,0' ),
             angle_radians_attribute( 'imagerot' ),
-            xy_attribute( 'imagescale' ),
+            scale_attribute( 'imagescale' ),
             real_attribute( 'rotspeed' ),
             bool_attribute( 'nogeomcollisions' )
             ],
@@ -359,7 +346,7 @@ TREE_LEVEL_SCENE.add_elements( [
             string_attribute( 'id', display_id = True, mandatory = True, 
                               allow_empty = True ),
             xy_attribute( 'anchor', mandatory = True, init = '0,0' ),
-            xy_attribute( 'normal', mandatory = True, init = '10,0' ),
+            dxdy_attribute( 'normal', mandatory = True, init = '10,0' ),
             reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
                                  init = '', mandatory = True ),
             bool_attribute( 'static', init = 'true', mandatory = True ),
@@ -367,13 +354,12 @@ TREE_LEVEL_SCENE.add_elements( [
             ] ),
         describe_element( 'linearforcefield', groups = 'physic', attributes = [
             string_attribute( 'id', display_id = True, allow_empty = True ),
-            xy_attribute( 'force', mandatory = True, init = '0,-10' ),
+            dxdy_attribute( 'force', mandatory = True, init = '0,-10' ),
             real_attribute( 'dampeningfactor', mandatory = True, init = '0' ),
             bool_attribute( 'antigrav', mandatory = True, init = 'false' ),
             enum_attribute( 'type', ('force', 'gravity'), init = 'gravity', mandatory = True ),
             xy_attribute( 'center', init = '0,0' ),
-            real_attribute( 'width' ),
-            real_attribute( 'height' ),
+            size_attribute( 'size', map_to = ('width', 'height') ),
             real_attribute( 'depth' ),
             argb_attribute( 'color' ),
             bool_attribute( 'enabled' ),
@@ -388,7 +374,7 @@ TREE_LEVEL_SCENE.add_elements( [
             bool_attribute( 'antigrav', mandatory = True, init = 'false' ),
             enum_attribute( 'type', ('force', 'gravity'), init = 'gravity', mandatory = True ), # @todo in game, only gravity
             xy_attribute( 'center', mandatory = True, init = '0,0' ),
-            real_attribute( 'radius', mandatory = True, init = '100' ),
+            radius_attribute( 'radius', mandatory = True, init = '100' ),
             real_attribute( 'depth' ),
             bool_attribute( 'enabled' ),
             bool_attribute( 'geomonly' )
@@ -441,14 +427,14 @@ _describe_resource_file( TREE_GLOBAL_RESOURCE, WORLD_GLOBAL, is_global = True )
 
 ELEMENT_PARTICLE = describe_element( 'particle', groups = 'image', 
                                      min_occurrence = 1, attributes = [
-    xy_attribute( 'acceleration', mandatory = True, init = '0,0.1' ),
+    dxdy_attribute( 'acceleration', mandatory = True, init = '0,0.1' ),
     bool_attribute( 'directed', mandatory = True, init = 'false' ),
     reference_attribute( 'image', reference_family = 'image', reference_world = WORLD_GLOBAL,
                          mandatory = True ),
     angle_degrees_attribute( 'movedir', mandatory = True, init = '0' ),
     angle_degrees_attribute( 'movedirvar', mandatory = True, init = '0' ), # ?
-    xy_attribute( 'scale', mandatory = True, init = '1,1' ), # @todo scale attribute ?  
-    xy_attribute( 'speed', mandatory = True, init = '1,1' ), # @todo direction attribute ?  
+    scale_attribute( 'scale', mandatory = True, init = '1,1' ),  
+    dxdy_attribute( 'speed', mandatory = True, init = '1,1' ),  
     bool_attribute( 'additive' ),
     real_attribute( 'dampening', min_value = 0, max_value = '1' ),
     bool_attribute( 'fade' ),
