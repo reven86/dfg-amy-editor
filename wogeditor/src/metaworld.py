@@ -99,6 +99,11 @@ class AttributeMeta(object):
             return default
         return raw
 
+    def set_native(self, element, value):
+        """Sets the value from the python native type: float for real..."""
+        assert value is not None
+        self.set( element, str(value) )
+
     def is_valid_value( self, value, world ): #IGNORE:W0613
         """Checks if the specified attribute is valid on this element.
            Returns tuple (message, args) if the value is not valid. 
@@ -159,6 +164,15 @@ class ComponentsAttributeMeta(AttributeMeta):
            The caller handle ValueError conversion error.
         """
         return component
+
+    def set_native(self, element, value):
+        """Sets the value from the python native type: float for real..."""
+        assert value is not None
+        values = [ self._component_from_native(component) for component in value ]
+        self.set( element, ','.join( values ) )
+
+    def _component_from_native(self, component):
+        return str(component)
 
     def from_xml(self, xml_element, attributes_by_name):
         """Set attributes values in attributes_by_name using xml_element attributes
@@ -578,7 +592,8 @@ class ElementMeta(ObjectsMetaOwner):
 
     @property
     def attributes(self):
-        return self.attributes_by_name.values()
+        """Returns the elements attribute ordered from most important to least one.""" 
+        return self.attributes_order[:]
     
     def make_element_from_xml_element( self, xml_element, warning = None ):
         """Create an Element from a xml.tree.ElementTree.Element.

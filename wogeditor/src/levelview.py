@@ -5,6 +5,7 @@ from PyQt4 import QtCore, QtGui
 from PyQt4.QtCore import Qt
 import math
 import louie
+import metaworld
 import metaworldui
 import qthelper
 
@@ -14,6 +15,12 @@ Z_PHYSIC_ITEMS = 9000.0
 TOOL_SELECT = 'select'
 TOOL_PAN = 'pan'
 TOOL_MOVE = 'move'
+
+# x coordinate of the unit vector of length = 1
+UNIT_VECTOR_COORDINATE = math.sqrt(0.5)
+
+def vector2d_length(x, y):
+    return math.sqrt(x*x + y*y)
 
 # Workflow:
 # left click: do whatever the current tool is selected to do.
@@ -138,12 +145,6 @@ class PanTool(BasicTool):
         return True
 
 
-class MoveTool(BasicTool):
-    pass
-
-class ResizeTool(BasicTool):
-    pass
-
 class MoveOrResizeTool(BasicTool):
     """
 Need to get current selected item to:
@@ -152,47 +153,268 @@ Need to get current selected item to:
     """
     def __init__(self, view):
         BasicTool.__init__( self, view )
-        self._resize_tool = ResizeTool(view)
-        self._move_tool = MoveTool(view)
         self._active_tool = None
 
+    def _get_tool_for_event_location(self,event):
+        selector_tool = self._view.get_selected_item_selector_tool()
+        if selector_tool is None:
+            return None, None
+        scene_pos = self._view.mapToScene( event.pos() )
+        origin_pos = self._view.mapToScene( QtCore.QPoint() )
+        f = 10000
+        unit_pos = self._view.mapToScene( QtCore.QPoint( UNIT_VECTOR_COORDINATE*f,
+                                                         UNIT_VECTOR_COORDINATE*f ) )
+        unit_vector = unit_pos - origin_pos
+        tool = selector_tool.get_tool_for_location( scene_pos.x(), scene_pos.y(), 
+                                                    unit_vector / f )
+        return tool, scene_pos
+
+    def _handle_press_event(self, event):
+        BasicTool._handle_press_event(self, event)
+        # Commit previous tool if any
+        tool, scene_pos = self._get_tool_for_event_location( event )
+        if self._active_tool:
+            self._active_tool.cancel()
+            self._active_tool = None
+        # Activate new tool if any any left mouse button is pressed
+        if tool is None or event.buttons() != Qt.LeftButton:
+            return False
+        self._active_tool = tool
+        tool.activated( scene_pos.x(), scene_pos.y() )
+        return True
+    
+    def _handle_release_event(self, event):
+        if self._active_tool is not None:
+            scene_pos = self._view.mapToScene( event.pos() )
+            self._active_tool.commit( scene_pos.x(), scene_pos.y() )
+            self._active_tool = None
+            return True
+        return self._handle_move_event(event)
+
     def _handle_move_event(self, event):
-        item = self._view.scene().focusItem()
-        if item is not None:
-            if isinstance( item, QtGui.QGraphicsPixmapItem ):
-                print 'Pixmap moving'
-            else:
-                print 'Not pixmap'
-        else:
-            print 'No focus'
+        # If a tool delegate has been activated, then forward all events
+        if self._active_tool is not None:
+            scene_pos = self._view.mapToScene( event.pos() )
+            self._active_tool.on_mouse_move( scene_pos.x(), scene_pos.y() )
+            return True
+        # Otherwise try to find if one would be activated and change mouse cursor
+        tool = self._get_tool_for_event_location( event )[0]
+        if tool is None: # If None, then go back to selection
+            self._view.viewport().setCursor( Qt.ArrowCursor )
+            return False
+        tool.set_activable_mouse_cursor()
         return True
 
-class ToolSelector(object):
-    def __init__(self, item):
-        self.item = item
+# ###################################################################
+# ###################################################################
+# Tool Delegates
+# ###################################################################
+# ###################################################################
 
-    def select_tool(self, scene_x, scene_y, unit_x, unit_y):
+class ToolDelegate(object):
+    """A tool delegate operate on a single attribute of the object. 
+       It provides the following features:
+       - set mouse icon corresponding to the tool when mouse is hovering over 
+         the tool activation location
+       - set mouse icon to activated icon when the user press the left mouse button
+       - modify the item to match user action when the mouse is moved
+       - cancel or commit change to the underlying element attribute.
+    """
+    def __init__(self, view, element, item, attribute_meta, state_handler,
+                 activable_cursor = None, activated_cursor = None):
+        self.view = view
+        self.element = element
+        self.item = item
+        self.attribute_meta = attribute_meta
+        self.state_handler = state_handler
+        self.activable_cursor = activable_cursor
+        self.activated_cursor = activated_cursor or activable_cursor
+        self._reset()
+        
+    def _reset(self): 
+        self.activation_pos = None
+        self.activation_value = None
+        self.activation_item_state = None
+        
+    def set_activable_mouse_cursor(self):
+        if self.activable_cursor is not None:
+            self.view.viewport().setCursor( self.activable_cursor )
+    
+    def set_activated_mouse_cursor(self):
+        if self.activated_cursor is not None:
+            self.view.viewport().setCursor( self.activated_cursor )
+
+    def activated(self, scene_x, scene_y):
+        print 'Activated:', self
+        self.set_activated_mouse_cursor()
+        item_pos = self.item.mapFromScene( scene_x, scene_y )
+        print 'Activated:', self, item_pos.x(), item_pos.y()
+        self.activation_pos = item_pos
+        self.activation_value = self.attribute_meta.get_native( self.element )
+        self.activation_item_state = self.state_handler.get_item_state(self.item)
+        self.on_mouse_move( scene_x, scene_y )
+        
+    def cancelled(self):
+        print 'Cancelled:', self
+        if self.activation_item_state is not None:
+            self.restore_activation_state()
+        self._reset()
+    
+    def restore_activation_state(self):
+        assert self.activation_item_state is not None
+        self.state_handler.restore_item_state( self.item, self.activation_item_state )
+    
+    def commit(self, scene_x, scene_y):
+        attribute_value = self.on_mouse_move( scene_x, scene_y )
+        print 'Committed:', self, attribute_value
+        if attribute_value is not None:
+            self.attribute_meta.set_native(self.element, attribute_value)
+        self._reset()
+    
+    def on_mouse_move(self, scene_x, scene_y):
+        item_pos = self.item.mapFromScene( scene_x, scene_y )
+        return self._on_mouse_move( item_pos.x(), item_pos.y() )
+    
+    def _on_mouse_move(self, item_x, item_y):
+        raise NotImplemented()
+
+class MoveToolDelegate(ToolDelegate):
+    def __init__(self, view, element, item, attribute_meta, state_handler):
+        ToolDelegate.__init__( self, view, element, item, attribute_meta, state_handler,
+                               activable_cursor = Qt.SizeAllCursor )
+        
+    def _on_mouse_move(self, item_x, item_y):
+        self.restore_activation_state()
+        parent_pos = self.item.mapToParent(item_x, item_y)
+        self.item.setPos( parent_pos.x(), parent_pos.y() )
+        return (parent_pos.x(), -parent_pos.y())
+
+class ScaleToolDelegate(ToolDelegate):
+    pass
+
+class DirectionToolDelegate(ToolDelegate):
+    pass
+
+class ResizeToolDelegate(ToolDelegate):
+    pass
+
+class RadiusToolDelegate(ToolDelegate):
+    def __init__(self, view, element, item, attribute_meta, state_handler):
+        ToolDelegate.__init__( self, view, element, item, attribute_meta, state_handler,
+                               activable_cursor = Qt.SizeBDiagCursor )
+        
+    def _on_mouse_move(self, item_x, item_y):
+        r = vector2d_length( item_x, item_y )
+        self.item.setRect( -r, -r, r*2, r*2 )
+        return r
+
+# ###################################################################
+# ###################################################################
+# State Managers
+# ###################################################################
+# ###################################################################
+
+class StateManager(object):
+    def get_item_state(self, item):
+        """Returns an object representing the current item state."""
+        return (item.transform(), self._get_item_state(item))
+    
+    def _get_item_state(self, item): #IGNORE:W0613
+        """Returns an object represent the state specific to the item type."""
+        return None
+    
+    def restore_item_state(self, item, state):
+        """Restore the item in the state capture by get_item_state."""
+        transform, specific_state = state
+        item.setTransform( transform ) 
+        self._set_item_state( item, specific_state )
+        
+    def _set_item_state(self, item, state):
+        """Restore the item specific state capture by _get_item_state()."""
+        pass
+
+class RectangleStateManager(StateManager):
+    def _get_item_state(self, item):
+        return item.rect()
+    
+    def _restore_item_state(self, item, state):
+        item.setRect( state )
+
+class EllipseStateManager(StateManager):
+    def _get_item_state(self, item):
+        return (item.rect(), item.startAngle(), item.spanAngle())
+    
+    def _restore_item_state(self, item, state):
+        rect, start_angle, span_angle = state
+        item.setRect( rect )
+        item.setStartAngle( start_angle )
+        item.setSpanAngle( span_angle )
+
+# ###################################################################
+# ###################################################################
+# Tool Selectors
+# ###################################################################
+# ###################################################################
+
+
+class ToolSelector(object):
+    """Responsible for selecting the ToolDelegate corresponding to the mouse location.
+    """
+    def __init__(self, view, element, item):
+        self.item = item
+        self.view = view
+        self.element = element
+
+    def get_tool_for_location(self, scene_x, scene_y, unit_vector):
         """Called when the user press the left mouse button.
            Returns the activated tool, or None if no tool was activated.
            @param unit_x: Size of 1 pixel on the x axis mapped to scene coordinate. 
            @param unit_y: Size of 1 pixel on the y axis mapped to scene coordinate. 
         """
-        item_pos = item.mapFromScene( scene_x, scene_y )
-        item_unit = item.mapFromScene( unit_x, unit_y )
-        return self._select_tool( item_pos, item_unit )
+        item_pos = self.item.mapFromScene( scene_x, scene_y )
+        origin_pos = self.item.mapFromScene( QtCore.QPointF() )
+        unit_pos = self.item.mapFromScene( unit_vector )
+        item_unit_vector = unit_pos - origin_pos
+        item_unit_length = vector2d_length( item_unit_vector.x(), 
+                                            item_unit_vector.y() )
+        return self._get_tool_for_location( item_pos, item_unit_length )
+    
+    def _get_tool_for_location(self, item_pos, item_unit_length):
+        """Detects what tool is activated for the specified location.
+           item_pos: click location in item coordinates.
+           item_unit_length: length of the unit vector of length = 1 on screen in
+                             item coordinate.
+        """
+        raise NotImplemented()
 
 class CircleToolSelector(ToolSelector):
-    def _select_tool(self, item_pos, item_unit):
-        x, y = item_pos
-        ux, uy = item_unit
-        distance = math.sqrt( x*x + y*y )
-        unit = math.sqrt( ux*ux + uy*uy )
+    """Select move or radius for circle."""
+    def __init__(self, view, element, item):
+        ToolSelector.__init__( self, view, element, item )
+        self.attribute_radius = None
+        attribute_center = None
+        for attribute_meta in element.meta.attributes:
+            if attribute_meta.type == metaworld.RADIUS_TYPE:
+                self.attribute_radius = attribute_meta
+            elif attribute_meta.type == metaworld.XY_TYPE:
+                attribute_center = attribute_center or attribute_meta
+        state_manager = EllipseStateManager()
+        self.move_tool = MoveToolDelegate( view, element, item, attribute_center,
+                                           state_manager )
+        self.radius_tool = RadiusToolDelegate( view, element, item, self.attribute_radius,
+                                               state_manager )
+        
+    def _get_tool_for_location(self, item_pos, unit):
+        distance = vector2d_length( item_pos.x(), item_pos.y() )
+        radius = 0
+        if self.attribute_radius is not None:
+            radius = self.attribute_radius.get_native(self.element, 0.0)
         radius = max(5*unit, radius) # if radius small than 5 pixels, then enlarge
         if distance <= radius:
-            return self.MoveToolDelegate( self.item )
+            return self.move_tool
         elif distance <= radius + 5 * unit:
-            return self.RadiusToolDelegate( self.item )
-
+            return self.radius_tool
+        return None
 
 class LevelGraphicView(QtGui.QGraphicsView):
     """A graphics view that display scene and level elements.
@@ -221,7 +443,9 @@ class LevelGraphicView(QtGui.QGraphicsView):
             TOOL_PAN: PanTool(self),
             TOOL_MOVE: MoveOrResizeTool(self)
             }
-        self._active_tool = None 
+        self._active_tool = None
+        self._items_by_element = {}
+        self._selection_tool_degates_cache = (None,[])
         self.setScene( self.__scene )
         self.refreshFromModel()
         self.scale( 1.0, 1.0 )
@@ -245,8 +469,57 @@ class LevelGraphicView(QtGui.QGraphicsView):
     def get_enabled_view_tools(self):
         return set( [TOOL_PAN, TOOL_SELECT, TOOL_MOVE] )
 
-    def get_selected_item_tool_delegate(self):
-        return None
+    # Tool selection requires knowledge about the shape
+    # Primary shape: center and radius or width or scale
+    #     Some information are only available on run-time: pixmap size for scaling
+    #     for example.
+    #     it is easier to ask this to the item
+    # ==> rely on item for shape definition
+    def get_selected_item_selector_tool(self):
+        elements = self.__world.selected_elements
+        if len(elements) != 1: # @todo handle multiple selection
+            return None
+        element = iter(elements).next()
+        item = self._items_by_element.get( element )
+        if item is None:
+            return None
+        if isinstance( item, QtGui.QGraphicsEllipseItem ):
+            return CircleToolSelector(self, element, item)
+        
+#        if self._selection_tool_degates_cache[0] == element:
+#            return self._selection_tool_degates_cache[1][:]
+#        # Only handle plain rectangle, pixmap and circle at the current time
+#        tool_factories = None
+#        if isinstance( item, QtGui.QGraphicsRectItem, QtGui.QGraphicsPixmapItem ):
+#            return RectangleToolSelector( self, element, item )
+##            tool_factories = {
+##                metaworld.XY_TYPE: RectangleMoveToolDelegate,
+##                metaworld.SIZE_TYPE: RectangleResizeToolDelegate
+##                }
+#        elif isinstance( item, QtGui.QGraphicsEllipseItem ):
+#            return 
+##            tool_factories = {
+##                metaworld.XY_TYPE: CircleMoveToolDelegate,
+##                metaworld.RADIUS_TYPE: CircleRadiusToolDelegate
+##                }
+#        elif isinstance( item, QtGui.QGraphicsPixmapItem ):
+#            tool_factories = {
+#                metaworld.XY_TYPE: PixmapMoveToolDelegate,
+#                metaworld.SCALE_TYPE: PixmapScaleToolDelegate
+#                }
+#        available_tools = []
+#        for attribute in element.attributes:
+#            factory = tool_factories.get(attribute.type)
+#            if factory:
+#                if factory == MoveOrRadiusToolDelegate:
+#                    if available_tools and isinstance( available_tools[-1], 
+#                                                       MoveToolDelegate):
+#                        del available_tools[-1] # tool replace simple moving tool
+#                        
+#                tool = factory( self, element, item, attribute )
+#                available_tools.append( tool )
+#        self._selection_tool_degates_cache = (element, available_tools[:])
+#        return available_tools
 
     def tool_activated( self, tool_name ):
         """Activates the corresponding tool in the view and commit any pending change.
@@ -372,6 +645,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
         elements_to_skip = elements_to_skip or set()
         scene = self.__scene
         scene.clear()
+        self._items_by_element = {}
         self.__balls_by_id = {}
         self.__strands = []
         self.__lines = []
@@ -383,7 +657,8 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self._addElements( scene, scene_element, self.__scene_elements, elements_to_skip )
 
         for element in self.__lines:
-            self._sceneLineBuilder( scene, element )
+            item = self._sceneLineBuilder( scene, element )
+            self._items_by_element[element] = item            
         
 ##        print 'SceneRect:', self.sceneRect()
 ##        print 'ItemsBoundingRect:', scene.itemsBoundingRect()
@@ -429,7 +704,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
                 item.setFlag( QtGui.QGraphicsItem.ItemIsSelectable, True )
                 if element.tag == 'compositegeom':
                     composite_item = item
-            
+                self._items_by_element[element] = item            
         for child_element in element:
             item = self._addElements( scene, child_element, element_set, elements_to_skip )
             if composite_item and item:
@@ -527,6 +802,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
                 p1, p2 = item1.pos(), item2.pos()
                 strand_item = scene.addLine( p1.x(), p1.y(), p2.x(), p2.y(), pen )
                 strand_item.setData( 0, QtCore.QVariant( element ) )
+                self._items_by_element[element] = strand_item
 
     def _levelStrandBuilder( self, scene, element ): #IGNORE:W0613
         pen = QtGui.QPen()
