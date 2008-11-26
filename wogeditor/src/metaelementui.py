@@ -15,8 +15,6 @@ class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
         self._active_world = None
         # Selection change event are on a per world basis, so listen for the current world
         louie.connect( self._on_active_world_change, metaworldui.ActiveWorldChanged )
-        self.connect( self, QtCore.SIGNAL("dataChanged(const QModelIndex&,const QModelIndex&)"),
-                      self._onPropertyListValueChanged )
         self._resetPropertyListModel()
 
     def _on_active_world_change(self, active_world):
@@ -58,8 +56,8 @@ class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
             element, property_name = self.get_item_element_and_property( item )
             if property_name == name:
                 attribute_meta = element.meta.attribute_by_name( name )
-                self._update_property_name_face(element, attribute_meta, item)  
-            #@todo refresh value (in future future, when modified in graphic view)
+                self._update_property_name_face( element, attribute_meta, item )
+                self._update_property_value( new_value, item )  
 
     def _on_element_issues_updated( self, elements ):
         if self._element in elements:
@@ -78,29 +76,6 @@ class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
             self._refreshPropertyList()
         else:
             self._resetPropertyListModel()
-
-    def _onPropertyListValueChanged( self, top_left_index, bottom_right_index ):
-        """Called the data of a property list item changed.
-           Update the corresponding value in the level model and broadcast the event to refresh the scene view.
-           """
-        if top_left_index.row() != bottom_right_index.row():
-            print 'Warning: edited non editable row!!!'
-            return # not the result of an edit
-        if top_left_index.column() == 0: # Property name modified, ignore
-            return
-        new_value = top_left_index.data( Qt.DisplayRole ).toString()
-        data = top_left_index.data( Qt.UserRole ).toPyObject()
-        if data:
-            world, tree_meta, element_meta, element, property_name = data
-            attribute_meta = element.meta.attribute_by_name(property_name)
-            assert attribute_meta is not None
-            new_value = unicode(new_value)
-            if len(new_value) == 0 and attribute_meta.mandatory:
-                element.unset( property_name )
-            else:
-                element.set( property_name, new_value )
-        else:
-            print 'Warning: no data on edited item!'
 
     def get_item_element_and_property( self, item ):
         """Returns the element and the property name associated to an item.
@@ -132,6 +107,11 @@ class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
         else: # Restore default foreground color
             item_name.setData( QtCore.QVariant(), Qt.ForegroundRole )
         item_name.setFont( font )
+
+    def _update_property_value(self, value, item):
+        """Update the value of the property."""
+        item = qthelper.get_row_item_sibling( item, 1 )
+        item.setText( value )
     
     def _refreshPropertyList(self):
         element = self._element
@@ -146,14 +126,6 @@ class MetaWorldPropertyListModel(QtGui.QStandardItemModel):
             item_name = QtGui.QStandardItem( attribute_name )
             item_name.setEditable( False )
             self._update_property_name_face( element, attribute_meta, item_name, world )
-#                if attribute_value is not None: # bold property name for defined property
-#                    font = item_name.font()
-#                    font.setBold( True )
-#                    if attribute_value is None and attribute_meta.mandatory:
-#                        # @todo Also put name in red if value is not valid.
-#                        brush = QtGui.QBrush( QtGui.QColor( 255, 0, 0 ) )
-#                        font.setForeground( brush )
-#                    item_name.setFont( font )
             item_value = QtGui.QStandardItem( attribute_value or '' )
             data = (world, element.tree, element_meta, element, attribute_name)
             for item in (item_name, item_value):
@@ -186,12 +158,8 @@ def complete_reference_property( world, attribute_meta ):
     
 
 # A dictionnary of specific handler for metawog attribute types.
-# validator: called whenever the user change the text.
-#           a callable(attribute_meta, text) returning either QtGui.QValidator.Acceptable if text is a valid value,
-#           or a tuple (QtGui.QValidator.Intermediate, message, arg1, arg2...) if the text is invalid. Message must be
-#           in QString format (e.g. %1 for arg 1...). The message is displayed in the status bar.
-# converter: called when the user valid the text (enter key usualy) to store the edited value into the model.
-#            a callable(editor, model, index, attribute_meta).
+# completer: called when the user starts editing the property
+#           a callable ( world, attribute_meta ) returning a list of valid text value.
 ATTRIBUTE_TYPE_EDITOR_HANDLERS = {
     metaworld.BOOLEAN_TYPE: { 'completer': complete_enumerated_property },
     metaworld.ENUMERATED_TYPE: { 'completer': complete_enumerated_property },
@@ -303,12 +271,14 @@ class PropertyListItemDelegate(QtGui.QStyledItemDelegate):
         world, tree_meta, element, property_name, attribute_meta, handler_data = self._getHandlerData( index )
         if not editor.hasAcceptableInput(): # text is invalid, discard it
             return
-        need_specific_converter = handler_data and handler_data.get('converter')
-        if need_specific_converter:
-            handler_data['converter']( editor, model, index, attribute_meta )
+        # Update the element attribute. The model will be updated 
+        # by the element update event.
+        new_value = unicode( editor.text() )
+        if len(new_value) == 0 and attribute_meta.mandatory:
+            element.unset( property_name )
         else:
-#            value = editor.text()
-#            model.setData(index, QtCore.QVariant( value ), Qt.EditRole)
-            QtGui.QStyledItemDelegate.setModelData( self, editor, model, index )
+            element.set( property_name, new_value )
+#        model.setData(index, QtCore.QVariant( value ), Qt.EditRole)
+#            QtGui.QStyledItemDelegate.setModelData( self, editor, model, index )
     
 
