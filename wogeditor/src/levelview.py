@@ -435,81 +435,26 @@ class EllipseStateManager(StateManager):
         item.setStartAngle( start_angle )
         item.setSpanAngle( span_angle )
 
-# ###################################################################
-# ###################################################################
-# Tool Selectors
-# ###################################################################
-# ###################################################################
-
-# Tool selector needs to handle:
-# Move: inside
-# Resize: 
-# - on rectange: 4 corners, rely on shift modifier to force horizontal/vertical only
-# - on circle: 4 middle crossing the axis
-# Rotate: 
-# - on rectangle: 4 middle handles
-# - on circle: 4 handles spread over at 45 degrees
-# From code analysis:
-# Can not do that by hacking paint event
-# Conclusion: can only makes those scene item
-# => use high Z (-1000000)
-# Do it at the scene level as at item lower would force item to be composite.
-# Scene level means:
-# -> Creates/destroy item on selection change, hide them during operation
-# -> associates them with selected item
-# -> compute handle position in item coordinate and map to scene
-# -> handle should show no direction (avoid rotation transformation issue)
-# -> use item events ?
-#
-# -> creating items:
-# depends on the shape of the item => equivalent to the tool selector
-# for a given item/element type, creates corresponding manipulators:
-# * Rectangle/Pixmap: 
-# - a resize handle in each corner
-# - a rotation handle on each side middle
-# * Circle:
-# - a resize handle in each side middle
-# - a rotate handle on each 45 degrees angle
-# A move operation is triggered if the user click on the object and no manipulator.
-# Square handle: resize
-# Round handle: rotate
-# When clicked, the manipulator is hidden, but set the active tool.
-# The view is no longer interactive, and the 
-class ToolSelector(object):
-    """Responsible for selecting the ToolDelegate corresponding to the mouse location.
-    """
-    def __init__(self, view, element, item):
-        self.item = item
-        self.view = view
-        self.element = element
-
-    def get_tool_for_location(self, scene_x, scene_y, unit_vector):
-        """Called when the user press the left mouse button.
-           Returns the activated tool, or None if no tool was activated.
-           @param unit_x: Size of 1 pixel on the x axis mapped to scene coordinate. 
-           @param unit_y: Size of 1 pixel on the y axis mapped to scene coordinate. 
-        """
-        item_pos = self.item.mapFromScene( scene_x, scene_y )
-        origin_pos = self.item.mapFromScene( QtCore.QPointF() )
-        unit_pos = self.item.mapFromScene( unit_vector )
-        item_unit_vector = unit_pos - origin_pos
-        item_unit_length = vector2d_length( item_unit_vector.x(), 
-                                            item_unit_vector.y() )
-        return self._get_tool_for_location( item_pos, item_unit_length )
-    
-    def _get_tool_for_location(self, item_pos, item_unit_length):
-        """Detects what tool is activated for the specified location.
-           item_pos: click location in item coordinates.
-           item_unit_length: length of the unit vector of length = 1 on screen in
-                             item coordinate.
-        """
-        raise NotImplemented()
 
 # ###################################################################
 # ###################################################################
 # Tools Factories
 # ###################################################################
 # ###################################################################
+# Tool selector needs to handle:
+# Move: inside
+# Resize: 
+# - on rectangle: 4 corners, rely on shift modifier to force horizontal/vertical only
+# - on circle: 4 middle crossing the axis
+# Rotate: 
+# - on rectangle: 4 middle handles
+# - on circle: 4 handles spread over at 45 degrees
+# Using scene item has handle implies:
+# -> Creates/destroy item on selection change, hide them during operation
+# -> associates them with selected item
+# -> compute handle position in item coordinate and map to scene
+# -> handle should show no direction (avoid rotation transformation issue)
+#
 class ToolsFactory(object):
     """Responsible for creating and positioning the "handle" items used to
        activate tools (rotate, resize...) when clicked.
