@@ -9,6 +9,7 @@ import metaworld
 import metaworldui
 import qthelper
 
+Z_TOOL_ITEMS = 1000000 # makes sure always on top
 Z_LEVEL_ITEMS = 10000.0
 Z_PHYSIC_ITEMS = 9000.0
 
@@ -19,10 +20,62 @@ TOOL_MOVE = 'move'
 # x coordinate of the unit vector of length = 1
 UNIT_VECTOR_COORDINATE = math.sqrt(0.5)
 
+KEY_ELEMENT = 0
+KEY_TOOL = 1
+
+global traced_level
+traced_level = 0
+
+TRACED_ACTIVE = False
+
+def traced(f):
+    """A decorator that print the method name when it is entered and exited."""
+    if not TRACED_ACTIVE:
+        return f
+    if hasattr(f,'im_class'):
+        name = '%s.%s' % (f.im_class.__name__,f.__name__)
+    else:
+        name = '%s' % (f.__name__)
+    def traced_call( *args, **kwargs ):
+        global traced_level
+        print '%sEnter %s' % (traced_level*'  ', name)
+        traced_level += 1
+        result = f(*args, **kwargs)
+        traced_level -= 1
+        print '%sExit %s' % (traced_level*'  ', name)
+        return result
+    return traced_call
+
 def vector2d_length(x, y):
+    """Computes the magnitude of vector (x,y)."""
     return math.sqrt(x*x + y*y)
 
-# Workflow:
+def vector2d_angle(u, v):
+    """Computes the angle required to rotate 'u' around the Z axis counter-clockwise
+       to be in the direction as 'v'.
+       @param u tuple (x,y) representing vector U
+       @param v tuple (x,y) representing vector V
+       @exception ValueError is raise if either u or v is the null vector.
+       @returns Angle between vector 'u' and 'v' in degrees, in range ]-180,180]
+    """
+    # We have: cos_uv = U.V / (|U|*|V|), where U.V is the scalar product of U and V, 
+    # and |U| the magnitude of U.
+    # and we have: sin_uv = |U*V| / (|U|*|V|), where U*V is the cross product of U and V
+    # U.V = Ux * Vx + Uy * Vy
+    # U*V = (0,0,Ux * Vy - Uy * Vx)
+    # |U*V| = Ux * Vy - Uy * Vx
+    length_uv = vector2d_length(*u) * vector2d_length(*v)
+    if length_uv == 0.0:
+        raise ValueError( "Can not computed angle between a null vector and another vector." )
+    cos_uv = (u[0] * v[0] + u[1] * v[1]) / length_uv
+    sign_sin_uv = u[0] * v[1] - u[1] * v[0]
+    angle = math.acos( cos_uv )
+    if sign_sin_uv < 0:
+        angle = -angle
+    return math.degrees( angle )  
+
+
+# Actions:
 # left click: do whatever the current tool is selected to do.
 #             for move tool, determine move/resize based on click location
 # middle click or left+right click: start panning
@@ -48,11 +101,9 @@ class BasicTool(object):
             if self.override_tool is None:
                 self.stop_using_tool()
                 self.override_tool = PanTool(self._view)
-                return self.override_tool._handle_press_event(event)
-            return True
+                self.override_tool._handle_press_event(event)
         elif self.override_tool is None and event.buttons() == Qt.LeftButton: 
-            return self._handle_press_event(event)
-        return False
+            self._handle_press_event(event)
     
     def _handle_press_event(self, event):
         """Handle press event for the tool."""
@@ -61,7 +112,6 @@ class BasicTool(object):
         self._press_event = qthelper.clone_mouse_event(event)
         self._last_event = self._press_event 
         self.activated = True
-        return True
     
     def on_mouse_release_event(self, event):
         if self.override_tool is not None:
@@ -70,21 +120,21 @@ class BasicTool(object):
             self.override_tool = None
         self.start_using_tool()
         self.activated = False
-        return self._handle_release_event(event)
+        self._handle_release_event(event)
     
     def _handle_release_event(self, event):
-        return True
+        pass
     
     def on_mouse_move_event(self, event):
         if self.override_tool is not None:
-            return self.override_tool.on_mouse_move_event(event)
+            self.override_tool.on_mouse_move_event(event)
         self.start_using_tool()
-        accepted = self._handle_move_event(event)
+        self._handle_move_event(event)
         self._last_event = qthelper.clone_mouse_event(event)
-        return accepted
+        
 
     def _handle_move_event(self, event):
-        return False
+        pass
 
     def start_using_tool(self):
         if not self.in_use:
@@ -105,19 +155,17 @@ class BasicTool(object):
 
 class SelectTool(BasicTool):
     def _on_start_using_tool(self):
-        self._view.setInteractive( True )
         self._view.viewport().setCursor( Qt.ArrowCursor )
         
     def _handle_press_event(self, event):
         BasicTool._handle_press_event( self, event )
-        return False # always redirect to default implementation for selection
-    
-    def _handle_release_event(self, event):
-        return False # always redirect to default implementation for selection
+        clicked_item = self._view.itemAt( event.pos() )
+        if clicked_item is not None:
+            self._view.select_item_element( clicked_item )
+
 
 class PanTool(BasicTool):
     def _on_start_using_tool(self):
-        self._view.setInteractive( False )
         self._view.viewport().setCursor( Qt.OpenHandCursor )
 
     def _handle_press_event(self, event):
@@ -156,54 +204,53 @@ Need to get current selected item to:
         self._active_tool = None
 
     def _get_tool_for_event_location(self,event):
-        selector_tool = self._view.get_selected_item_selector_tool()
-        if selector_tool is None:
-            return None, None
-        scene_pos = self._view.mapToScene( event.pos() )
-        origin_pos = self._view.mapToScene( QtCore.QPoint() )
-        f = 10000
-        unit_pos = self._view.mapToScene( QtCore.QPoint( UNIT_VECTOR_COORDINATE*f,
-                                                         UNIT_VECTOR_COORDINATE*f ) )
-        unit_vector = unit_pos - origin_pos
-        tool = selector_tool.get_tool_for_location( scene_pos.x(), scene_pos.y(), 
-                                                    unit_vector / f )
-        return tool, scene_pos
+        item_at_pos = self._view.itemAt( event.pos() )
+        if item_at_pos is not None:
+            data = item_at_pos.data( KEY_TOOL )
+            activated_tool = None
+            if data.isValid():
+                activated_tool = data.toPyObject()
+            elif self._view.is_selected_item(item_at_pos):
+                activated_tool = self._view.get_current_inner_tool()
+            return activated_tool
+        return None
 
     def _handle_press_event(self, event):
         BasicTool._handle_press_event(self, event)
         # Commit previous tool if any
-        tool, scene_pos = self._get_tool_for_event_location( event )
         if self._active_tool:
             self._active_tool.cancel()
             self._active_tool = None
-        # Activate new tool if any any left mouse button is pressed
-        if tool is None or event.buttons() != Qt.LeftButton:
-            return False
-        self._active_tool = tool
-        tool.activated( scene_pos.x(), scene_pos.y() )
-        return True
+        if event.buttons() != Qt.LeftButton:
+            return
+        # Find if any tool handle was clicked by user
+        activated_tool = self._get_tool_for_event_location( event )
+        if activated_tool is not None:
+            self._active_tool = activated_tool 
+            print 'Selected tool:', self._active_tool
+            scene_pos = self._view.mapToScene( event.pos() )
+            self._active_tool.activated( scene_pos.x(), scene_pos.y() )
     
     def _handle_release_event(self, event):
         if self._active_tool is not None:
             scene_pos = self._view.mapToScene( event.pos() )
             self._active_tool.commit( scene_pos.x(), scene_pos.y() )
             self._active_tool = None
-            return True
-        return self._handle_move_event(event)
+        else:
+            self._handle_move_event(event)
 
     def _handle_move_event(self, event):
         # If a tool delegate has been activated, then forward all events
         if self._active_tool is not None:
             scene_pos = self._view.mapToScene( event.pos() )
             self._active_tool.on_mouse_move( scene_pos.x(), scene_pos.y() )
-            return True
-        # Otherwise try to find if one would be activated and change mouse cursor
-        tool = self._get_tool_for_event_location( event )[0]
-        if tool is None: # If None, then go back to selection
-            self._view.viewport().setCursor( Qt.ArrowCursor )
-            return False
-        tool.set_activable_mouse_cursor()
-        return True
+        else:
+            # Otherwise try to find if one would be activated and change mouse cursor
+            tool = self._get_tool_for_event_location( event )
+            if tool is None: # If None, then go back to selection
+                self._view.viewport().setCursor( Qt.ArrowCursor )
+            else:
+                tool.set_activable_mouse_cursor()
 
 # ###################################################################
 # ###################################################################
@@ -250,9 +297,10 @@ class ToolDelegate(object):
         item_pos = self.item.mapFromScene( scene_x, scene_y )
         print 'Activated:', self, item_pos.x(), item_pos.y()
         self.activation_pos = item_pos
+        self.last_pos = self.activation_pos
         self.activation_value = self.attribute_meta.get_native( self.element )
         self.activation_item_state = self.state_handler.get_item_state(self.item)
-        self.on_mouse_move( scene_x, scene_y )
+        self.on_mouse_move( scene_x, scene_y, is_activation = True )
         
     def cancelled(self):
         print 'Cancelled:', self
@@ -268,14 +316,25 @@ class ToolDelegate(object):
         attribute_value = self.on_mouse_move( scene_x, scene_y )
         print 'Committed:', self, attribute_value
         if attribute_value is not None:
-            self.attribute_meta.set_native(self.element, attribute_value)
+            # Delay until next event loop: destroying the scene while in event
+            # handler makes the application crash
+            self.view.delayed_element_property_update( self.element, 
+                                                       self.attribute_meta,
+                                                       attribute_value )
         self._reset()
     
-    def on_mouse_move(self, scene_x, scene_y):
+    def on_mouse_move(self, scene_x, scene_y, is_activation = False):
         item_pos = self.item.mapFromScene( scene_x, scene_y )
-        return self._on_mouse_move( item_pos.x(), item_pos.y() )
+        if is_activation:
+            self._on_activation( item_pos )
+        result = self._on_mouse_move( item_pos )
+        self.last_pos = item_pos
+        return result
+
+    def _on_activation(self, item_pos):
+        pass
     
-    def _on_mouse_move(self, item_x, item_y):
+    def _on_mouse_move(self, item_pos):
         raise NotImplemented()
 
 class MoveToolDelegate(ToolDelegate):
@@ -283,11 +342,33 @@ class MoveToolDelegate(ToolDelegate):
         ToolDelegate.__init__( self, view, element, item, attribute_meta, state_handler,
                                activable_cursor = Qt.SizeAllCursor )
         
-    def _on_mouse_move(self, item_x, item_y):
+    def _on_mouse_move(self, item_pos):
+        if self.activation_pos is None:
+            return None
+        delta_pos = item_pos - self.activation_pos
+        parent_pos = self.item.mapToParent(delta_pos)   
         self.restore_activation_state()
-        parent_pos = self.item.mapToParent(item_x, item_y)
-        self.item.setPos( parent_pos.x(), parent_pos.y() )
+        self.item.setPos( parent_pos )
         return (parent_pos.x(), -parent_pos.y())
+
+class RotateToolDelegate(ToolDelegate):
+    def __init__(self, view, element, item, attribute_meta, state_handler):
+        ToolDelegate.__init__( self, view, element, item, attribute_meta, state_handler,
+                               activable_cursor = Qt.SizeAllCursor )
+        
+    def _on_mouse_move(self, item_pos):
+        activation_vector = self.activation_pos
+        if activation_vector.isNull():
+            activation_vector = QtCore.QPointF( 1.0, 0 ) # arbitrary move it
+        try:
+            angle = vector2d_angle( (activation_vector.x(), activation_vector.y()),
+                                    (item_pos.x(), item_pos.y()) )
+        except ValueError:
+            return None # Current mouse position is the Null vector @todo makes this last value
+        # Compute angle between initial press and new one
+        self.restore_activation_state()
+        self.item.rotate( -angle )
+        return angle
 
 class ScaleToolDelegate(ToolDelegate):
     pass
@@ -303,8 +384,11 @@ class RadiusToolDelegate(ToolDelegate):
         ToolDelegate.__init__( self, view, element, item, attribute_meta, state_handler,
                                activable_cursor = Qt.SizeBDiagCursor )
         
-    def _on_mouse_move(self, item_x, item_y):
-        r = vector2d_length( item_x, item_y )
+    def _on_mouse_move(self, item_pos):
+        r_pos = vector2d_length( item_pos.x(), item_pos.y() )
+        r_activation = vector2d_length( self.activation_pos.x(),
+                                        self.activation_pos.y() )
+        r = abs(self.activation_value + r_pos - r_activation)
         self.item.setRect( -r, -r, r*2, r*2 )
         return r
 
@@ -317,7 +401,7 @@ class RadiusToolDelegate(ToolDelegate):
 class StateManager(object):
     def get_item_state(self, item):
         """Returns an object representing the current item state."""
-        return (item.transform(), self._get_item_state(item))
+        return (item.pos(), item.transform(), self._get_item_state(item))
     
     def _get_item_state(self, item): #IGNORE:W0613
         """Returns an object represent the state specific to the item type."""
@@ -325,7 +409,8 @@ class StateManager(object):
     
     def restore_item_state(self, item, state):
         """Restore the item in the state capture by get_item_state."""
-        transform, specific_state = state
+        pos, transform, specific_state = state
+        item.setPos( pos )
         item.setTransform( transform ) 
         self._set_item_state( item, specific_state )
         
@@ -356,7 +441,40 @@ class EllipseStateManager(StateManager):
 # ###################################################################
 # ###################################################################
 
-
+# Tool selector needs to handle:
+# Move: inside
+# Resize: 
+# - on rectange: 4 corners, rely on shift modifier to force horizontal/vertical only
+# - on circle: 4 middle crossing the axis
+# Rotate: 
+# - on rectangle: 4 middle handles
+# - on circle: 4 handles spread over at 45 degrees
+# From code analysis:
+# Can not do that by hacking paint event
+# Conclusion: can only makes those scene item
+# => use high Z (-1000000)
+# Do it at the scene level as at item lower would force item to be composite.
+# Scene level means:
+# -> Creates/destroy item on selection change, hide them during operation
+# -> associates them with selected item
+# -> compute handle position in item coordinate and map to scene
+# -> handle should show no direction (avoid rotation transformation issue)
+# -> use item events ?
+#
+# -> creating items:
+# depends on the shape of the item => equivalent to the tool selector
+# for a given item/element type, creates corresponding manipulators:
+# * Rectangle/Pixmap: 
+# - a resize handle in each corner
+# - a rotation handle on each side middle
+# * Circle:
+# - a resize handle in each side middle
+# - a rotate handle on each 45 degrees angle
+# A move operation is triggered if the user click on the object and no manipulator.
+# Square handle: resize
+# Round handle: rotate
+# When clicked, the manipulator is hidden, but set the active tool.
+# The view is no longer interactive, and the 
 class ToolSelector(object):
     """Responsible for selecting the ToolDelegate corresponding to the mouse location.
     """
@@ -387,34 +505,76 @@ class ToolSelector(object):
         """
         raise NotImplemented()
 
-class CircleToolSelector(ToolSelector):
-    """Select move or radius for circle."""
-    def __init__(self, view, element, item):
-        ToolSelector.__init__( self, view, element, item )
-        self.attribute_radius = None
+# ###################################################################
+# ###################################################################
+# Tools Factories
+# ###################################################################
+# ###################################################################
+class ToolsFactory(object):
+    """Responsible for creating and positioning the "handle" items used to
+       activate tools (rotate, resize...) when clicked.
+    """  
+    def create_tools(self, item, element, view ):
+        raise NotImplemented()
+    
+    def get_pixel_length(self, view):
+        """Returns the length of a pixel in scene unit."""
+        origin_pos = view.mapToScene( QtCore.QPoint() )
+        f = 10000
+        unit_pos = view.mapToScene( QtCore.QPoint( UNIT_VECTOR_COORDINATE*f,
+                                                   UNIT_VECTOR_COORDINATE*f ) )
+        unit_vector = (unit_pos - origin_pos) / f
+        unit_length = vector2d_length( unit_vector.x(), unit_vector.y() )
+        return unit_length
+
+class CircleToolsFactory(ToolsFactory):
+
+    def make_tools(self, item, element, view):
+        attribute_radius = None
         attribute_center = None
         for attribute_meta in element.meta.attributes:
             if attribute_meta.type == metaworld.RADIUS_TYPE:
-                self.attribute_radius = attribute_meta
+                attribute_radius = attribute_meta
             elif attribute_meta.type == metaworld.XY_TYPE:
                 attribute_center = attribute_center or attribute_meta
         state_manager = EllipseStateManager()
         self.move_tool = MoveToolDelegate( view, element, item, attribute_center,
                                            state_manager )
-        self.radius_tool = RadiusToolDelegate( view, element, item, self.attribute_radius,
+        self.radius_tool = RadiusToolDelegate( view, element, item, attribute_radius,
                                                state_manager )
-        
-    def _get_tool_for_location(self, item_pos, unit):
-        distance = vector2d_length( item_pos.x(), item_pos.y() )
-        radius = 0
-        if self.attribute_radius is not None:
-            radius = self.attribute_radius.get_native(self.element, 0.0)
-        radius = max(5*unit, radius) # if radius small than 5 pixels, then enlarge
-        if distance <= radius:
-            return self.move_tool
-        elif distance <= radius + 5 * unit:
-            return self.radius_tool
-        return None
+    
+    def create_tools(self, item, element, view ):
+        rect = item.boundingRect()
+        y_mid = rect.y()+ rect.height() / 2.0
+        x_mid = rect.x() + rect.width() / 2.0
+        radius_tool_pos = [ QtCore.QPointF(rect.x(), y_mid), 
+                            QtCore.QPointF(rect.right(),y_mid), 
+                            QtCore.QPointF(x_mid,rect.y()), 
+                            QtCore.QPointF(x_mid,rect.bottom()) ]
+        rotate_tool_pos = [ rect.topLeft(), rect.topRight(), 
+                           rect.bottomLeft(), rect.bottomRight() ]
+        items = []
+        pixel_length = self.get_pixel_length( view )
+        item_pos = item.mapToScene( QtCore.QPointF() )
+        self.make_tools( item, element, view )
+#        for index, positions in enumerate( (radius_tool_pos, rotate_tool_pos) ):
+        for index, positions in enumerate( (radius_tool_pos, ) ):
+            for pos in positions:
+                size = QtCore.QPointF( 3*pixel_length, 3*pixel_length )
+                bound = QtCore.QRectF( pos - size, pos + size )
+                if index == 0:
+                    tool_item = view.scene().addRect( bound )
+                    tool = self.radius_tool
+                else:
+                    tool_item = view.scene().addEllipse( bound )
+                    tool = self.move_tool
+                tool_item.setPos( item_pos )
+                tool_item.setZValue( Z_TOOL_ITEMS )
+                tool_item.setData( KEY_TOOL, QtCore.QVariant( tool ) )
+                items.append( tool_item )
+        return self.move_tool, items
+
+
 
 class LevelGraphicView(QtGui.QGraphicsView):
     """A graphics view that display scene and level elements.
@@ -434,7 +594,9 @@ class LevelGraphicView(QtGui.QGraphicsView):
         self.__scene_elements = set()
         self.__level_elements = set()
         self.__tools_by_actions = {}
-        self.__tools_group = None 
+        self.__tools_group = None
+        self._delayed_property_updates = []
+        self._delayed_timer_id = None
         for name, action in tools_actions.iteritems():
             self.__tools_by_actions[action] = name
             self.__tools_group = self.__tools_group or action.actionGroup()
@@ -444,13 +606,18 @@ class LevelGraphicView(QtGui.QGraphicsView):
             TOOL_MOVE: MoveOrResizeTool(self)
             }
         self._active_tool = None
+        self._tools_handle_items = []
+        self._current_inner_tool = None
         self._items_by_element = {}
         self._selection_tool_degates_cache = (None,[])
         self.setScene( self.__scene )
+        # Notes: we disable interactive mode. It is very easily to make the application
+        # crash when interactive mode is allowed an mouse events are "sometimes" 
+        # accepted by the overridden view. Instead, we handle selection and panning
+        # ourselves.
+        self.setInteractive( False )
         self.refreshFromModel()
         self.scale( 1.0, 1.0 )
-        self.connect( self.__scene, QtCore.SIGNAL('selectionChanged()'),
-                      self._sceneSelectionChanged )
         self.setRenderHints( QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform )
         # Subscribes to level element change to refresh the view
         for tree in self.__world.trees:
@@ -466,25 +633,67 @@ class LevelGraphicView(QtGui.QGraphicsView):
     def world(self):
         return self.__world
 
+    def is_selected_item(self, item):
+        data = item.data( KEY_ELEMENT )
+        if data.isValid():
+            return data.toPyObject() in self.__world.selected_elements
+        return False
+
     def get_enabled_view_tools(self):
         return set( [TOOL_PAN, TOOL_SELECT, TOOL_MOVE] )
 
-    # Tool selection requires knowledge about the shape
-    # Primary shape: center and radius or width or scale
-    #     Some information are only available on run-time: pixmap size for scaling
-    #     for example.
-    #     it is easier to ask this to the item
-    # ==> rely on item for shape definition
-    def get_selected_item_selector_tool(self):
+    def get_current_inner_tool(self):
+        """Returns the tool delegate to use when the user click inside a shape.
+           This is usually the MoveToolDelegate.
+        """
+        return self._current_inner_tool
+
+    def _update_tools_handle(self):
+        """Updates tools' handle on current select item. 
+           Must be called whenever the scale factory change or selection change.
+        """
+        # Removes any existing handle
+        # Notes: we need to be very careful there, removing item that have been removed
+        # by other means such as clear() cause the application to crash.
+        for tool_item in self._tools_handle_items:
+            self.scene().removeItem( tool_item )
+        self._tools_handle_items = []
+        self._current_inner_tool = None 
+        # get selected elements, corresponding item and generate new handles
         elements = self.__world.selected_elements
         if len(elements) != 1: # @todo handle multiple selection
-            return None
+            return
+        if self._get_active_tool() != self._tools_by_name[TOOL_MOVE]:
+            return # No handle for select or pan tool
         element = iter(elements).next()
         item = self._items_by_element.get( element )
         if item is None:
-            return None
+            return
+        factory_type = None
         if isinstance( item, QtGui.QGraphicsEllipseItem ):
-            return CircleToolSelector(self, element, item)
+            factory_type = CircleToolsFactory
+        if factory_type is not None:
+            self._current_inner_tool, self._tools_handle_items = \
+                factory_type().create_tools(item, element, self)
+        for tool_item in self._tools_handle_items:
+            # Prevent the item from being selected
+            tool_item.setAcceptedMouseButtons( Qt.NoButton ) 
+
+    def delayed_element_property_update(self, element, attribute_meta, new_value):
+        self._delayed_property_updates.append( (element, attribute_meta, new_value) )
+        if self._delayed_timer_id is None:
+            self._delayed_timer_id = self.startTimer(0)
+        
+    def timerEvent(self, event):
+        if event.timerId() == self._delayed_timer_id:
+            self.killTimer( self._delayed_timer_id )
+            self._delayed_timer_id = None
+            pending, self._delayed_property_updates = self._delayed_property_updates, []
+            for element, attribute_meta, new_value in pending:
+                attribute_meta.set_native( element, new_value )
+            event.accept()
+        else:
+            QtGui.QGraphicsView.timerEvent(self, event)
         
 #        if self._selection_tool_degates_cache[0] == element:
 #            return self._selection_tool_degates_cache[1][:]
@@ -527,6 +736,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
         if self._active_tool:
             self._active_tool.stop_using_tool()
         self._get_active_tool().start_using_tool()
+        self._update_tools_handle()
 #        if tool_name == TOOL_SELECT:
 #            self.setDragMode( QtGui.QGraphicsView.NoDrag )
 #        elif tool_name == TOOL_PAN:
@@ -535,6 +745,15 @@ class LevelGraphicView(QtGui.QGraphicsView):
     def selectLevelOnSubWindowActivation( self ):
         """Called when the user switched MDI window."""
         self.__world.game_model.selectLevel( self.__world.key )
+
+    def select_item_element(self, item):
+        """Selects the element corresponding to the specified item.
+           Called when the user click on an item with the selection tool.
+        """
+        data = item.data( KEY_ELEMENT )
+        if data.isValid():
+            element = data.toPyObject()
+            self.__world.set_selection( element )
 
     def _get_active_tool(self):
         name = self.__tools_by_actions.get( self.__tools_group.checkedAction() )
@@ -545,31 +764,19 @@ class LevelGraphicView(QtGui.QGraphicsView):
         return tool
 
     def mousePressEvent(self, event):
-        accepted = self._get_active_tool().on_mouse_press_event( event )
-        assert accepted is not None  
-        if not accepted:
-            QtGui.QGraphicsView.mousePressEvent( self, event )
-        else:
-            event.accept()
+        self._get_active_tool().on_mouse_press_event( event )
+        event.accept()
 
     def mouseReleaseEvent(self, event):
-        accepted = self._get_active_tool().on_mouse_release_event( event )
-        assert accepted is not None  
-        if not accepted:
-            QtGui.QGraphicsView.mouseReleaseEvent( self, event )
-        else:
-            event.accept()
+        self._get_active_tool().on_mouse_release_event( event )
+        event.accept()
 
     def mouseMoveEvent( self, event):
         pos = self.mapToScene( event.pos() ) 
         self.emit( QtCore.SIGNAL('mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)'), pos.x(), pos.y() )
 
-        accepted = self._get_active_tool().on_mouse_move_event( event )
-        assert accepted is not None  
-        if not accepted:
-            QtGui.QGraphicsView.mouseMoveEvent( self, event )
-        else:
-            event.accept()
+        self._get_active_tool().on_mouse_move_event( event )
+        event.accept()
 
     def wheelEvent(self, event):
         """Handle zoom when wheel is rotated."""
@@ -591,19 +798,11 @@ class LevelGraphicView(QtGui.QGraphicsView):
             return
 
         self.scale(scaleFactor, scaleFactor)
-
-    def _sceneSelectionChanged( self ):
-        """Called whenever the selection change in the scene (e.g. user click on an item)."""
-        items = self.__scene.selectedItems()
-        if len(items) == 1: # do not handle multiple selection for now
-            for item in items:
-##                print 'selection changed', item
-                element = item.data(0).toPyObject()
-                assert element is not None, "Hmmm, forgot to associate a data to that item..."
-                element.world.set_selection( element )
+        self._update_tools_handle()
 
     def _on_selection_change(self, selection, #IGNORE:W0613
-                             selected_elements, deselected_elements): 
+                             selected_elements, deselected_elements,
+                             **kwargs): 
         """Ensures that the selected element is seleted in the graphic view.
            Called whenever an element is selected in the tree view or the graphic view.
         """
@@ -612,7 +811,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
         # to the item group, which caused infinite recursion (unselect child,
         # then unselect parent, selection parent...)
         for item in self.__scene.items():
-            element = item.data(0).toPyObject()
+            element = item.data(KEY_ELEMENT).toPyObject()
             if element in selection:
 ##                print 'Selecting', item, 'isSelected =', item.isSelected()
 ##                print '    Group is', item.group()
@@ -622,6 +821,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
 ##                print 'Unselecting', item, 'isSelected =', item.isSelected()
 ##                print '    Group is', item.group()
                 item.setSelected( False )
+        self._update_tools_handle()
 
     def getLevelModel( self ):
         return self.__world
@@ -645,6 +845,8 @@ class LevelGraphicView(QtGui.QGraphicsView):
         elements_to_skip = elements_to_skip or set()
         scene = self.__scene
         scene.clear()
+        self._tools_handle_items = []
+        self._current_inner_tool = None
         self._items_by_element = {}
         self.__balls_by_id = {}
         self.__strands = []
@@ -664,6 +866,9 @@ class LevelGraphicView(QtGui.QGraphicsView):
 ##        print 'ItemsBoundingRect:', scene.itemsBoundingRect()
 ##        for item in self.items():
 ##            print 'Item:', item.boundingRect()
+
+        # Select currently selected item if any
+        self._on_selection_change( self.__world.selected_elements, set(), set() )
 
     def _addElements( self, scene, element, element_set, elements_to_skip ):
         """Adds graphic item for 'element' to the scene, and add the element to element_set.
@@ -700,7 +905,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
         if builder:
             item = builder( scene, element )
             if item:
-                item.setData( 0, QtCore.QVariant( element ) )
+                item.setData( KEY_ELEMENT, QtCore.QVariant( element ) )
                 item.setFlag( QtGui.QGraphicsItem.ItemIsSelectable, True )
                 if element.tag == 'compositegeom':
                     composite_item = item
@@ -801,7 +1006,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
             if item1 and item2:
                 p1, p2 = item1.pos(), item2.pos()
                 strand_item = scene.addLine( p1.x(), p1.y(), p2.x(), p2.y(), pen )
-                strand_item.setData( 0, QtCore.QVariant( element ) )
+                strand_item.setData( KEY_ELEMENT, QtCore.QVariant( element ) )
                 self._items_by_element[element] = strand_item
 
     def _levelStrandBuilder( self, scene, element ): #IGNORE:W0613
@@ -1037,3 +1242,40 @@ class LevelGraphicView(QtGui.QGraphicsView):
         item.setDefaultTextColor( QtGui.QColor( 168, 28, 255 ) )
         self._setSceneItemXYZ( item, x,y )
         return item
+
+
+if __name__ == "__main__":
+    import unittest
+
+    class VectorTest(unittest.TestCase):
+
+        def test_angle(self):
+            def check_unit_rotation(angle, f = 1):
+                u = (1,0)
+                v = (math.cos( math.radians(angle) )*f, 
+                     math.sin( math.radians(angle) )*f)
+                actual = vector2d_angle( u, v )
+                self.assertAlmostEquals( angle, actual, 1 )
+            for factor in (1,5): 
+                check_unit_rotation( 0, factor )
+                check_unit_rotation( 45, factor )
+                check_unit_rotation( 10, factor )
+                check_unit_rotation( 60, factor )
+                check_unit_rotation( 89, factor )
+                check_unit_rotation( 90, factor )
+                check_unit_rotation( 135, factor )
+                check_unit_rotation( 180, factor )
+                check_unit_rotation( -170, factor )
+                check_unit_rotation( -90, factor )
+                check_unit_rotation( -45, factor )
+                check_unit_rotation( -10, factor )
+            a0 = (100,0)
+            a45 = (10,10) 
+            a90 = (0,11)
+            am45 = (10,-10) 
+            am90 = (0,-1)
+            self.assertAlmostEquals( -45, vector2d_angle( a45, a0 ), 1 )
+            self.assertAlmostEquals( 45, vector2d_angle( a45, a90 ), 1 )
+            self.assertAlmostEquals( -90, vector2d_angle( a45, am45 ), 1 )
+            self.assertAlmostEquals( 180, vector2d_angle( a90, am90 ), 1 )
+    unittest.main()
