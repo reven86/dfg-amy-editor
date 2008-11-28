@@ -23,7 +23,32 @@ UNIT_VECTOR_COORDINATE = math.sqrt(0.5)
 KEY_ELEMENT = 0
 KEY_TOOL = 1
 
-global traced_level
+# Rectangle corner/middle position identifiers
+# Each position is made of a tuple (weight0, weight1, weight2, weight3) were
+# each weight correspond respectively to the weight of corner
+# top-left, top-right, bottom-right and bottom-left respectively.
+# The sum of the weight must always be equal to 1.0
+POS_TOP_LEFT = (1,0, 0,0)
+POS_TOP_CENTER = (0.5,0.5, 0,0)
+POS_TOP_RIGHT = (0,1, 0,0)
+POS_CENTER_LEFT = (0.5,0, 0,0.5)
+POS_CENTER = (0.25,0.25, 0.25,0.25)
+POS_CENTER_RIGHT = (0,0.5, 0.5,0)
+POS_BOTTOM_LEFT = (0,0, 0,1)
+POS_BOTTOM_CENTER = (0,0, 0.5,0.5)
+POS_BOTTOM_RIGHT = (0,0, 1,0)
+def poly_weighted_pos(rect, weights):
+    """Given a rectangle, computes the specified position. 
+       @param pos tuple (xmin_weigth,xmax_weigth,ymin_weight,ymax_weight)
+    """
+    assert sum(weights) == 1.0
+    weighted_pos = [rect[index] * weight 
+                    for index,weight in enumerate(weights)]
+    pos = weighted_pos[0]
+    for weigthed in weighted_pos[1:]:
+        pos += weigthed
+    return pos
+
 traced_level = 0
 
 TRACED_ACTIVE = False
@@ -268,7 +293,8 @@ class ToolDelegate(object):
        - cancel or commit change to the underlying element attribute.
     """
     def __init__(self, view, element, item, attribute_meta, state_handler,
-                 activable_cursor = None, activated_cursor = None):
+                 position_is_center = False, activable_cursor = None, 
+                 activated_cursor = None):
         self.view = view
         self.element = element
         self.item = item
@@ -276,6 +302,7 @@ class ToolDelegate(object):
         self.state_handler = state_handler
         self.activable_cursor = activable_cursor
         self.activated_cursor = activated_cursor or activable_cursor
+        self.position_is_center = position_is_center
         self._reset()
         
     def _reset(self): 
@@ -338,22 +365,42 @@ class ToolDelegate(object):
         raise NotImplemented()
 
 class MoveToolDelegate(ToolDelegate):
-    def __init__(self, view, element, item, attribute_meta, state_handler):
-        ToolDelegate.__init__( self, view, element, item, attribute_meta, state_handler,
+    def __init__(self, view, element, item, state_handler, position_is_center, attribute_meta):
+        ToolDelegate.__init__( self, view, element, item, state_handler, 
+                               position_is_center, attribute_meta,
                                activable_cursor = Qt.SizeAllCursor )
+        
+    def get_item_center_offset_in_parent(self):
+        """Returns the offset of the center.
+           Some item such as pixmap have their position in the top-left corner.
+        """
+        if self.position_is_center:
+            return QtCore.QPointF()
+        bounding_rect = self.item.mapToParent( self.item.boundingRect() )
+        center = poly_weighted_pos( bounding_rect, POS_CENTER )
+        top_left = poly_weighted_pos( bounding_rect, POS_TOP_LEFT )
+        offset = center - top_left
+        return offset
         
     def _on_mouse_move(self, item_pos):
         if self.activation_pos is None:
             return None
         delta_pos = item_pos - self.activation_pos
-        parent_pos = self.item.mapToParent(delta_pos)   
+        parent_pos = self.item.mapToParent(delta_pos)
+#        print 'Delta: %.2f, %.2f, New pos: %.2f, %.2f' % (delta_pos.x(), delta_pos.y(),
+#                                                          parent_pos.x(), parent_pos.y())
         self.restore_activation_state()
         self.item.setPos( parent_pos )
-        return (parent_pos.x(), -parent_pos.y())
+        
+        center_offset = self.get_item_center_offset_in_parent()
+        element_pos = parent_pos + center_offset
+        return element_pos.x(), -element_pos.y() 
 
 class RotateToolDelegate(ToolDelegate):
-    def __init__(self, view, element, item, attribute_meta, state_handler):
-        ToolDelegate.__init__( self, view, element, item, attribute_meta, state_handler,
+    def __init__(self, view, element, item, state_handler, position_is_center, 
+                 attribute_meta):
+        ToolDelegate.__init__( self, view, element, item, state_handler, 
+                               position_is_center, attribute_meta,
                                activable_cursor = Qt.SizeAllCursor )
         
     def _on_mouse_move(self, item_pos):
@@ -370,6 +417,52 @@ class RotateToolDelegate(ToolDelegate):
         self.item.rotate( -angle )
         return angle
 
+class MoveAndScaleToolDelegate(ToolDelegate):
+    def __init__(self, view, element, item, state_handler, position_is_center, 
+                 attribute_center, attribute_scale):
+        ToolDelegate.__init__( self, view, element, item, state_handler, 
+                               position_is_center, attribute_center,
+                               activable_cursor = Qt.SizeBDiagCursor )
+        self.attribute_scale = attribute_scale
+        self.rect_position = None 
+        
+    def set_rect_position(self,rect_position):
+        assert self.rect_position is None
+        self.rect_position = rect_position 
+        
+    def _on_mouse_move(self, item_pos):
+        if self.activation_pos is None:
+            return None
+        parent_item_pos = self.item.mapToParent(item_pos)
+        self.restore_activation_state()
+        # compute position based on activation center
+        base_item_pos = self.item.mapFromParent(parent_item_pos)
+        # compute delta compared to activation click position
+        delta_pos = base_item_pos - self.activation_pos
+        # compute new x/y min/max
+        pixmap = self.item.pixmap()
+        pixmap_width, pixmap_height = pixmap.width(), pixmap.height()
+        x, y = self.item.pos().x(), self.item.pos().y()  
+        xminmax = (x - pixmap_width / 2, x + pixmap_width / 2)
+        yminmax = (y - pixmap_height / 2, y + pixmap_height / 2)
+        print xminmax
+        for index in (0,1):
+            if self.rect_position[index] == 1:
+                xminmax[index] += delta_pos.x()
+            if self.rect_position[index+2] == 1: # +2 = yminmax weigth offset
+                yminmax[index] += delta_pos.y()
+        # Compute new center and scale
+        # Given a rectangle:
+        # - compute center
+        # - compute scale factor: rect size / pixmap size
+        x_center, y_center = sum(xminmax) / 2.0, sum(yminmax) / 2.0
+        new_center = self.item.mapToParent( x_center, y_center )
+        return None
+        
+        
+#        self.item.setPos( parent_pos )
+#        return (parent_pos.x(), -parent_pos.y())
+
 class ScaleToolDelegate(ToolDelegate):
     pass
 
@@ -380,9 +473,14 @@ class ResizeToolDelegate(ToolDelegate):
     pass
 
 class RadiusToolDelegate(ToolDelegate):
-    def __init__(self, view, element, item, attribute_meta, state_handler):
-        ToolDelegate.__init__( self, view, element, item, attribute_meta, state_handler,
+    def __init__(self, view, element, item, state_handler, position_is_center, 
+                 attribute_meta):
+        ToolDelegate.__init__( self, view, element, item, state_handler, 
+                               position_is_center, attribute_meta,
                                activable_cursor = Qt.SizeBDiagCursor )
+        
+    def set_rect_position(self,position):
+        pass
         
     def _on_mouse_move(self, item_pos):
         r_pos = vector2d_length( item_pos.x(), item_pos.y() )
@@ -391,6 +489,160 @@ class RadiusToolDelegate(ToolDelegate):
         r = abs(self.activation_value + r_pos - r_activation)
         self.item.setRect( -r, -r, r*2, r*2 )
         return r
+
+
+# ###################################################################
+# ###################################################################
+# Tools Factories
+# ###################################################################
+# ###################################################################
+# Tool selector needs to handle:
+# Move: inside
+# Resize: 
+# - on rectangle: 4 corners, rely on shift modifier to force horizontal/vertical only
+# - on circle: 4 middle crossing the axis
+# Rotate: 
+# - on rectangle: 4 middle handles
+# - on circle: 4 handles spread over at 45 degrees
+# Using scene item has handle implies:
+# -> Creates/destroy item on selection change, hide them during operation
+# -> associates them with selected item
+# -> compute handle position in item coordinate and map to scene
+# -> handle should show no direction (avoid rotation transformation issue)
+#
+class ToolsFactory(object):
+    """Responsible for creating and positioning the "handle" items used to
+       activate tools (rotate, resize...) when clicked.
+    """  
+    
+    def get_pixel_length(self, view):
+        """Returns the length of a pixel in scene unit."""
+        origin_pos = view.mapToScene( QtCore.QPoint() )
+        f = 10000
+        unit_pos = view.mapToScene( QtCore.QPoint( UNIT_VECTOR_COORDINATE*f,
+                                                   UNIT_VECTOR_COORDINATE*f ) )
+        unit_vector = (unit_pos - origin_pos) / f
+        unit_length = vector2d_length( unit_vector.x(), unit_vector.y() )
+        return unit_length
+
+    
+    def create_tools(self, item, element, view ):
+        """Creates graphic scene item representing the tool handle.
+           Returns: tuple(move_tool, list of items)
+        """
+        self._make_tools( item, element, view, self._get_state_manager() )
+        resize_tool_pos, rotate_tool_pos = self._get_tools_positions()
+        bouding_poly = item.mapToScene( item.boundingRect() )
+#        for index in range(0,4):
+#            pos = bouding_poly[index]
+#            print 'Bounding poly [%d] = %.2f, %.2f' % (index, pos.x(), pos.y())
+        items = []
+        pixel_length = self.get_pixel_length( view )
+        item_pos = item.mapToScene( QtCore.QPointF() )
+        for tool_index, positions in enumerate( (resize_tool_pos, rotate_tool_pos) ):
+            for pos_index, position in enumerate( positions ):
+                pos = poly_weighted_pos( bouding_poly, position )
+#                print 'Tool %d, index %d %s: %.2f,%.2f' % (tool_index, pos_index, position,
+#                                                           pos.x(), pos.y() ) 
+                size = QtCore.QPointF( 3*pixel_length, 3*pixel_length )
+                bound = QtCore.QRectF( pos - size, pos + size )
+                if tool_index == 0:
+                    tool_item = view.scene().addRect( bound )
+                    tool = self.resize_tools[pos_index]
+                    tool.set_rect_position( position )
+                else:
+                    tool_item = view.scene().addEllipse( bound )
+                    tool = self.rotate_tools[pos_index]
+                tool_item.setZValue( Z_TOOL_ITEMS )
+                tool_item.setData( KEY_TOOL, QtCore.QVariant( tool ) )
+                items.append( tool_item )
+        return self.move_tool, items
+
+    def _make_tools(self, item, element, view, state_manager):
+        attribute_radius = None
+        attribute_center = None
+        attribute_size = None
+        attribute_scale = None
+        attribute_angle = None
+        for attribute_meta in element.meta.attributes:
+            if attribute_meta.type == metaworld.RADIUS_TYPE:
+                attribute_radius = attribute_meta
+            elif attribute_meta.type == metaworld.XY_TYPE:
+                attribute_center = attribute_center or attribute_meta
+            elif attribute_meta.type == metaworld.SIZE_TYPE:
+                attribute_size = attribute_center or attribute_meta
+            elif attribute_meta.type == metaworld.SCALE_TYPE:
+                attribute_scale = attribute_center or attribute_meta
+            elif attribute_meta.type in (metaworld.ANGLE_DEGREES_TYPE, 
+                                         metaworld.ANGLE_RADIANS_TYPE):
+                attribute_angle = attribute_angle or attribute_meta
+        position_is_center = not self._center_is_top_left()
+        def make_delegate( type, attribute, *args ):
+            if attribute is not None:
+                return type( view, element, item, attribute, state_manager, 
+                             position_is_center, *args )
+            return None
+        self.move_tool = make_delegate( MoveToolDelegate, attribute_center )
+        if attribute_radius is not None:
+            self.resize_tools = [ make_delegate( RadiusToolDelegate, 
+                                                 attribute_radius )
+                                  for i in range(0,4) ]
+        elif attribute_size is not None:
+            assert False # can not be resizable and be a pixmap!
+        elif attribute_scale is not None:
+            self.resize_tools = [ make_delegate( MoveAndScaleToolDelegate, attribute_center,
+                                                 attribute_scale ) 
+                                  for i in range(0,4) ] 
+        self.rotate_tools = [ make_delegate(RotateToolDelegate, attribute_angle) 
+                              for i in range(0,4) ]
+
+    def _get_tools_positions(self):
+        """Returns the of positions for the resize tools and the rotate tools."""
+        raise NotImplemented()
+
+    def _get_state_manager(self):
+        """Returns the state manager used to save and restore the state of the item."""
+        raise NotImplemented()
+
+    def _center_is_top_left(self):
+        """Indicates if the item position represents the center or the top-left corner of
+           the bounding box.
+        """
+        return False
+
+class CircleToolsFactory(ToolsFactory):
+
+    def _get_tools_positions(self):
+        """Returns the of positions for the resize tools and the rotate tools."""
+        resize_tool_pos = ( POS_TOP_CENTER, POS_BOTTOM_CENTER,
+                            POS_CENTER_LEFT, POS_CENTER_RIGHT ) 
+#        rotate_tool_pos = ( POS_TOP_LEFT, POS_TOP_RIGHT,
+#                            POS_BOTTOM_RIGHT, POS_BOTTOM_LEFT )
+        return  resize_tool_pos, ()
+
+    def _get_state_manager(self):
+        """Returns the state manager used to save and restore the state of the item."""
+        return EllipseStateManager()
+
+class PixmapToolsFactory(ToolsFactory):
+    """Pixmap may be either circle with image, rectangle with image, SceneLayer or
+       part of a compositgeom.
+    """
+
+    def _get_tools_positions(self):
+        """Returns the of positions for the resize tools and the rotate tools."""
+        resize_tool_pos = ( POS_TOP_CENTER, POS_BOTTOM_CENTER,
+                            POS_CENTER_LEFT, POS_CENTER_RIGHT ) 
+        rotate_tool_pos = ( POS_TOP_LEFT, POS_TOP_RIGHT,
+                            POS_BOTTOM_RIGHT, POS_BOTTOM_LEFT )
+        return  resize_tool_pos, rotate_tool_pos 
+
+    def _get_state_manager(self):
+        """Returns the state manager used to save and restore the state of the item."""
+        return PixmapStateManager()
+
+    def _center_is_top_left(self):
+        return True
 
 # ###################################################################
 # ###################################################################
@@ -418,7 +670,9 @@ class StateManager(object):
         """Restore the item specific state capture by _get_item_state()."""
         pass
 
-class RectangleStateManager(StateManager):
+PixmapStateManager = StateManager
+
+class RectStateManager(StateManager):
     def _get_item_state(self, item):
         return item.rect()
     
@@ -434,91 +688,6 @@ class EllipseStateManager(StateManager):
         item.setRect( rect )
         item.setStartAngle( start_angle )
         item.setSpanAngle( span_angle )
-
-
-# ###################################################################
-# ###################################################################
-# Tools Factories
-# ###################################################################
-# ###################################################################
-# Tool selector needs to handle:
-# Move: inside
-# Resize: 
-# - on rectangle: 4 corners, rely on shift modifier to force horizontal/vertical only
-# - on circle: 4 middle crossing the axis
-# Rotate: 
-# - on rectangle: 4 middle handles
-# - on circle: 4 handles spread over at 45 degrees
-# Using scene item has handle implies:
-# -> Creates/destroy item on selection change, hide them during operation
-# -> associates them with selected item
-# -> compute handle position in item coordinate and map to scene
-# -> handle should show no direction (avoid rotation transformation issue)
-#
-class ToolsFactory(object):
-    """Responsible for creating and positioning the "handle" items used to
-       activate tools (rotate, resize...) when clicked.
-    """  
-    def create_tools(self, item, element, view ):
-        raise NotImplemented()
-    
-    def get_pixel_length(self, view):
-        """Returns the length of a pixel in scene unit."""
-        origin_pos = view.mapToScene( QtCore.QPoint() )
-        f = 10000
-        unit_pos = view.mapToScene( QtCore.QPoint( UNIT_VECTOR_COORDINATE*f,
-                                                   UNIT_VECTOR_COORDINATE*f ) )
-        unit_vector = (unit_pos - origin_pos) / f
-        unit_length = vector2d_length( unit_vector.x(), unit_vector.y() )
-        return unit_length
-
-class CircleToolsFactory(ToolsFactory):
-
-    def make_tools(self, item, element, view):
-        attribute_radius = None
-        attribute_center = None
-        for attribute_meta in element.meta.attributes:
-            if attribute_meta.type == metaworld.RADIUS_TYPE:
-                attribute_radius = attribute_meta
-            elif attribute_meta.type == metaworld.XY_TYPE:
-                attribute_center = attribute_center or attribute_meta
-        state_manager = EllipseStateManager()
-        self.move_tool = MoveToolDelegate( view, element, item, attribute_center,
-                                           state_manager )
-        self.radius_tool = RadiusToolDelegate( view, element, item, attribute_radius,
-                                               state_manager )
-    
-    def create_tools(self, item, element, view ):
-        rect = item.boundingRect()
-        y_mid = rect.y()+ rect.height() / 2.0
-        x_mid = rect.x() + rect.width() / 2.0
-        radius_tool_pos = [ QtCore.QPointF(rect.x(), y_mid), 
-                            QtCore.QPointF(rect.right(),y_mid), 
-                            QtCore.QPointF(x_mid,rect.y()), 
-                            QtCore.QPointF(x_mid,rect.bottom()) ]
-        rotate_tool_pos = [ rect.topLeft(), rect.topRight(), 
-                           rect.bottomLeft(), rect.bottomRight() ]
-        items = []
-        pixel_length = self.get_pixel_length( view )
-        item_pos = item.mapToScene( QtCore.QPointF() )
-        self.make_tools( item, element, view )
-#        for index, positions in enumerate( (radius_tool_pos, rotate_tool_pos) ):
-        for index, positions in enumerate( (radius_tool_pos, ) ):
-            for pos in positions:
-                size = QtCore.QPointF( 3*pixel_length, 3*pixel_length )
-                bound = QtCore.QRectF( pos - size, pos + size )
-                if index == 0:
-                    tool_item = view.scene().addRect( bound )
-                    tool = self.radius_tool
-                else:
-                    tool_item = view.scene().addEllipse( bound )
-                    tool = self.move_tool
-                tool_item.setPos( item_pos )
-                tool_item.setZValue( Z_TOOL_ITEMS )
-                tool_item.setData( KEY_TOOL, QtCore.QVariant( tool ) )
-                items.append( tool_item )
-        return self.move_tool, items
-
 
 
 class LevelGraphicView(QtGui.QGraphicsView):
@@ -617,6 +786,8 @@ class LevelGraphicView(QtGui.QGraphicsView):
         factory_type = None
         if isinstance( item, QtGui.QGraphicsEllipseItem ):
             factory_type = CircleToolsFactory
+        elif isinstance( item, QtGui.QGraphicsPixmapItem ):
+            factory_type = PixmapToolsFactory
         if factory_type is not None:
             self._current_inner_tool, self._tools_handle_items = \
                 factory_type().create_tools(item, element, self)
