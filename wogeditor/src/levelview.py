@@ -363,6 +363,39 @@ class ToolDelegate(object):
     
     def _on_mouse_move(self, item_pos):
         raise NotImplemented()
+        
+    def get_item_bound(self):
+        if isinstance(self.item, QtGui.QGraphicsPixmapItem):
+            width, height = self.item.pixmap().width(), self.item.pixmap().height()
+            return QtCore.QRectF( 0, 0, width, height )
+        return self.item.boundingRect()
+        
+    def get_item_center_offset(self):
+        """Returns the offset of the center in the item coordinates.
+           Some item such as pixmap have their position in the top-left corner.
+        """
+        if self.position_is_center:
+            return QtCore.QPointF()
+        bounding_rect = self.get_item_bound()
+        return bounding_rect.center() - bounding_rect.topLeft()
+        
+    def get_item_center_offset_in_parent(self):
+        """Returns the offset of the center in the parent coordinates.
+           Some item such as pixmap have their position in the top-left corner.
+        """
+        if self.position_is_center:
+            return QtCore.QPointF()
+        bounding_rect = self.item.mapToParent( self.get_item_bound() )
+        center = poly_weighted_pos( bounding_rect, POS_CENTER )
+        offset = center - self.item.pos()
+        print 'Pos: %.f,%.f Center: %.f,%.f, Offset: %.f,%.f' % (
+            self.item.pos().x(), self.item.pos().y(),
+            center.x(), center.y(), 
+            offset.x(), offset.y() )
+        return offset
+
+    def get_item_center_pos(self):
+        return self.item.pos() + self.get_item_center_offset_in_parent()
 
 class MoveToolDelegate(ToolDelegate):
     def __init__(self, view, element, item, state_handler, position_is_center, attribute_meta):
@@ -370,31 +403,24 @@ class MoveToolDelegate(ToolDelegate):
                                position_is_center, attribute_meta,
                                activable_cursor = Qt.SizeAllCursor )
         
-    def get_item_center_offset_in_parent(self):
-        """Returns the offset of the center.
-           Some item such as pixmap have their position in the top-left corner.
-        """
-        if self.position_is_center:
-            return QtCore.QPointF()
-        bounding_rect = self.item.mapToParent( self.item.boundingRect() )
-        center = poly_weighted_pos( bounding_rect, POS_CENTER )
-        top_left = poly_weighted_pos( bounding_rect, POS_TOP_LEFT )
-        offset = center - top_left
-        return offset
-        
     def _on_mouse_move(self, item_pos):
         if self.activation_pos is None:
             return None
-        delta_pos = item_pos - self.activation_pos
-        parent_pos = self.item.mapToParent(delta_pos)
+        # compute parent delta based on activation click
+        parent_pos = self.item.mapToParent(item_pos)
+        self.restore_activation_state()
+        activation_parent_pos = self.item.mapToParent( self.activation_pos )
+        delta_pos = parent_pos - activation_parent_pos
+#       
 #        print 'Delta: %.2f, %.2f, New pos: %.2f, %.2f' % (delta_pos.x(), delta_pos.y(),
 #                                                          parent_pos.x(), parent_pos.y())
-        self.restore_activation_state()
-        self.item.setPos( parent_pos )
-        
-        center_offset = self.get_item_center_offset_in_parent()
-        element_pos = parent_pos + center_offset
-        return element_pos.x(), -element_pos.y() 
+        new_pos = self.item.pos() + delta_pos
+        self.item.setPos( new_pos )
+        if self.activation_value is None:
+            return delta_pos.x(), -delta_pos.y()
+        element_pos_x = self.activation_value[0] + delta_pos.x()
+        element_pos_y = self.activation_value[1] - delta_pos.y()
+        return element_pos_x, element_pos_y 
 
 class RotateToolDelegate(ToolDelegate):
     def __init__(self, view, element, item, state_handler, position_is_center, 
@@ -404,18 +430,29 @@ class RotateToolDelegate(ToolDelegate):
                                activable_cursor = Qt.SizeAllCursor )
         
     def _on_mouse_move(self, item_pos):
-        activation_vector = self.activation_pos
+        parent_pos = self.item.mapToParent( item_pos )
+        self.restore_activation_state()
+        center_pos = self.get_item_center_pos()
+        activation_vector = self.item.mapToParent( self.activation_pos ) - center_pos
+        new_vector = parent_pos - center_pos 
         if activation_vector.isNull():
             activation_vector = QtCore.QPointF( 1.0, 0 ) # arbitrary move it
         try:
             angle = vector2d_angle( (activation_vector.x(), activation_vector.y()),
-                                    (item_pos.x(), item_pos.y()) )
+                                    (new_vector.x(), new_vector.y()) )
         except ValueError:
             return None # Current mouse position is the Null vector @todo makes this last value
+#        print '  Activation: %.2f, %.2f Current: %.2f, %.2f Parent: %.f, %.f Center: %.f, %.f' % (
+#            activation_vector.x(), activation_vector.y(), 
+#            new_vector.x(), new_vector.y(),
+#            parent_pos.x(), parent_pos.y(),
+#            center_pos.x(), center_pos.y() )
         # Compute angle between initial press and new one
-        self.restore_activation_state()
-        self.item.rotate( -angle )
-        return angle
+        center_offset = self.get_item_center_offset() 
+        self.item.translate( center_offset.x(), center_offset.y() )
+        self.item.rotate( angle )
+        self.item.translate( -center_offset.x(), -center_offset.y() )
+        return (self.activation_value or 0.0) -angle
 
 class MoveAndScaleToolDelegate(ToolDelegate):
     def __init__(self, view, element, item, state_handler, position_is_center, 
@@ -631,9 +668,9 @@ class PixmapToolsFactory(ToolsFactory):
 
     def _get_tools_positions(self):
         """Returns the of positions for the resize tools and the rotate tools."""
-        resize_tool_pos = ( POS_TOP_CENTER, POS_BOTTOM_CENTER,
+        rotate_tool_pos = ( POS_TOP_CENTER, POS_BOTTOM_CENTER,
                             POS_CENTER_LEFT, POS_CENTER_RIGHT ) 
-        rotate_tool_pos = ( POS_TOP_LEFT, POS_TOP_RIGHT,
+        resize_tool_pos = ( POS_TOP_LEFT, POS_TOP_RIGHT,
                             POS_BOTTOM_RIGHT, POS_BOTTOM_LEFT )
         return  resize_tool_pos, rotate_tool_pos 
 
