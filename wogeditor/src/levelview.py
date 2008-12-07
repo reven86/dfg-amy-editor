@@ -1,5 +1,8 @@
 """Provides a visual representation of a LevelWorld using a QGraphicView.
 """
+# Notes of caution:
+# QRectF right edge is x + width, but QRect right edge is x + width -1
+
 
 from PyQt4 import QtCore, QtGui
 from PyQt4.QtCore import Qt
@@ -184,9 +187,22 @@ class SelectTool(BasicTool):
         
     def _handle_press_event(self, event):
         BasicTool._handle_press_event( self, event )
-        clicked_item = self._view.itemAt( event.pos() )
-        if clicked_item is not None:
-            self._view.select_item_element( clicked_item )
+        if (int(event.modifiers()) & int(Qt.AltModifier)) == 0: # select top-most item
+            clicked_item = self._view.itemAt( event.pos() )
+            if clicked_item is not None:
+                self._view.select_item_element( clicked_item )
+        else: # select item below current selection
+            clicked_items = self._view.items( event.pos() )
+            if len(clicked_items) > 0:
+                current_index = 0
+                for index, item in enumerate(clicked_items):
+                    if self._view.is_selected_item( item ):
+                        current_index = index
+                        break
+                selected_index = current_index - 1
+                if selected_index < 0:
+                    selected_index = len(clicked_items) - 1
+                self._view.select_item_element( clicked_items[selected_index] )
 
 
 class PanTool(BasicTool):
@@ -235,10 +251,13 @@ Need to get current selected item to:
             activated_tool = None
             if data.isValid():
                 activated_tool = data.toPyObject()
-            elif self._view.is_selected_item(item_at_pos):
-                activated_tool = self._view.get_current_inner_tool()
-            return activated_tool
-        return None
+                return activated_tool
+        # Allow move tool regardless or where the user is/click
+        return self._view.get_current_inner_tool()
+#            elif self._view.is_selected_item(item_at_pos):
+#                activated_tool = self._view.get_current_inner_tool()
+#            return activated_tool
+#        return None
 
     def _handle_press_event(self, event):
         BasicTool._handle_press_event(self, event)
@@ -252,7 +271,7 @@ Need to get current selected item to:
         activated_tool = self._get_tool_for_event_location( event )
         if activated_tool is not None:
             self._active_tool = activated_tool 
-            print 'Selected tool:', self._active_tool
+#            print 'Selected tool:', self._active_tool
             scene_pos = self._view.mapToScene( event.pos() )
             self._active_tool.activated( scene_pos.x(), scene_pos.y() )
     
@@ -319,18 +338,22 @@ class ToolDelegate(object):
             self.view.viewport().setCursor( self.activated_cursor )
 
     def activated(self, scene_x, scene_y):
-        print 'Activated:', self
+#        print 'Activated:', self
         self.set_activated_mouse_cursor()
         item_pos = self.item.mapFromScene( scene_x, scene_y )
-        print 'Activated:', self, item_pos.x(), item_pos.y()
+#        print 'Activated:', self, item_pos.x(), item_pos.y()
         self.activation_pos = item_pos
         self.last_pos = self.activation_pos
-        self.activation_value = self.attribute_meta.get_native( self.element )
+        self.activation_value = self._get_activation_value()
         self.activation_item_state = self.state_handler.get_item_state(self.item)
         self.on_mouse_move( scene_x, scene_y, is_activation = True )
+
+    def _get_activation_value(self): #@todo do we really need this ? We never modify the element until commit!
+        """Returns the activation value of the element."""
+        return self.attribute_meta.get_native( self.element )
         
     def cancelled(self):
-        print 'Cancelled:', self
+#        print 'Cancelled:', self
         if self.activation_item_state is not None:
             self.restore_activation_state()
         self._reset()
@@ -341,14 +364,22 @@ class ToolDelegate(object):
     
     def commit(self, scene_x, scene_y):
         attribute_value = self.on_mouse_move( scene_x, scene_y )
-        print 'Committed:', self, attribute_value
+#        print 'Committed:', self, attribute_value
         if attribute_value is not None:
-            # Delay until next event loop: destroying the scene while in event
-            # handler makes the application crash
-            self.view.delayed_element_property_update( self.element, 
-                                                       self.attribute_meta,
-                                                       attribute_value )
+            attributes_to_update = self._list_attributes_to_update( attribute_value )
+            for attribute_meta, value in attributes_to_update:
+                # Delay until next event loop: destroying the scene while in event
+                # handler makes the application crash
+                self.view.delayed_element_property_update( self.element, 
+                                                           attribute_meta,
+                                                           value )
         self._reset()
+        
+    def _list_attributes_to_update(self, attribute_value):
+        """Returns a list of tuple(attribute_meta, attribute_value).
+           Called on commit to update the element attributes.
+        """
+        return [ (self.attribute_meta, attribute_value) ]
     
     def on_mouse_move(self, scene_x, scene_y, is_activation = False):
         item_pos = self.item.mapFromScene( scene_x, scene_y )
@@ -388,16 +419,18 @@ class ToolDelegate(object):
         bounding_rect = self.item.mapToParent( self.get_item_bound() )
         center = poly_weighted_pos( bounding_rect, POS_CENTER )
         offset = center - self.item.pos()
-        print 'Pos: %.f,%.f Center: %.f,%.f, Offset: %.f,%.f' % (
-            self.item.pos().x(), self.item.pos().y(),
-            center.x(), center.y(), 
-            offset.x(), offset.y() )
+#        print 'Pos: %.f,%.f Center: %.f,%.f, Offset: %.f,%.f' % (
+#            self.item.pos().x(), self.item.pos().y(),
+#            center.x(), center.y(), 
+#            offset.x(), offset.y() )
         return offset
 
     def get_item_center_pos(self):
         return self.item.pos() + self.get_item_center_offset_in_parent()
 
 class MoveToolDelegate(ToolDelegate):
+    """This tool allow the user to move the element in its parent (scene or compositegeom).
+    """
     def __init__(self, view, element, item, state_handler, position_is_center, attribute_meta):
         ToolDelegate.__init__( self, view, element, item, state_handler, 
                                position_is_center, attribute_meta,
@@ -406,7 +439,8 @@ class MoveToolDelegate(ToolDelegate):
     def _on_mouse_move(self, item_pos):
         if self.activation_pos is None:
             return None
-        # compute parent delta based on activation click
+        # Compute delta between current position and activation click in parent coordinate
+        # then impact position with the delta (position is always in parent coordinate).
         parent_pos = self.item.mapToParent(item_pos)
         self.restore_activation_state()
         activation_parent_pos = self.item.mapToParent( self.activation_pos )
@@ -416,20 +450,25 @@ class MoveToolDelegate(ToolDelegate):
 #                                                          parent_pos.x(), parent_pos.y())
         new_pos = self.item.pos() + delta_pos
         self.item.setPos( new_pos )
-        if self.activation_value is None:
+        if self.activation_value is None: # Default value to (0,0)
             return delta_pos.x(), -delta_pos.y()
         element_pos_x = self.activation_value[0] + delta_pos.x()
         element_pos_y = self.activation_value[1] - delta_pos.y()
         return element_pos_x, element_pos_y 
 
 class RotateToolDelegate(ToolDelegate):
+    """This tool allow the user to rotate the element around its center.
+    """
     def __init__(self, view, element, item, state_handler, position_is_center, 
                  attribute_meta):
         ToolDelegate.__init__( self, view, element, item, state_handler, 
                                position_is_center, attribute_meta,
-                               activable_cursor = Qt.SizeAllCursor )
+                               activable_cursor = Qt.ArrowCursor )
         
     def _on_mouse_move(self, item_pos):
+        # Map current, activation position in parent coordinate
+        # Compute angle vectors based on the item center in parent coordinate
+        # The angle between both vectors give the angle of rotation to apply
         parent_pos = self.item.mapToParent( item_pos )
         self.restore_activation_state()
         center_pos = self.get_item_center_pos()
@@ -447,7 +486,7 @@ class RotateToolDelegate(ToolDelegate):
 #            new_vector.x(), new_vector.y(),
 #            parent_pos.x(), parent_pos.y(),
 #            center_pos.x(), center_pos.y() )
-        # Compute angle between initial press and new one
+        # Rotates around the item center
         center_offset = self.get_item_center_offset() 
         self.item.translate( center_offset.x(), center_offset.y() )
         self.item.rotate( angle )
@@ -455,6 +494,9 @@ class RotateToolDelegate(ToolDelegate):
         return (self.activation_value or 0.0) -angle
 
 class MoveAndScaleToolDelegate(ToolDelegate):
+    """This tool allow the user to move the corner of a pixmap.
+       It will automatically center position and scale factor accordingly.
+    """
     def __init__(self, view, element, item, state_handler, position_is_center, 
                  attribute_center, attribute_scale):
         ToolDelegate.__init__( self, view, element, item, state_handler, 
@@ -466,39 +508,97 @@ class MoveAndScaleToolDelegate(ToolDelegate):
     def set_rect_position(self,rect_position):
         assert self.rect_position is None
         self.rect_position = rect_position 
+
+    def _get_activation_value(self): #@todo do we really need this ? We never modify the element until commit!
+        """Returns the activation value of the element."""
+        return ( ToolDelegate._get_activation_value(self), 
+                 self.attribute_scale.get_native( self.element ) )
+        
+    def _list_attributes_to_update(self, attribute_value):
+        """Returns a list of tuple(attribute_meta, attribute_value).
+           Called on commit to update the element attributes.
+        """
+        return [(self.attribute_meta, attribute_value[0]),
+                (self.attribute_scale, attribute_value[1])]
         
     def _on_mouse_move(self, item_pos):
         if self.activation_pos is None:
             return None
-        parent_item_pos = self.item.mapToParent(item_pos)
+        # item pos is in coordinate system at scale 1 (= to image size)
+        # First, map the position to parent coordinate. Restore original item
+        # state and map the position back to item coordinate.
+        # Then in item coordinate, compare new size to original size
+        # => this give us the scale factor
+        # From the new item bound, compute the center and map it to parent coordinate.
+        # Then determine if the item position needs to be modified (
+        # center is center position, or dragging top or left corners).
+        parent_item_pos = self.item.mapToParent( item_pos )
         self.restore_activation_state()
-        # compute position based on activation center
-        base_item_pos = self.item.mapFromParent(parent_item_pos)
-        # compute delta compared to activation click position
-        delta_pos = base_item_pos - self.activation_pos
-        # compute new x/y min/max
-        pixmap = self.item.pixmap()
-        pixmap_width, pixmap_height = pixmap.width(), pixmap.height()
-        x, y = self.item.pos().x(), self.item.pos().y()  
-        xminmax = (x - pixmap_width / 2, x + pixmap_width / 2)
-        yminmax = (y - pixmap_height / 2, y + pixmap_height / 2)
-        print xminmax
-        for index in (0,1):
-            if self.rect_position[index] == 1:
-                xminmax[index] += delta_pos.x()
-            if self.rect_position[index+2] == 1: # +2 = yminmax weigth offset
-                yminmax[index] += delta_pos.y()
-        # Compute new center and scale
-        # Given a rectangle:
-        # - compute center
-        # - compute scale factor: rect size / pixmap size
-        x_center, y_center = sum(xminmax) / 2.0, sum(yminmax) / 2.0
-        new_center = self.item.mapToParent( x_center, y_center )
-        return None
+        item_pos = self.item.mapFromParent( parent_item_pos )
         
+        # Computes new item bounds
+        bound_rect = self.get_item_bound()
+        if not bound_rect.isValid(): # has 0 width or height ?
+            return None
+        xminmax = [bound_rect.x(), bound_rect.right()]  
+        yminmax = [bound_rect.y(), bound_rect.bottom()]
+        # x/y minmax impacted indexes by position
+        impacts_by_position = { # tuple(xindex,yindex)
+            POS_TOP_LEFT: (0,0),
+            POS_TOP_CENTER: (None,0),
+            POS_TOP_RIGHT: (1,0),
+            POS_CENTER_LEFT: (0,None),
+            POS_CENTER: (None,None),
+            POS_CENTER_RIGHT: (1,None),
+            POS_BOTTOM_LEFT: (0,1),
+            POS_BOTTOM_CENTER: (None,1),
+            POS_BOTTOM_RIGHT: (1,1),
+            }
+        impact = impacts_by_position[self.rect_position]
+        assert impact is not None
+        if impact[0] is not None:
+            xminmax[ impact[0] ] = item_pos.x()
+        if impact[1] is not None:
+            yminmax[ impact[1] ] = item_pos.y()
+        new_width = xminmax[1] - xminmax[0]
+        new_height = yminmax[1] - yminmax[0]
+        if new_width <= 0.0 or new_height <= 0.0:
+            return None
+
+        # Computes scale factor
+        scale_x = new_width / bound_rect.width()
+        scale_y = new_height / bound_rect.height()
+        # Map top-left to parent
+        # set new position
+        zero_pos = self.item.mapToParent( QtCore.QPointF() )
+        #zero_pos = self.item.mapFromParent( self.item.pos() )
+        zero_parent_pos = self.item.mapFromParent( zero_pos )
+        parent_top_left = self.item.mapToParent( QtCore.QPointF( xminmax[0], yminmax[0] ) )
+        # Hmm, this is really complex:
+        # The item position correspond roughly to the top-left corner,
+        # taking into account the scale factory, but not the rotation. Position
+        # is not impacted by the rotation of the item!
+#        print 'Item pos: %.f, %.f, Zero: %.2f, %.2f, Bound top-left: %.2f, %.2f new pos: %.2f, %.2f' % (
+#            self.item.pos().x(), self.item.pos().y(),
+#            zero_pos.x(), zero_pos.y(),
+#            self.item.boundingRect().x(), self.item.boundingRect().y(),
+##            xminmax[0], yminmax[0],
+#            parent_top_left.x(), parent_top_left.y() )
+#        self.item.setPos( parent_top_left )
+
+#        new_item_center = sum(xminmax)/2.0, sum(yminmax)/2.0
+#        new_parent_center = self.item.mapToParent( QtCore.QPointF( *new_item_center ) )
+#        
+#        parent_center_delta = new_parent_center - self.get_item_center_pos()
+        #self.item.setPos( self.item.pos() + parent_center_delta )
+        self.item.scale( scale_x, scale_y )
+        if self.activation_value is None:
+            return [(0,0),(scale_x, scale_y)]
+        activation_pos, activation_scale = self.activation_value 
+        new_scale_x = activation_scale[0] * scale_x
+        new_scale_y = activation_scale[1] * scale_y
+        return [activation_pos, (new_scale_x, new_scale_y)]
         
-#        self.item.setPos( parent_pos )
-#        return (parent_pos.x(), -parent_pos.y())
 
 class ScaleToolDelegate(ToolDelegate):
     pass
@@ -520,6 +620,10 @@ class RadiusToolDelegate(ToolDelegate):
         pass
         
     def _on_mouse_move(self, item_pos):
+        # Circle are always zero centered, hence we can just get the current distance
+        # from the origin to get the current length.
+        # The difference between the current length and the activation length is
+        # used to impact the radius as it was at the time of the activation
         r_pos = vector2d_length( item_pos.x(), item_pos.y() )
         r_activation = vector2d_length( self.activation_pos.x(),
                                         self.activation_pos.y() )
@@ -583,16 +687,19 @@ class ToolsFactory(object):
 #                                                           pos.x(), pos.y() ) 
                 size = QtCore.QPointF( 3*pixel_length, 3*pixel_length )
                 bound = QtCore.QRectF( pos - size, pos + size )
-                if tool_index == 0:
+                if tool_index == 0 and self.resize_tools is not None:
                     tool_item = view.scene().addRect( bound )
                     tool = self.resize_tools[pos_index]
                     tool.set_rect_position( position )
-                else:
+                elif tool_index == 1 and self.rotate_tools is not None:
                     tool_item = view.scene().addEllipse( bound )
                     tool = self.rotate_tools[pos_index]
-                tool_item.setZValue( Z_TOOL_ITEMS )
-                tool_item.setData( KEY_TOOL, QtCore.QVariant( tool ) )
-                items.append( tool_item )
+                else:
+                    tool_item = None
+                if tool_item is not None:
+                    tool_item.setZValue( Z_TOOL_ITEMS )
+                    tool_item.setData( KEY_TOOL, QtCore.QVariant( tool ) )
+                    items.append( tool_item )
         return self.move_tool, items
 
     def _make_tools(self, item, element, view, state_manager):
@@ -620,18 +727,23 @@ class ToolsFactory(object):
                              position_is_center, *args )
             return None
         self.move_tool = make_delegate( MoveToolDelegate, attribute_center )
+        self.resize_tools = None
         if attribute_radius is not None:
             self.resize_tools = [ make_delegate( RadiusToolDelegate, 
                                                  attribute_radius )
                                   for i in range(0,4) ]
-        elif attribute_size is not None:
-            assert False # can not be resizable and be a pixmap!
-        elif attribute_scale is not None:
-            self.resize_tools = [ make_delegate( MoveAndScaleToolDelegate, attribute_center,
-                                                 attribute_scale ) 
-                                  for i in range(0,4) ] 
-        self.rotate_tools = [ make_delegate(RotateToolDelegate, attribute_angle) 
-                              for i in range(0,4) ]
+# @todo Restore this once resizing is implemented
+#        elif attribute_size is not None:
+#            self.resize_tools = None
+#        elif attribute_scale is not None:
+#            self.resize_tools = [ make_delegate( MoveAndScaleToolDelegate, attribute_center,
+#                                                 attribute_scale ) 
+#                                  for i in range(0,4) ] 
+        if attribute_angle is not None:
+            self.rotate_tools = [ make_delegate(RotateToolDelegate, attribute_angle) 
+                                  for i in range(0,4) ]
+        else:
+            self.rotate_tools = None 
 
     def _get_tools_positions(self):
         """Returns the of positions for the resize tools and the rotate tools."""
@@ -670,8 +782,9 @@ class PixmapToolsFactory(ToolsFactory):
         """Returns the of positions for the resize tools and the rotate tools."""
         rotate_tool_pos = ( POS_TOP_CENTER, POS_BOTTOM_CENTER,
                             POS_CENTER_LEFT, POS_CENTER_RIGHT ) 
-        resize_tool_pos = ( POS_TOP_LEFT, POS_TOP_RIGHT,
-                            POS_BOTTOM_RIGHT, POS_BOTTOM_LEFT )
+#        resize_tool_pos = ( POS_TOP_LEFT, POS_TOP_RIGHT,
+#                            POS_BOTTOM_RIGHT, POS_BOTTOM_LEFT )
+        resize_tool_pos = ()
         return  resize_tool_pos, rotate_tool_pos 
 
     def _get_state_manager(self):
@@ -680,6 +793,43 @@ class PixmapToolsFactory(ToolsFactory):
 
     def _center_is_top_left(self):
         return True
+
+
+class RectangleToolsFactory(ToolsFactory):
+
+    def _get_tools_positions(self):
+        """Returns the of positions for the resize tools and the rotate tools."""
+        rotate_tool_pos = ( POS_TOP_CENTER, POS_BOTTOM_CENTER,
+                            POS_CENTER_LEFT, POS_CENTER_RIGHT ) 
+        return  (), rotate_tool_pos
+
+    def _get_state_manager(self):
+        """Returns the state manager used to save and restore the state of the item."""
+        return RectStateManager()
+
+class TextToolsFactory(ToolsFactory):     
+
+    def _get_tools_positions(self):
+        """Returns the of positions for the resize tools and the rotate tools."""
+        rotate_tool_pos = ( POS_TOP_CENTER, POS_BOTTOM_CENTER,
+                            POS_CENTER_LEFT, POS_CENTER_RIGHT ) 
+        return  (), rotate_tool_pos
+
+    def _get_state_manager(self):
+        """Returns the state manager used to save and restore the state of the item."""
+        return TextStateManager()
+
+class GroupToolsFactory(ToolsFactory):     
+
+    def _get_tools_positions(self):
+        """Returns the of positions for the resize tools and the rotate tools."""
+        rotate_tool_pos = ( POS_TOP_CENTER, POS_BOTTOM_CENTER,
+                            POS_CENTER_LEFT, POS_CENTER_RIGHT ) 
+        return  (), rotate_tool_pos
+
+    def _get_state_manager(self):
+        """Returns the state manager used to save and restore the state of the item."""
+        return GroupStateManager()
 
 # ###################################################################
 # ###################################################################
@@ -708,6 +858,8 @@ class StateManager(object):
         pass
 
 PixmapStateManager = StateManager
+TextStateManager = StateManager
+GroupStateManager = StateManager
 
 class RectStateManager(StateManager):
     def _get_item_state(self, item):
@@ -825,6 +977,12 @@ class LevelGraphicView(QtGui.QGraphicsView):
             factory_type = CircleToolsFactory
         elif isinstance( item, QtGui.QGraphicsPixmapItem ):
             factory_type = PixmapToolsFactory
+        elif isinstance( item, QtGui.QGraphicsRectItem):
+            factory_type = RectangleToolsFactory
+        elif isinstance( item, QtGui.QGraphicsTextItem):
+            factory_type = TextToolsFactory
+        elif isinstance( item, QtGui.QGraphicsItemGroup) and self.is_selected_item(item):
+            factory_type = GroupToolsFactory
         if factory_type is not None:
             self._current_inner_tool, self._tools_handle_items = \
                 factory_type().create_tools(item, element, self)
@@ -1138,7 +1296,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
     def _levelBallInstanceBuilder( self, scene, element ):
         x, y = self._elementV2Pos( element, 'pos' )
-        r = 10
+        r = 20
         item = scene.addEllipse( -r/2, -r/2, r, r )
         self._setLevelItemXYZ( item, x, y )
         ball_id = element.get('id')
