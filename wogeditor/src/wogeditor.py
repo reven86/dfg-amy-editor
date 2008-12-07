@@ -465,7 +465,7 @@ class MainWindow(QtGui.QMainWindow):
         self._game_model = None
         if self._wog_path:
             self._reloadGameModel()
-            self.open_level_view_by_name( 'AB3' ) # @todo remove this for release
+#            self.open_level_view_by_name( 'AB3' ) # @todo remove this for release
         else:
             print self._wog_path
 
@@ -643,9 +643,11 @@ class MainWindow(QtGui.QMainWindow):
         QtGui.QMessageBox.about(self, self.tr("About WOG Editor"),
             self.tr("""<p>The <b>WOG editor</b> helps you create new level in WOG.<p>
             <p>Link to Sourceforge project:
-            <a href="http://www.sourceforge.net/projects/wogedit">http://www.sourceforge.net/projects/wogedit</a></p>
+            <a href="http://www.sourceforge.net/projects/wogedit">http://www.sourceforge.net/projects/wogedit</a>
+            </p>
+            <p>Link to WOG Editor Overview in Wiki:
+            <a href="http://apps.sourceforge.net/mediawiki/wogedit/index.php?title=WOG_Editor_overview">WOG Editor overview>WOG Editor Overview</a></p>
             <p>Copyright 2008, NitroZark &lt;nitrozark at users.sourceforget.net&gt;</p>"""))
-
 
     def on_cut_action(self):
         elements = self.on_copy_action( is_cut_action=True )
@@ -760,19 +762,19 @@ class MainWindow(QtGui.QMainWindow):
             status_tip = "Change World Of Goo top-directory" )
                                                    
         self.editLevelAction = qthelper.action( self, handler = self.editLevel,
-            icon = ":/images/open-level.png",
+            icon = ":/images/icon-wog-level.png",
             text = "&Edit existing level...",
             shortcut = "Ctrl+L", 
             status_tip = "Select a level to edit" )
 
         self.newLevelAction = qthelper.action(self, handler = self.newLevel,
-            icon = ":/images/new-level.png",
+            icon = ":/images/icon-wog-new-level2.png",
             text = "&New level...",
             shortcut = QtGui.QKeySequence.New,
             status_tip = "Creates a new level" )
 
         self.cloneLevelAction = qthelper.action( self, handler = self.cloneLevel,
-            icon = ":/images/clone-level.png",
+            icon = ":/images/icon-wog-clone-level.png",
             text = "&Clone selected level...",
             shortcut = "Ctrl+D",
             status_tip = "Clone the selected level" )
@@ -824,20 +826,22 @@ class MainWindow(QtGui.QMainWindow):
             levelview.TOOL_SELECT: qthelper.action( self, 
                     handler = self.on_select_tool_action,
                     icon = ":/images/tool-select.png",
-                    text = "&Select element",
+                    text = "&Select element (Space)",
                     shortcut = QtGui.QKeySequence( Qt.Key_Space),
                     checked = True,
-                    checkable = True ),
+                    checkable = True,
+                    status_tip = "Select element. Alt+Click to cycle on elements below cursor." ),
             levelview.TOOL_PAN: qthelper.action( self, 
                     handler = self.on_pan_tool_action,
                     icon = ":/images/tool-pan.png",
-                    text = "&Pan view",
+                    text = "&Pan view (F)",
                     shortcut = 'F',
                     checkable = True ),
             levelview.TOOL_MOVE: qthelper.action( self, 
                     handler = self.on_move_tool_action,
                     icon = ":/images/tool-move.png",
-                    text = "&Move element",
+                    text = "&Move element (T)",
+                    shortcut = 'T',
                     checkable = True )
             }
         for action in self.view_actions.itervalues():
