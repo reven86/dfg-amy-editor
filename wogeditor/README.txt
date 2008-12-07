@@ -8,6 +8,8 @@ scanxmlfile: help understanding the structure and meaning of .xml by scanning th
 In addition to that, a GUI editor that provides only provides basic level edition:
 wogeditor.
 
+Help for the editor is available on the home page. Refere to contact information below or about dialog.
+
 It is an early release, makes sure to watch out for error in the console window.
 
 * Running from the source:
@@ -48,6 +50,7 @@ The projects are under the GPLv3 licensing. See the file COPYING.
 
 * Contact Information
 
-http://sourceforge.net/projects/wogedit
+Sourceforge project: http://sourceforge.net/projects/wogedit
+Homepage: http://apps.sourceforge.net/mediawiki/wogedit/
 NitroZark <nitrozark at users.sourceforget.net>
 

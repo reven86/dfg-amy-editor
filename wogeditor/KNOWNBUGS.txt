@@ -1,2 +1,2 @@
+- rotating rectangle works incorrectly when it is inside a compositegeom.
 - rectangle/circle on display either pixmap or geometry shape.
-- alt-tab while editing a property value cause the property not to be updated (inspite of what is displayed)
