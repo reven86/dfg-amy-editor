@@ -1192,9 +1192,11 @@ class LevelGraphicView(QtGui.QGraphicsView):
             # .level.xml builders
             'signpost': self._levelSignPostBuilder,
             'pipe': self._levelPipeBuilder,
+            'Vertex': self._levelPipeVertex,
             'BallInstance': self._levelBallInstanceBuilder,
             'Strand': self._addlevelStrand,
             'fire': self._levelFireBuilder,
+            'levelexit': self._levelExit,
             # .scene.xml builders
             'SceneLayer': self._sceneSceneLayerBuilder,
             'button': self._sceneButtonBuilder,
@@ -1294,6 +1296,17 @@ class LevelGraphicView(QtGui.QGraphicsView):
             item = scene.addPath( path, pen )
             return item
 
+    def _levelPipeVertex(self, scene, element):
+        x, y = self._elementV2Pos( element, 'pos' )
+        rotation = 45
+        size = 10
+        pen = QtGui.QPen( QtGui.QColor( 255, 85, 153 ) )
+        pen.setWidth( 5 )
+        item = scene.addRect( 0, 0, size, size, pen )
+        self._applyTransform( item, size/2.0, size/2.0, x, y, rotation,
+                              1.0, 1.0, Z_PHYSIC_ITEMS )
+        return item
+
     def _levelBallInstanceBuilder( self, scene, element ):
         x, y = self._elementV2Pos( element, 'pos' )
         r = 20
@@ -1328,6 +1341,15 @@ class LevelGraphicView(QtGui.QGraphicsView):
         x, y = self._elementV2Pos( element, 'center' )
         r = element.get_native( 'radius', 1.0 )
         pen = QtGui.QPen( QtGui.QColor( 255, 64, 0 ) )
+        pen.setWidth( 3 )
+        item = scene.addEllipse( -r/2, -r/2, r, r, pen )
+        self._setLevelItemXYZ( item, x, y )
+        return item
+
+    def _levelExit(self, scene, element):
+        x, y = self._elementV2Pos( element, 'pos' )
+        r = element.get_native( 'radius', 1.0 )
+        pen = QtGui.QPen( QtGui.QColor( 255, 85, 153 ) )
         pen.setWidth( 3 )
         item = scene.addEllipse( -r/2, -r/2, r, r, pen )
         self._setLevelItemXYZ( item, x, y )

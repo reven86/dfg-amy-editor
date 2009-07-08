@@ -1,8 +1,10 @@
 - Version 0.5.1:
-* Add zoom in/out buttons (useful for laptop with mouse wheel) [contributed by Ian (cacafuego2)]
+* Added zoom in/out buttons (useful for laptop with mouse wheel) [contributed by Ian (cacafuego2)]
 * Fixed circle image display bug. This fixes the warning like (Chain level):
   "Warning: invalid image reference: "('IMAGE_SCENE_CHAIN_HEAD',)"
   [contributed by Ian (cacafuego2)]
+* The level exit is now represented as a pink circle (still can not be moved with mouse)
+* The pipe vertex are now displayed as pink dots (still can not be moved with mouse)
 
 - Version 0.5.0:
 
