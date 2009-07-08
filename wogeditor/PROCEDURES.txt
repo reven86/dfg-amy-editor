@@ -13,6 +13,7 @@ This documents contains procedure used to manage the project.
     Increases version number in makedist.bat
     Commit
   - test quick the generated *.zip files (bin & src)
+    If issues are detected, fix them and re-run makedist. It will automatically move the SVN tag.
   - upload files using https://frs.sourceforge.net/webupload
     (releaseforge seems to be broken)
   - Follow sourceforge file release procedure (new version of an existing package)
