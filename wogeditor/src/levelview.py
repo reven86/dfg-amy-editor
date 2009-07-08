@@ -1235,7 +1235,7 @@ class LevelGraphicView(QtGui.QGraphicsView):
 
     @staticmethod
     def _elementImageWithPosScaleRot( element ):
-        image = element.get_native('image')
+        image = element.get('image')
         imagepos = LevelGraphicView._elementV2Pos( element, 'imagepos' )
         imagescale = element.get_native( 'imagescale', (1.0,1.0) )
         imagerot = element.get_native( 'imagerot' )
