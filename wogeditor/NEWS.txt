@@ -1,3 +1,6 @@
+- Version 0.5.1:
+* Add zoom in/out buttons (useful for laptop with mouse wheel) [merged contributed by Ian (cacafuego2)]
+
 - Version 0.5.0:
 
 * Level view selection is now a tool.
