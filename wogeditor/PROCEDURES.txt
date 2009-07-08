@@ -2,14 +2,21 @@ This documents contains procedure used to manage the project.
 
 
 * Releases
+  - Makes sure that in src/makedist.bat:
+    - SET VERSION=XYZ is the number of the version you want to release.
+    - SET SEVENZIPPATH=c:\wut\files\7-Zip\7z.exe points to a valid path to 7-zip
+      (can be downloaded from http://www.7-zip.org/download.html)
   - run:
     cd src
     makedist
     Then checks that no error occurred and tarball are available.
     Increases version number in makedist.bat
     Commit
+  - test quick the generated *.zip files (bin & src)
   - upload files using https://frs.sourceforge.net/webupload
     (releaseforge seems to be broken)
+  - Follow sourceforge file release procedure (new version of an existing package)
+  - Post a News based on the content of the NEWS file.
 
 * Pre-compiling pycrypto third-party
   - Get the source from http://www.amk.ca/python/code/crypto.html

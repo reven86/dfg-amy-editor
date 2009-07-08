@@ -1,4 +1,4 @@
-SET VERSION=0.5
+SET VERSION=0.6
 SET SEVENZIPPATH=c:\wut\files\7-Zip\7z.exe
 
 @echo "Build zip package distribution"
