@@ -639,6 +639,14 @@ class MainWindow(QtGui.QMainWindow):
     def undo( self ):
         pass
         
+    def zoomIn( self ):
+        active_view = self.get_active_view()
+        active_view.scaleView(1.2)
+
+    def zoomOut( self ):
+        active_view = self.get_active_view()
+        active_view.scaleView(.8)
+
     def about(self):
         QtGui.QMessageBox.about(self, self.tr("About WOG Editor"),
             self.tr("""<p>The <b>WOG editor</b> helps you create new level in WOG.<p>
@@ -647,7 +655,8 @@ class MainWindow(QtGui.QMainWindow):
             </p>
             <p>Link to WOG Editor Overview in Wiki:
             <a href="http://apps.sourceforge.net/mediawiki/wogedit/index.php?title=WOG_Editor_overview">WOG Editor overview>WOG Editor Overview</a></p>
-            <p>Copyright 2008, NitroZark &lt;nitrozark at users.sourceforget.net&gt;</p>"""))
+            <p>Zoom toolbar icons are from WikiCommon as LGPL images. They are "Viewmag+" and "Viewmag-" by David Vignoni.</p>
+            <p>Copyright 2008-2009, NitroZark &lt;nitrozark at users.sourceforget.net&gt;</p>"""))
 
     def on_cut_action(self):
         elements = self.on_copy_action( is_cut_action=True )
@@ -734,6 +743,8 @@ class MainWindow(QtGui.QMainWindow):
         self.saveAction.setEnabled( can_save and True or False )
         self.playAction.setEnabled( is_level_selected )
         self.updateLevelResourcesAction.setEnabled( is_level_selected )
+        self.zoomInAction.setEnabled( is_level_selected )
+        self.zoomOutAction.setEnabled( is_level_selected )
         
         active_view = self.get_active_view()
         enabled_view_tools = set()
@@ -791,6 +802,18 @@ class MainWindow(QtGui.QMainWindow):
             shortcut = "Ctrl+P",
             status_tip = "Save all changes and play the selected level" )
         
+        self.zoomInAction = qthelper.action( self, handler = self.zoomIn,
+            icon = ":/images/zoomIn.png",
+            text = "&Zoom In",
+            shortcuts = ("Ctrl+=", "Ctrl++"),
+            status_tip = "Zoom In 20%" )
+
+        self.zoomOutAction = qthelper.action( self, handler = self.zoomOut,
+            icon = ":/images/zoomOut.png",
+            text = "&Zoom Out",
+            shortcut = "Ctrl+-",
+            status_tip = "Zoom Out 20%" )
+
         self.updateLevelResourcesAction = qthelper.action( self,
             handler = self.updateLevelResources,
             icon = ":/images/update-level-resources.png",
@@ -896,6 +919,8 @@ class MainWindow(QtGui.QMainWindow):
 ##        self.editToolBar.addAction(self.undoAct)
         
         self.levelViewToolBar = self.addToolBar(self.tr("Level View"))
+        self.levelViewToolBar.addAction(self.zoomInAction)
+        self.levelViewToolBar.addAction(self.zoomOutAction)
         for name in ('select', 'pan', 'move'): 
             action = self.view_actions[name]
             self.levelViewToolBar.addAction( action )

@@ -25,8 +25,8 @@ def key_sequence( value, translate_context ):
     return QtGui.QKeySequence( translate_context.tr( value ) )
 
 def action( parent, icon = None, text = None, 
-            shortcut = None, shortcut_context = None, status_tip = None,
-            enabled = None, checkable = None, checked = None,
+            shortcut = None, shortcuts = None, shortcut_context = None,
+            status_tip = None, enabled = None, checkable = None, checked = None,
             receiver = None, handler = None, translate_context = None ):
     """Creates a QtGui.QAction with the specified attributes.
        text, shortcut, status_tip are automatically translated using translate_context,
@@ -42,6 +42,9 @@ def action( parent, icon = None, text = None,
         action.setText( tr_context.tr(text) )
     if shortcut is not None:
         action.setShortcut( key_sequence( shortcut, tr_context ) )      
+    if shortcuts is not None:
+        action.setShortcuts( [key_sequence( shortcut, tr_context )
+                              for shortcut in shortcuts] )
     if shortcut_context is not None:
         action.setShortcutContext( shortcut_context )
     if status_tip:

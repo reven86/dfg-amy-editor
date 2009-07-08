@@ -25,5 +25,7 @@
   <file>images/tool-pan.png</file>
   <file>images/tool-resize.png</file>
   <file>images/tool-select.png</file>
+  <file>images/zoomIn.png</file>
+  <file>images/zoomOut.png</file>
 </qresource>
 </RCC>
