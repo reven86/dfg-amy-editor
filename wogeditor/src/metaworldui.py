@@ -27,6 +27,152 @@ class ElementIssuesUpdated(louie.Signal):
        elements: list of Element with modified issue
     """ 
 
+class UndoWorldTracker(object):
+    def __init__(self, world, queue_depth = 0):
+        """world: world that is tracked for change.
+           is_dirty: is the world initially considered has dirty (new world for example).
+        """
+        self.__world = world
+        self.__queue_depth = queue_depth
+        self.__undo_queue = []
+        self.__redo_queue = []
+        self.__active = True
+        louie.connect( self.__on_tree_added, metaworld.TreeAdded, world )
+
+    def __on_tree_added(self, tree):
+        for tree_meta in self.__world.meta.trees:
+            if self.__world.find_tree(tree_meta) is None: # level not ready yet
+                return
+        # all tree are available, setup the level
+        for tree in self.__world.trees:
+            tree.connect_to_element_events( self.__on_element_added,
+                                            self.__on_element_updated,
+                                            self.__on_element_about_to_be_removed )
+
+    def __on_element_added(self, element, index_in_parent): #IGNORE:W0613
+        undo_action = [metaworld.ELEMENT_ADDED,element]
+        self.__add_to_undo_queue(undo_action)
+
+    def __on_element_about_to_be_removed(self, element, index_in_parent): #IGNORE:W0613
+        undo_action = [metaworld.ELEMENT_ABOUT_TO_BE_REMOVED,element,element.parent,index_in_parent]
+        self.__add_to_undo_queue(undo_action)
+
+    def __on_element_updated(self, element, name, new_value, old_value): #IGNORE:W0613
+        if new_value != old_value:
+            undo_action = [metaworld.ELEMENT_ATTRIBUTE_UPDATED,element,name,new_value,old_value]
+            self.__add_to_undo_queue(undo_action)
+
+    def __add_to_undo_queue(self, undo_action):
+        if self.__active:
+            if self.__queue_depth>0:  # 0 = infinite
+                if len(self.__undo_queue)==self.__queue_depth:
+                    #print "queue full - popping"
+                    self.__undo_queue.pop(0)
+            self.__undo_queue.append(undo_action)
+            self.clear_redo_queue()  #clear redo queue when new undo action is added
+            #print "undo count=",len(self.__undo_queue)
+
+    def suspend_undo(self):
+        self.__active=False
+
+    def activate_undo(self):
+        self.__active=True
+
+    @property
+    def undo_status(self):
+        return self.__active
+
+    @property
+    def can_undo(self):
+        # could add extra check here
+        return len(self.__undo_queue)>0
+
+    @property
+    def can_redo(self):
+        # could add extra check here
+        return len(self.__redo_queue)>0
+
+    def clear_undo_queue(self):
+        self.__undo_queue = []
+
+    def clear_redo_queue(self):
+        self.__redo_queue = []
+
+    def undo(self):
+        initial_queue_length=len(self.__undo_queue)
+        if initial_queue_length>0:
+            undo_action = self.__undo_queue.pop(initial_queue_length-1)
+
+            # Undo-ing would add a new action into the undo queue.
+            # so suspend undo, while we are undoing
+            self.__active = False
+            if undo_action[0]==metaworld.ELEMENT_ADDED:
+                # action, element
+                element = undo_action[1]
+                redo_action = [undo_action[0],element,
+                                element.parent,element.index_in_parent()]
+                element.parent.remove(element)
+
+            elif undo_action[0]==metaworld.ELEMENT_ATTRIBUTE_UPDATED:
+                # action, element, attributename, newvalue, oldvalue
+                element = undo_action[1]
+                redo_action = undo_action
+                if undo_action[4] is None:
+                    element.unset(undo_action[2])
+                else:
+                    element.set(undo_action[2],undo_action[4])
+            elif undo_action[0]==metaworld.ELEMENT_ABOUT_TO_BE_REMOVED:
+                # action, element, parent, index in parent
+                redo_action = undo_action
+                element = undo_action[1]
+                parent = undo_action[2]
+                parent.insert(undo_action[3],element)
+            else:
+                print "Unknown Undo Action",undo_action
+            
+            # put the redo_action in the redo stack
+            self.__redo_queue.append(redo_action)
+            # reactivate undo now that we've undone
+            self.__active = True
+
+       # print "undo count=",len(self.__undo_queue)
+
+    def redo(self):
+        initial_queue_length=len(self.__redo_queue)
+        if initial_queue_length>0:
+            redo_action = self.__redo_queue.pop(initial_queue_length-1)
+
+            # redo-ing would add a new action into the undo queue.
+            # we're going to have to do that anyway...
+            # but doing it automatically would reset the redo queue...
+            # so suspend undo, while we are redoing
+            self.__active = False
+            if redo_action[0]==metaworld.ELEMENT_ADDED:
+                # action, element, parent, index in parent
+                element = redo_action[1]
+                parent = redo_action[2]
+                parent.insert(redo_action[3],element)
+
+            elif redo_action[0]==metaworld.ELEMENT_ATTRIBUTE_UPDATED:
+                # action, element, attributename, newvalue, oldvalue
+                element = redo_action[1]
+                if redo_action[3] is None:
+                    element.unset(undo_action[2])
+                else:
+                    element.set(redo_action[2],redo_action[3])
+            elif redo_action[0]==metaworld.ELEMENT_ABOUT_TO_BE_REMOVED:
+                # action, element, parent, index in parent
+                element = redo_action[1]
+                element.parent.remove(element)
+            else:
+                print "Unknown Redo Action",redo_action
+            
+            # put this action back in the undo stack
+            self.__undo_queue.append(redo_action)
+            # reactivate undo now that we've undone
+            self.__active = True
+
+        #print "redo count=",len(self.__redo_queue)
 
 class DirtyWorldTracker(object):
     """Provides the list of tree that have been modified in a world.
@@ -62,7 +208,8 @@ class DirtyWorldTracker(object):
         self.__dirty_tree_metas.add( element.tree.meta )
 
     def __on_element_updated(self, element, name, new_value, old_value): #IGNORE:W0613
-        self.__dirty_tree_metas.add( element.tree.meta )
+        if new_value != old_value:
+            self.__dirty_tree_metas.add( element.tree.meta )
 
     @property
     def is_dirty(self):
@@ -90,7 +237,8 @@ class DirtyWorldTracker(object):
 
     def clean_tree(self, tree_meta):
         """Forget any change made to the specified tree type."""
-        self.__dirty_tree_metas.remove( tree_meta )
+        if tree_meta in self.__dirty_tree_metas:
+            self.__dirty_tree_metas.remove( tree_meta )
 
 class SelectedElementsTracker(object):
     def __init__(self, world):
@@ -116,6 +264,19 @@ class SelectedElementsTracker(object):
         self.__selection = set(selected_elements)  
         self._send_selection_update( old_selection )
 
+    def modify_selection(self,elements):
+        if isinstance(elements, metaworld.Element):
+            elements = [elements]
+        old_selection = self.__selection.copy()
+        elements = set(elements)
+#        print old_selection,elements
+        self._check_selected_elements(elements)
+        self.__selection = self.__selection ^ elements
+#        print self.__selection
+        self._send_selection_update( old_selection )
+#        print self.__selection
+        return len(self.__selection)>0
+        
     def update_selection( self, selected_elements, deselected_elements ):
         """Adds and remove some Element from the selection."""
         selected_elements = set(selected_elements)
@@ -133,10 +294,10 @@ class SelectedElementsTracker(object):
         selected_elements = self.__selection - old_selection
         deselected_elements = old_selection - self.__selection
         if selected_elements or deselected_elements: 
-#            print 'Selection changed:'
-#            print '  Selection:', self.__selection
-#            print '  Selected:',  selected_elements
-#            print '  Unselected:',  deselected_elements
+            #print 'Selection changed:',self
+            #print '  Selection:', self.__selection
+            #print '  Selected:',  selected_elements
+            #print '  Unselected:',  deselected_elements
             louie.send( WorldSelectionChanged, self.__world, 
                         self.__selection.copy(), 
                         selected_elements, deselected_elements )

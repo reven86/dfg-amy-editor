@@ -2,6 +2,7 @@
 """
 from PyQt4 import QtCore, QtGui
 from PyQt4.QtCore import Qt
+import xml
 
 def implicit( type, value ):
     """Simulates implicit C++ constructor.
@@ -25,9 +26,9 @@ def key_sequence( value, translate_context ):
     return QtGui.QKeySequence( translate_context.tr( value ) )
 
 def action( parent, icon = None, text = None, 
-            shortcut = None, shortcuts = None, shortcut_context = None,
-            status_tip = None, enabled = None, checkable = None, checked = None,
-            receiver = None, handler = None, translate_context = None ):
+            shortcut = None, shortcut_context = None, status_tip = None,
+            enabled = None, checkable = None, checked = None,
+            receiver = None, handler = None, translate_context = None, visible=None ):
     """Creates a QtGui.QAction with the specified attributes.
        text, shortcut, status_tip are automatically translated using translate_context,
        or parent if not specified.
@@ -42,9 +43,6 @@ def action( parent, icon = None, text = None,
         action.setText( tr_context.tr(text) )
     if shortcut is not None:
         action.setShortcut( key_sequence( shortcut, tr_context ) )      
-    if shortcuts is not None:
-        action.setShortcuts( [key_sequence( shortcut, tr_context )
-                              for shortcut in shortcuts] )
     if shortcut_context is not None:
         action.setShortcutContext( shortcut_context )
     if status_tip:
@@ -55,6 +53,8 @@ def action( parent, icon = None, text = None,
         action.setChecked( checked )
     if checkable is not None:
         action.setCheckable( checkable )
+    if visible is not None:
+        action.setVisible ( visible )
     if handler is not None:
         if receiver is None:
             receiver = parent 
@@ -127,3 +127,19 @@ def make_icon_overlay( source_icon, overlay_icon, size, overlay_size ):
 def clone_mouse_event( event ):
     return QtGui.QMouseEvent( QtCore.QEvent.MouseMove, event.pos(), event.globalPos(),
                               event.button(), event.buttons(), event.modifiers() )
+
+def itemonclipboard():
+    clipboard = QtGui.QApplication.clipboard()
+    xml_data = unicode(clipboard.text())
+    if not xml_data:
+       return None
+    try:
+        metaworld_element = xml.etree.ElementTree.fromstring( xml_data )
+    except xml.parsers.expat.ExpatError:
+       return None
+    if metaworld_element is None:
+       return None
+    if metaworld_element.tag == 'MetaWorldElement':
+        return metaworld_element[0].tag
+    return None
+

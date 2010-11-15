@@ -1,4 +1,4 @@
-The WOG editor is based around a model that represent all the data in the game, and the GUI that reacts to change in the model and trigger them.
+WooGLE is based around a model that represent all the data in the game, and the GUI that reacts to change in the model and trigger them.
 
 * The model
 
@@ -24,10 +24,3 @@ The main buildling block of the GUI are:
 - a tree view that represents a metaworld.Tree (XML file), with metaworld.Element as node (XML node)
 - a property list view that represents the attributes of a metaworld.Element selected in a tree view. Notes that there may be some slight transformation compared to the raw XML (the two attributes "x" and "y" or an element are usually transformed into a single "center" attribute).
 - a graphic view, for each level, that provides a visual representation of all elements of a given level.
-
-The GUI use the Qt toolkit. The pyqt specific are provided with the pyqt documentation. As pyqt API is generated from the C++ API, all the C++ code/tips can be applied in python. You can also use the C++ documentation that is somewhat better organized and refer to pyqt documentation only when API differ (typically, python as no output parameter passed by reference/pointer).
-
-Adding new toolbar icons:
-- adds the PNG image in the src/image folder (32x32)
-- adds a reference to the image in src/wogeditor.qrc
-- run src/generate.bat, the pyrcc4 command converts the image "resource" into python script.

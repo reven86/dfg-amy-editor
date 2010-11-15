@@ -22,10 +22,27 @@ Attribute description can indicate if the attribute is mandatory, its value doma
 import xml.etree.ElementTree
 # Publish/subscribe framework
 # See http://louie.berlios.de/ and http://pydispatcher.sf.net/
+import os
 import louie
-import math 
+import math
+import wogfile
+from PyQt4 import QtCore
+
+BALL_STATES=['attached','climbing','detaching','dragging','falling',
+             'pipe','sleeping','standing','stuck','stuck_attached','stuck_detaching',
+             'tank','walking' ]
+
+BALL_STATES_PARTICLES=['attached','climbing','detaching','dragging','falling','onfire',
+             'pipe','sleeping','standing','stuck','stuck_attached','stuck_detaching',
+             'tank','walking' ]
 
 
+BALL_NAMES = []
+
+WOG_PATH = ''
+PLATFORM_WIN=0
+PLATFORM_LINUX=1
+PLATFORM_MAC=2
 # Different type of attributes
 
 BOOLEAN_TYPE = 'boolean'
@@ -33,6 +50,7 @@ INTEGER_TYPE = 'integer'
 REAL_TYPE = 'real'
 RGB_COLOR_TYPE = 'rgb_color'
 ARGB_COLOR_TYPE = 'argb_color'
+REALLIST_TYPE="reallist"
 XY_TYPE = 'xy'
 SCALE_TYPE = 'scalewh'
 DXDY_TYPE = 'dxdy'
@@ -40,17 +58,45 @@ SIZE_TYPE = 'wh'
 RADIUS_TYPE = 'radius'
 ENUMERATED_TYPE = 'enumerated'
 STRING_TYPE = 'string'
+TEXT_TYPE='text'
 ANGLE_DEGREES_TYPE = 'angle.degrees'
 ANGLE_RADIANS_TYPE = 'angle.radians'
 REFERENCE_TYPE = 'reference'
 IDENTIFIER_TYPE = 'identifier'
 PATH_TYPE = 'path'
 
+def _getRealFilename(path):
+    # Only required on Windows
+    # will return the filename in the AcTuaL CaSe it is stored on the drive
+    # ensure "clean" split
+    path_bits = path.replace('\\','/').replace('//','/').split('/')
+    real_path_bits=[]
+    currentpath=path_bits.pop(0)+"\\"
+    for path_bit in path_bits:
+        insensitive_match=''
+        sensitive_match=''
+        for entry in os.listdir(currentpath):
+            if entry == path_bit:
+                # case senstive match - we can bail
+                sensitive_match=entry
+                break
+            elif entry.lower()== path_bit.lower():
+                # case insenstive match
+                insensitive_match=entry
+                break
+        else:
+            print "File not Found!", path
+            return ''
+        if sensitive_match!='':
+           currentpath = os.path.join(currentpath,entry)
+        elif insensitive_match!='':
+            currentpath = os.path.join(currentpath,insensitive_match)
+    return currentpath
 
 class AttributeMeta(object):
     def __init__( self, name, attribute_type, init = None, default = None, 
                   allow_empty = False, mandatory = False, display_id = False,
-                  map_to = None ):
+                  map_to = None, remove_empty=False, read_only=False, tooltip=None, min_length=None, category=None):
         """display_id: if True indicates that the attribute may be used to 
                        visually identify the element (typically name).
         """
@@ -61,10 +107,16 @@ class AttributeMeta(object):
         self.init = init
         self.default = default
         self.allow_empty = allow_empty
+        self.remove_empty = remove_empty
+        self.read_only = read_only
         self.mandatory = mandatory
+        self.min_length = min_length
         self.element_meta = None
         self.display_id = display_id
         self.map_to = map_to or self.name
+        self.tooltip = tooltip
+        self.category = category
+
 
     def attach_to_element_meta( self, element_meta ):
         self.element_meta = element_meta
@@ -74,12 +126,18 @@ class AttributeMeta(object):
     def from_xml(self, xml_element, attributes_by_name):
         """Set attributes values in attributes_by_name using xml_element attributes
            as input."""
-        value = xml_element.get(self.map_to)
+        if self.map_to == 'value':
+            value = None
+        else:
+            value = xml_element.get(self.map_to)
         if value is not None:
             attributes_by_name[self.name] = value
     
     def to_xml(self, element, attributes_by_name):
-        value = element.get(self.name)
+        if self.name == 'value':
+            value = None
+        else:
+            value = element.get(self.name)
         if value is not None:
             attributes_by_name[self.map_to] = value
 
@@ -116,6 +174,10 @@ class AttributeMeta(object):
             return None
         if not value and not self.allow_empty:
             return ('empty value not allowed',())
+        if not self.min_length is None:
+            if len(value)<self.min_length:
+                return ('minimum length = '+`self.min_length`,())
+
         return None
 
     def __repr__( self ):
@@ -168,7 +230,11 @@ class ComponentsAttributeMeta(AttributeMeta):
     def set_native(self, element, value):
         """Sets the value from the python native type: float for real..."""
         assert value is not None
-        values = [ self._component_from_native(component) for component in value ]
+        try:
+            values = [ self._component_from_native(component) for component in value ]
+        except TypeError:
+            #if only a single value is passed
+            values = [self._component_from_native(value)]
         self.set( element, ','.join( values ) )
 
     def _component_from_native(self, component):
@@ -216,13 +282,19 @@ class ComponentsAttributeMeta(AttributeMeta):
             if nb_components < self.min_components:
                 message = self.error_messages.get('missing')
                 if not message:
-                    message = 'Value must have at least %{nb}d component(s). ' \
+                    message = 'Value must have at least %(nb)d components. ' \
                               'Components are separated by a comma: ",".' 
                 return message, {'nb':self.min_components}
             if self.max_components is not None and nb_components > self.max_components: 
-                message = self.error_messages.get('extra')
+                if self.error_messages:
+                    message = self.error_messages.get('extra')
+                else:
+                    message = None
                 if not message:
-                    message = 'Value must have no more than %{nb}d component(s). ' \
+                    if self.max_components==1:
+                        message = 'Value must be a single item, it cannot be a list.'
+                    else:
+                        message = 'Value must have no more than %(nb)d components. ' \
                               'Components are separated by a comma: ",".'
                 return message, {'nb':self.min_components}
             for index, component in enumerate(values):
@@ -267,6 +339,37 @@ class NumericAttributeMeta(AttributeMeta):
                 return self.value_type_error, ()
         return status
 
+class addinidAttributeMeta(AttributeMeta):
+    def  is_valid_value( self, text, world ): #IGNORE:W0613
+        status = AttributeMeta.is_valid_value(self, text, world)
+        if status is None and text:
+           rx = QtCore.QRegExp("^([a-zA-Z0-9]([a-zA-Z0-9]+)?\.)+[a-zA-Z0-9]+$")
+           if not rx.exactMatch(text):
+                message = 'Addin Id is not valid. It can only contain letters,numbers and . (dots) No Spaces or other symbols!  It should be something like  com.goofans.YourName.LevelName'
+                return message, {}
+        return status
+
+class OCDAttributeMeta(AttributeMeta):
+    def  is_valid_value( self, text, world ): #IGNORE:W0613
+        status = AttributeMeta.is_valid_value(self, text, world)
+        if status is None and text:
+            values = text.split(',')
+            nb_components = len(values)
+            if nb_components != 2:
+                message = 'Value must have %(nb)s components separated by a comma '
+                return message, {'nb': '2'}
+            valid_ocd = ['balls','moves','time']
+            if values[0] not in valid_ocd:
+                message = 'First Value must be balls or moves or time'
+                return message, {}
+            try:
+                value = int(str(values[1]))
+                if value <= 0:
+                    return 'Second Value must be >= %(v)s', {'v':'0'}
+            except ValueError:
+                return 'Second Value must be a number', ()
+        return status
+
 class RadiansAngleAttributeMeta(NumericAttributeMeta):
 
     def from_xml(self, xml_element, attributes_by_name):
@@ -290,9 +393,9 @@ class RadiansAngleAttributeMeta(NumericAttributeMeta):
 
 class ColorAttributeMeta(ComponentsAttributeMeta):
     def __init__( self, name, attribute_type, components, **kwargs ):
-        message = 'RGB color must be of the form "R,G,B" were R,G,B are real number in range [0-255].'
+        message = 'RGB color must be of the form "Red,Green,Blue" range [0-255].'
         if components == 4:
-            message = 'ARGB color must be of the form "A,R,G,B" were A,R,G,B are real number in range [0-255].'
+            message = 'ARGB color must be of the form "Alpha,Red,Green,Blue" range [0-255].'
         ComponentsAttributeMeta.__init__( self, name, attribute_type, 
             error_message = message, components = components, **kwargs )
         
@@ -314,11 +417,12 @@ class ColorAttributeMeta(ComponentsAttributeMeta):
         return None
 
 class Vector2DAttributeMeta(ComponentsAttributeMeta):
-    def __init__( self, name, attribute_type, min_value = None, **kwargs ):
+    def __init__( self, name, attribute_type, min_value = None, position = False, **kwargs ):
         ComponentsAttributeMeta.__init__( self, name, attribute_type, error_message =
             'Value must be of the form "X,Y" were X and Y are real number',
             components = 2, **kwargs )
         self.min_value = min_value
+        self.position = position
         
     def _get_native_component(self, component):
         """Returns a component converted to its python native type.
@@ -335,8 +439,29 @@ class Vector2DAttributeMeta(ComponentsAttributeMeta):
         except ValueError:
             return self.error_messages['missing'], {}
 
+class RealListAttributeMeta(ComponentsAttributeMeta):
+    def __init__( self, name, attribute_type, min_value = None, position = False, error_message='', **kwargs ):
+        ComponentsAttributeMeta.__init__( self, name, attribute_type, error_message = error_message, **kwargs )
+        self.min_value = min_value
+        self.position = position
+
+    def _get_native_component(self, component):
+        """Returns a component converted to its python native type.
+           The caller handle ValueError conversion error.
+        """
+        return float(component)
+
+    def  _is_component_valid( self, index, component, world ): #IGNORE:W0613
+        try:
+            value = float(component)
+            if self.min_value and value < self.min_value:
+                return 'Component must be >= %(min_value)g', {'min_value':self.min_value}
+            return None
+        except ValueError:
+            return self.error_messages['missing'], {}
+
 class EnumeratedAttributeMeta(ComponentsAttributeMeta):
-    def __init__( self, name, values, attribute_type = ENUMERATED_TYPE, 
+    def __init__( self, name, values, attribute_type = ENUMERATED_TYPE, allow_any=False,
                   is_list = False, **kwargs ):
         if is_list and 'allow_empty' not in kwargs:
             kwargs['allow_empty'] = True
@@ -345,10 +470,13 @@ class EnumeratedAttributeMeta(ComponentsAttributeMeta):
         ComponentsAttributeMeta.__init__( self, name, attribute_type, 
             min_components = min_components, max_components = max_components,
             **kwargs )
-        self.values = set( values )
+        self.values = values
         self.is_list = is_list
+        self.allow_any=allow_any
 
     def  _is_component_valid( self, index, component, world ): #IGNORE:W0613
+        if self.allow_any:
+            return None
         if component not in self.values:
             return 'Invalid %(enum)s value: "%(values)s"', {
                 'enum':self.name,
@@ -378,6 +506,7 @@ class ReferenceAttributeMeta(ComponentsAttributeMeta):
             min_components = min_components, max_components = max_components, **kwargs )
         self.reference_family = reference_family
         self.reference_world = reference_world
+        self.is_list = is_list
 
     def attach_to_element_meta( self, element_meta ):
         AttributeMeta.attach_to_element_meta( self, element_meta )
@@ -400,10 +529,39 @@ class IdentifierAttributeMeta(AttributeMeta):
         AttributeMeta.attach_to_element_meta( self, element_meta )
         element_meta._set_identifier_attribute( self )
 
+
 class PathAttributeMeta(AttributeMeta):
     def __init__( self, name, strip_extension = None, **kwargs ):
         AttributeMeta.__init__( self, name, PATH_TYPE, **kwargs )
         self.strip_extension = strip_extension
+	#@DaB - Converts \ to /  and // into /
+    def set( self, element, value ):
+         if ON_PLATFORM==PLATFORM_WIN:
+            filename = os.path.normpath(os.path.join(WOG_PATH,self._clean_path(value)+self.strip_extension))
+            if os.path.exists(filename):
+                #confirm extension on drive is lower case
+                len_wogdir = len(os.path.normpath(WOG_PATH))+1
+                real_filename = os.path.normpath(_getRealFilename(filename))
+                value = os.path.splitext(real_filename)[0][len_wogdir:]
+
+         return element.set( self.name, self._clean_path(value) )
+
+    def _clean_path(self,path):
+        path = path.replace('\\','/').replace('//','/')
+        basename,extension= os.path.splitext(path)
+        if extension.lower() in ['',self.strip_extension]:
+            return basename
+        else:
+            return path
+
+    def  is_valid_value( self, text, world ): #IGNORE:W0613
+        status = AttributeMeta.is_valid_value(self, text, world)
+        if status is None and text:
+            filename = os.path.normpath(os.path.join(WOG_PATH,self._clean_path(text)+self.strip_extension))
+            if not os.path.isfile(filename):
+                message = 'File not found : ' + filename
+                return message, {}
+        return status
 
 def bool_attribute( name, **kwargs ):
     return BooleanAttributeMeta( name, **kwargs )
@@ -429,6 +587,9 @@ def radius_attribute( name, max_value = None, **kwargs ):
                                  'value must be a real number',
                                  min_value = 0, max_value = max_value, **kwargs )
 
+def reallist_attribute( name, **kwargs ):
+    return RealListAttributeMeta( name, REALLIST_TYPE, **kwargs )
+
 def xy_attribute( name, **kwargs ):
     return Vector2DAttributeMeta( name, XY_TYPE, **kwargs )
 
@@ -446,6 +607,16 @@ def enum_attribute( name, values, is_list = False, **kwargs ):
 
 def string_attribute( name, **kwargs ):
     return AttributeMeta( name, STRING_TYPE, **kwargs )
+
+def text_attribute( name, **kwargs ):
+    return AttributeMeta( name, TEXT_TYPE, **kwargs )
+
+def ocd_attribute( name, **kwargs ):
+    return OCDAttributeMeta( name, STRING_TYPE, **kwargs )
+
+def addinid_attribute( name, **kwargs ):
+    return addinidAttributeMeta( name, STRING_TYPE, **kwargs )
+
 
 def angle_degrees_attribute( name, min_value = None, max_value = None, **kwargs ):
     return NumericAttributeMeta( name, ANGLE_DEGREES_TYPE, float,
@@ -604,20 +775,8 @@ class ElementMeta(ObjectsMetaOwner):
         # Map element attributes
         known_attributes = {}
         for attribute_meta in self.attributes_by_name.itervalues():
-            attribute_meta .from_xml( xml_element, known_attributes )
+            attribute_meta.from_xml( xml_element, known_attributes )
 
-# Old code used to detect missing. We no longer do that.
-#        missing_attributes = set( xml_element.keys() )
-#        for attribute_meta in self.attributes_by_name.itervalues():
-#            attribute_value = xml_element.get( attribute_meta.name )
-#            if attribute_value is not None:
-#                # @todo Warning if attribute already in dict
-#                known_attributes[ attribute_meta.name ] = attribute_value
-#                missing_attributes.remove( attribute_meta.name )
-#        if missing_attributes and warning is not None:
-#            warning( u'Element %(tag)s, the following attributes are missing in the element description: %(attributes)s.',
-#                     tag = xml_element.tag,
-#                     attributes = ', '.join( sorted( missing_attributes ) ) )
         # Map element children
         children = []
         for xml_element_child in xml_element:
@@ -630,7 +789,7 @@ class ElementMeta(ObjectsMetaOwner):
                 warning( u'Element %(tag)s, the following child tag missing in the element description: %(child)s.',
                          tag = xml_element.tag,
                          child = xml_element_child.tag )
-        return Element( self, attributes = known_attributes, children = children )
+        return Element( self, attributes = known_attributes, children = children, text=xml_element.text )
 
     def __repr__( self ):
         return '%s(tag=%s, attributes=[%s], elements=[%s])' % (
@@ -645,7 +804,7 @@ def describe_element( tag, attributes = None, elements = None, groups = None,
         max_occurrence = exact_occurrence
     return ElementMeta( tag, attributes = attributes, elements_meta = elements,
                        min_occurrence = min_occurrence, max_occurrence = max_occurrence,
-                       read_only = read_only, groups = groups )
+                       read_only = read_only, groups = groups, )
 
 class TreeMeta(ObjectsMetaOwner):
     def __init__( self, conceptual_file_name, elements = None ):
@@ -846,11 +1005,13 @@ class WorldsOwner:
                     It will also be passed any extra parameters provided to the function.
         """
         #@todo check that world_meta is an allowed child world
+
         factory = factory or World
         world = factory( self.universe, world_meta, world_key, #IGNORE:E1101 
                          *args, **kwargs ) 
         if world_meta not in self._worlds:
             self._worlds[world_meta] = {}
+        
         assert world.key not in self._worlds[world_meta]
         self._worlds[world_meta][world.key] = world
         parent_world = self.universe != self and self or None #IGNORE:E1101
@@ -968,7 +1129,7 @@ class Universe(WorldsOwner):
             self._on_element_added(child_element, index)
 
     def _register_element_identifier( self, element, id_meta, identifier_value ):
-##        print '=> registering "%s" with identifier: "%s"' % (element_key, repr(identifier_value))
+        ##print '=> registering "%s" : "%s"' % (element.tag, repr(identifier_value))
         assert element is not None
         if identifier_value is not None:
             # walk parents worlds until we find the right one.
@@ -1010,7 +1171,7 @@ class Universe(WorldsOwner):
             self._on_element_about_to_be_removed(child_element, index)
 
     def _unregister_element_identifier( self, element, id_meta, identifier_value ):
-##        print '=> unregistering "%s" with identifier: "%s"' % (element, repr(identifier_value))
+        ##print '=> unregistering "%s" : "%s"' % (element.tag, repr(identifier_value))
         if identifier_value is not None:
             # walk parents worlds until we find the right one.
             world = element.world
@@ -1120,6 +1281,11 @@ class Universe(WorldsOwner):
             identifiers |= self.list_identifiers( world.parent_world, family )
         return identifiers
 
+    def list_world_identifiers( self, world,family):
+        id_scope_key = (world, family)
+        identifiers = set(self.ref_by_world_and_family.get( id_scope_key, {} ).keys())
+        return identifiers
+    
     def list_references( self, family, identifier_value ):
         """Returns a list of (element,attribute_meta) element attributes 
            that reference the specified identifier.
@@ -1136,7 +1302,11 @@ class Universe(WorldsOwner):
            tree_meta: description of the kind of tree to load. Used to associated xml tag to element description.
            xml_data: raw XML data.
         """
-        xml_element = xml.etree.ElementTree.fromstring( xml_data )
+        try:
+            xml_element = xml.etree.ElementTree.fromstring( xml_data )
+        except xml.parsers.expat.ExpatError,e:
+            raise IOError(u'XML Parse Error:'+unicode(e))
+        
         if tree_meta.root_element_meta.tag != xml_element.tag:
             raise WorldException( u'Expected root tag "%(root)s", but got "%(actual)s" instead.' % {
                 'root': tree_meta.root_element_meta.tag, 'actual': xml_element.tag } )
@@ -1186,9 +1356,68 @@ class World(WorldsOwner):
     def trees(self):
         return self._trees.values()
 
+    def refreshFromFiles(self):
+        refreshed=self.key+' refreshing\n'
+        for treemeta,tree in self._trees.items():
+            if tree.filename!='':
+              if os.path.isfile(tree.filename):
+                current_filetime = os.path.getmtime(tree.filename)
+                if current_filetime > tree.filetime:
+                    self._refreshTree(tree)
+                    refreshed+= 'refreshed : ' + tree.filename +'  '+`tree.filetime`+'  '+`current_filetime`+"\n"
+        return refreshed
+
+    def _refreshTree(self,tree):
+        tree_meta = tree.meta
+        tree_filename = tree.filename
+        #tree_path = os.path.split(tree_filename)
+        tree_ext = os.path.splitext(tree_filename)[1]
+        #self.remove_tree(tree)
+        if tree_ext=='.bin':
+            #new_tree = self._loadTree( self, tree_meta,  tree_path[0], tree_path[1])
+            xml_data = wogfile.decrypt_file_data( tree_filename )
+        else:
+            #new_tree = self._loadUnPackedTree( self, tree_meta,  tree_path[0], tree_path[1])
+            xml_data = file( tree_filename, 'rb' ).read()
+        #new_tree =  self.make_tree_from_xml( tree_meta, xml_data )
+        new_tree = self.universe.make_unattached_tree_from_xml( tree_meta, xml_data )
+        if new_tree.root.tag=='ResourceManifest':
+            self._processSetDefaults(new_tree)
+
+        old_tree = self.find_tree(tree_meta)
+        old_tree.set_root(new_tree.root)
+        old_tree.setFilename(tree_filename)
+        #bit hacky using the tag but...
+        #trying to use meta type cause nasty recursive python import problems with metawog
+
+    def _processSetDefaults(self,resource_tree):
+        #Unwraps the SetDefaults "processing instruction"
+        #updates all paths and ids to full
+        
+        for resource_element in resource_tree.root.findall('.//Resources'):
+          idprefix = ''
+          pathprefix=''
+          for element in resource_element:
+            if element.tag =='SetDefaults':
+                idprefix = element.get('idprefix','')
+                pathprefix = element.get('path').strip().replace("\\","/")
+                if not pathprefix.endswith('/'):
+                      pathprefix += '/'
+                pathprefix = pathprefix.replace("./","")
+
+                element.set('idprefix',"")
+                element.set('path',"./")
+            else:
+                element.set('path',pathprefix+element.get('path').replace('\\','/'))
+                element.set('id',idprefix+element.get('id'))
+
     def list_identifiers( self, family ):
         """Returns a list all identifiers for the specified family in the specified world and its parent worlds."""
         return self.universe.list_identifiers(self, family)
+
+    def list_world_identifiers( self, family ):
+        """Returns a list all identifiers for the specified family in the specified world BUT NOT the parent world."""
+        return self.universe.list_world_identifiers(self, family)
 
     def resolve_reference(self, reference_world_meta, family, id_value ):
         """Returns the element corresponding to the specified reference in this world.
@@ -1230,7 +1459,7 @@ class World(WorldsOwner):
 
     def make_tree( self, tree_meta, root_element = None ):
         tree = Tree( self.universe, tree_meta, root_element = root_element )
-        self.add_tree( tree )
+        self.add_tree( [tree] )
         return tree
 
     def make_tree_from_xml( self, tree_meta, xml_data ):
@@ -1242,14 +1471,15 @@ class World(WorldsOwner):
            tree_meta: description of the kind of tree to load. Used to associated xml tag to element description.
            xml_data: raw XML data.
         """
+
         tree = self.universe.make_unattached_tree_from_xml( tree_meta, xml_data )
-        self.add_tree( tree )
+        self.add_tree( [tree] )
         return tree
 
     def find_tree( self, tree_meta ):
         return self._trees.get( tree_meta )
 
-    def add_tree( self, *trees ):
+    def add_tree( self, trees ):
         for tree in trees:
             assert tree._world is None
             assert isinstance(tree, Tree)
@@ -1271,7 +1501,7 @@ class World(WorldsOwner):
            id_meta in this world.
         """
         assert id_meta.type == IDENTIFIER_TYPE
-        prefix = id_meta.reference_family
+        prefix = id_meta.reference_family.replace("LEVELNAME",self._key.upper())
         serial_number = 1
         while True:
             id_value = '%s%d' % (prefix,serial_number)
@@ -1294,6 +1524,22 @@ class Tree:
         self._root_element = root_element
         self._world = None
         self.set_root( root_element )
+        self._filename = ''
+        self._filetime = 0
+
+    def setFilename(self,path):
+        self._filename=path
+        if os.path.isfile(path):
+            self._filetime = os.path.getmtime(path)
+        else:
+            self._filetime = 0
+
+    @property
+    def filename( self ):
+        return self._filename
+    @property
+    def filetime( self ):
+        return self._filetime
 
     def set_root( self, root_element ):
         assert root_element is None or isinstance(root_element, Element), type(root_element)
@@ -1377,17 +1623,28 @@ class Element(_ElementBase):
        The Element's description associates it with a given kind of Tree and restricts
        the kind of parent and child elements it may have.
     """
-    def __init__( self, element_meta, attributes = None, children = None ):
+    def __init__( self, element_meta, attributes = None, children = None , text = None):
         """Initializes the element of type element_meta with the specified attributes.
            element_meta: an ElementMeta instance
            attributes: a dictionary of (name, value) of attributes values
            children: an iterable (list) of child elements not attached to any tree to be attached as child of this element.
         """
-        _ElementBase.__init__( self, element_meta.tag, attributes and attributes.copy() or {} )
+        _ElementBase.__init__( self, element_meta.tag, {} )
+
+        # rather than init the xml base element with the given attributes....
+        # wait till it's init'd and has meta info
+        # then attribute set each one...
+        # forces any processing / coersion of entered values to be performed
+
+
+        self.text = text
         assert element_meta is not None
         self._element_meta = element_meta
         self._parent = None
         self._tree = None # only set for the root element
+        for attribute,value in attributes.items():
+            self._element_meta.attributes_by_name[attribute].set(self,value)
+
         for child in children or ():
             self.append( child )
 
@@ -1438,7 +1695,19 @@ class Element(_ElementBase):
            @exception KeyError if attribute not found.
         """
         return self._element_meta.attributes_by_name[attribute_name]
+    @property
+    def has_attribute( self, attribute_name ):
+        """Returns the AttributeMeta for the specified attribute.
+           @exception KeyError if attribute not found.
+        """
 
+        return self._element_meta.attributes_by_name[attribute_name]
+
+    def get(self,attribute_name,default=None):
+        if attribute_name=='' or attribute_name=='value':
+            return self.text or default
+        return _ElementBase.get(self,attribute_name,default)
+    
     def get_native(self, attribute_name, default=None):
         """Returns the specified attribute as its python type value.
            Returns default if the attribute is not defined or not convertible to
@@ -1461,6 +1730,8 @@ class Element(_ElementBase):
         for attribute in self.meta.attributes:
             attribute.to_xml( self, attributes_by_name )
         element = xml.etree.ElementTree.Element( self.meta.tag, attributes_by_name )
+        if self.text is not None:
+            element.text = self.text
         for child in self:
             element.append( child._to_xml_element() )
         return element
@@ -1537,7 +1808,8 @@ class Element(_ElementBase):
         meta_attributes['element_xpath'] = self.xpath()
         meta_element = xml.etree.ElementTree.Element( 'MetaWorldElement', 
                                                       meta_attributes )
-        meta_element.append( self )
+        #@DaB - Fixes incorrectly pasted combined properties (x,y)
+	meta_element.append( self._to_xml_element() )
         return xml.etree.ElementTree.tostring( meta_element, encoding )
 
     def can_add_child_from_xml(self, xml_data):
@@ -1793,8 +2065,12 @@ class Element(_ElementBase):
                 'name': key } )
         tree = self.tree
         if tree:
-            old_value = self.attrib.get(key)
-            self.attrib[key] = new_value
+            if key=='value':
+                old_value = self.text
+                self.text = new_value
+            else:
+                old_value = self.attrib.get(key)
+                self.attrib[key] = new_value
             louie.send( AttributeUpdated, tree, self, key, new_value, old_value )
         else:
             self.attrib[key] = new_value
@@ -1804,9 +2080,16 @@ class Element(_ElementBase):
         """
         tree = self.tree
         if tree:
-            old_value = self.attrib[attribute_name]
+            try:
+                old_value = self.attrib[attribute_name]
+            except KeyError:
+                #wasn't set , so can't be unset..
+                return
+            del self.attrib[attribute_name]
             louie.send( AttributeUpdated, tree, self, attribute_name, None, old_value )
-        del self.attrib[attribute_name]
+        else:
+            del self.attrib[attribute_name]
+
 
     def _parent_element( self, element ):
         assert isinstance(element, Element)

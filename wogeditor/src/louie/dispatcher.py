@@ -212,10 +212,9 @@ def disconnect(receiver, signal=All, sender=Any, weak=True):
         signals = connections[senderkey]
         receivers = signals[signal]
     except KeyError:
-        raise error.DispatcherKeyError(
-            'No receivers found for signal %r from sender %r' 
-            % (signal, sender)
-            )
+        if sender:
+            print 'No receivers found for signal %r from sender %r'  % (signal, sender)
+        return
     try:
         # also removes from receivers
         _remove_old_back_refs(senderkey, signal, receiver, receivers)

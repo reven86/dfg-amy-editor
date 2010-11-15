@@ -51,8 +51,7 @@ def find_xml_attribute_value_in_directory( xml_dir, target_node_name, target_att
                                                                            target_node_name,
                                                                            target_attribute_name ) )
         elif os.path.splitext( entry )[1].lower() == '.xml':
-            with file( entry_path, 'rb') as f:
-                xml_data = f.read()
+                xml_data=file( entry_path, 'rb').read()
 ##                print 'Scanning "%s"' % entry_path
                 file_occurrences = find_xml_attribute_value( xml_data,
                                                              target_node_name,
