@@ -9,11 +9,11 @@
     <file>images/delete.png</file>
     <file>images/undo.png</file>
     <file>images/redo.png</file>
-    <file>images/icon-wog-level.png</file>
+    <file>images/icon-amy-level.png</file>
   <file>images/pick-color.png</file>
   <file>images/play.png</file>
-  <file>images/icon-wog-new-level2.png</file>
-  <file>images/icon-wog-clone-level.png</file>
+  <file>images/icon-amy-new-level2.png</file>
+  <file>images/icon-amy-clone-level.png</file>
   <file>images/update-level-resources.png</file>
   <file>images/stop16.png</file>
   <file>images/warning16.png</file>
