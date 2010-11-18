@@ -75,7 +75,6 @@ def _getRealFilename( path ):
     # will return the filename in the AcTuaL CaSe it is stored on the drive
     # ensure "clean" split
     path_bits = path.replace( '\\', '/' ).replace( '//', '/' ).split( '/' )
-    real_path_bits = []
     currentpath = path_bits.pop( 0 ) + "\\"
     for path_bit in path_bits:
         insensitive_match = ''
@@ -315,7 +314,7 @@ class GameModel( QtCore.QObject ):
         else:
             self._amy_dir = os.path.split( amy_path )[0]
 
-        metaworld.WOG_PATH = self._amy_dir
+        metaworld.AMY_PATH = self._amy_dir
         self._properties_dir = os.path.join( self._amy_dir, u'properties' )
         self._res_dir = os.path.join( self._amy_dir, u'res' )
 
@@ -384,12 +383,6 @@ class GameModel( QtCore.QObject ):
         self.models_by_name = {}
         self.__is_dirty = False
         self._initializeGlobalReferences()
-
-        try:
-            window.statusBar().showMessage( self.tr( "Game Model : Loading Goo Ball Info" ) )
-            self._loadBalls()
-        except GameModelException, e:
-            QtGui.QMessageBox.warning( window, self.tr( "Errors found Loading Balls (" + APP_NAME_PROPER + " " + CURRENT_VERSION + ")" ), unicode( e ) )
 
         self.modified_worlds_to_check = set()
         louie.connect( self._onElementAdded, metaworld.ElementAdded )
@@ -521,73 +514,6 @@ class GameModel( QtCore.QObject ):
         files.sort( key = unicode.lower )
         return files
 
-    def _loadBalls( self ):
-        """Loads all ball models and initialize related identifiers/references."""
-        ball_names = self._loadDirList( os.path.join( self._res_dir, 'balls' ),
-                                        filename_filter = 'balls.xml.bin' )
-        ball_dir = os.path.join( self._res_dir, 'balls' )
-        ball_name_map = {}
-        for ball_name in ball_names:
-            #WoG Editor was having trouble when the Ball Folder name
-            #wasn't a 100% case-sensitive match to <ball name="..."> in the balls.xml
-            #but WOG was fine with it, even on Linux.
-
-            #read in the ball_tree (balls.xml) first...
-            #get name attribute out of it, and use that to create the Ball World
-            xml_data = wogfile.decrypt_file_data( os.path.join( ball_dir, ball_name, 'balls.xml.bin' ) )
-            try:
-                ball_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_BALL_MAIN, xml_data )
-            except IOError, e:
-                raise GameModelException( unicode( e ) + u' in ' + ball_name + u'/balls.xml.bin' )
-
-            real_ball_name = ball_tree.root.get( 'name' )
-            if real_ball_name not in self.global_world.list_world_keys( metawog.WORLD_BALL ):
-                ball_world = self.global_world.make_world( metawog.WORLD_BALL, real_ball_name, BallModel, self )
-                #then append the ball_tree to the ball world... rather than loading the file again.
-                ball_tree.setFilename( os.path.join( ball_dir, ball_name, 'balls.xml.bin' ) )
-                ball_world.add_tree( [ball_tree] )
-                #ball_tree = self._loadTree( ball_world, metawog.TREE_BALL_MAIN,
-                     #                       os.path.join(ball_dir, ball_name), 'balls.xml.bin' )
-                try:
-                    ball_res_tree = self._loadTree( ball_world, metawog.TREE_BALL_RESOURCE,
-                            os.path.join( ball_dir, ball_name ), 'resources.xml.bin' )
-                    self._processSetDefaults( ball_res_tree )
-                except IOError, e:
-                    raise GameModelException( unicode( e ) + u' in ' + ball_name + u'/resources.xml.bin' )
-        #        print ball_name,real_ball_name,ball_res_tree.root.find('Resources').get('id')
-                assert ball_tree.world == ball_world
-                assert ball_tree.root.world == ball_world, ball_tree.root.world
-
-                ball_name_map[real_ball_name] = ball_name
-
-                # look at ball_tree
-                # cache the shape, and suckable
-                metawog.BALLS_SHAPES[real_ball_name] = str( ball_tree.root.get( 'shape' ) ).split( ',' )
-                if ball_tree.root.get_native( 'suckable', True ):
-                    metawog.BALLS_SUCKABLE.add( real_ball_name )
-                if ball_tree.root.get_native( 'static', False ):
-                    metawog.BALLS_STATIC.add( real_ball_name )
-
-                #cache the body image_element and scale factor
-                for part in ball_tree.root.findall( 'part' ):
-                    if part.get( 'name' ).lower() == 'body':
-                        ball_image = part.get( 'image' ).split( ',' )[0] #can be comma-sep list, use first!
-                        image_element = ball_world.resolve_reference( metawog.WORLD_BALL, 'image', ball_image )
-                        scale = part.get_native( 'scale', 1 )
-                        metawog.BALLS_IMAGES[real_ball_name] = [image_element, scale]
-
-                if real_ball_name not in metawog.BALLS_IMAGES.keys():
-                    metawog.BALLS_INVISIBLE.add( real_ball_name )
-
-                # flag if this ball has no strand entry
-                if ball_tree.root.find( 'strand' ) is None:
-                    metawog.BALLS_MUST_BE_GB1.append( real_ball_name )
-
-            else:
-                 QtGui.QMessageBox.warning( self._window, self.tr( "Errors found Loading Balls (" + APP_NAME_PROPER + " " + CURRENT_VERSION + ")" ),
-                                            'Duplicate ball name <b>' + real_ball_name + '</b> found in folder <b>' + ball_name_map[real_ball_name] + '</b>  and  <b>' + ball_name + '</b><br>' +
-                                            'Only the first one has been loaded!' )
-
     def _processSetDefaults( self, resource_tree ):
         #Unwraps the SetDefaults "processing instruction"
         #updates all paths and ids to full
@@ -599,7 +525,7 @@ class GameModel( QtCore.QObject ):
                 idprefix = element.get( 'idprefix', '' )
                 pathprefix = element.get( 'path' ).strip().replace( "\\", "/" )
                 if not pathprefix.endswith( '/' ):
-                      pathprefix += '/'
+                    pathprefix += '/'
                 pathprefix = pathprefix.replace( "./", "" )
 
                 element.set( 'idprefix', "" )
@@ -928,238 +854,87 @@ class GameModel( QtCore.QObject ):
 
     def cloneLevel( self, cloned_name, new_name ):
         #Clone an existing level and its resources.
-           model = self.getModel( cloned_name )
-           dir = os.path.join( self._res_dir, STR_DIR_STUB, new_name )
-           if not os.path.isdir( dir ):
-                os.mkdir( dir )
+        model = self.getModel( cloned_name )
+        dir = os.path.join( self._res_dir, STR_DIR_STUB, new_name )
+        if not os.path.isdir( dir ):
+            os.mkdir( dir )
 
-           #new cloning method... #2
-           # worked for balls... might be going back to the old Nitrozark way..
-           # which didn't work right... Hmmm.!
+        #new cloning method... #2
+        # worked for balls... might be going back to the old Nitrozark way..
+        # which didn't work right... Hmmm.!
 
-            #get xml from existing
-            #make unattached trees from it
-           new_level_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_GAME,
-                                                                        model.level_root.tree.to_xml() )
+        #get xml from existing
+        #make unattached trees from it
+        new_level_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_GAME,
+                                                                       model.level_root.tree.to_xml() )
 
-           new_scene_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_SCENE,
-                                                                        model.scene_root.tree.to_xml() )
+        new_scene_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_SCENE,
+                                                                    model.scene_root.tree.to_xml() )
 
-           new_res_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_RESOURCE,
+        new_res_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_RESOURCE,
                                                                         model.resource_root.tree.to_xml() )
 
-           new_addin_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_ADDIN,
+        new_addin_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_ADDIN,
                                                                         model.addin_root.tree.to_xml() )
-           new_text_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_TEXT,
+        new_text_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_TEXT,
                                                                         model.text_root.tree.to_xml() )
 
-            #change stuff
-           for resource_element in new_res_tree.root.findall( './/Resources' ):
-                resource_element.set( 'id', 'scene_%s' % new_name )
+        #change stuff
+        for resource_element in new_res_tree.root.findall( './/Resources' ):
+            resource_element.set( 'id', 'scene_%s' % new_name )
 
-           for resource_element in new_res_tree.root.findall( './/Image' ):
-                resid = resource_element.get( 'id' )
-                resource_element.set( 'id', resid.replace( '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_', 1 ) )
+        for resource_element in new_res_tree.root.findall( './/Image' ):
+            resid = resource_element.get( 'id' )
+            resource_element.set( 'id', resid.replace( '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_', 1 ) )
 
-           for resource_element in new_res_tree.root.findall( './/Sound' ):
-                resid = resource_element.get( 'id' )
-                resource_element.set( 'id', resid.replace( '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_', 1 ) )
+        for resource_element in new_res_tree.root.findall( './/Sound' ):
+            resid = resource_element.get( 'id' )
+            resource_element.set( 'id', resid.replace( '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_', 1 ) )
 
-           for resource_element in new_text_tree.root.findall( './/string' ):
-                resid = resource_element.get( 'id' )
-                resource_element.set( 'id', resid.replace( '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_', 1 ) )
+        for resource_element in new_text_tree.root.findall( './/string' ):
+            resid = resource_element.get( 'id' )
+            resource_element.set( 'id', resid.replace( '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_', 1 ) )
 
-           #also rewrite important things in the addin xml
-           dir_element = new_addin_tree.root.find( './/dir' )
-           #print ".dir element",dir_element
-           dir_element.set( 'value', new_name )
+        #also rewrite important things in the addin xml
+        dir_element = new_addin_tree.root.find( './/dir' )
+        #print ".dir element",dir_element
+        dir_element.set( 'value', new_name )
 
-           name_element = new_addin_tree.root.find( 'name' )
-           #print "addin.name element",name_element
-           name_element.set( 'value', new_name )
+        name_element = new_addin_tree.root.find( 'name' )
+        #print "addin.name element",name_element
+        name_element.set( 'value', new_name )
 
-           name_element = new_addin_tree.root.find( 'levels/level/name' )
-           #print "addin.levels.level.name element",name_element
-           name_element.set( 'text', new_name )
+        name_element = new_addin_tree.root.find( 'levels/level/name' )
+        #print "addin.levels.level.name element",name_element
+        name_element.set( 'text', new_name )
 
+        id_element = new_addin_tree.root.find( './/id' )
+        id_element.set( 'value', "" )
 
-           id_element = new_addin_tree.root.find( './/id' )
-           id_element.set( 'value', "" )
+        self._res_swap( new_level_tree.root, '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_' )
+        self._res_swap( new_scene_tree.root, '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_' )
 
-           self._res_swap( new_level_tree.root, '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_' )
-           self._res_swap( new_scene_tree.root, '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_' )
+        #save out new trees
+        self._saveUnPackedData( dir, new_name + '.addin.xml', new_addin_tree )
+        self._saveUnPackedData( dir, new_name + '.text.xml', new_text_tree )
+        self._savePackedData( dir, new_name + '.level.bin', new_level_tree )
+        self._savePackedData( dir, new_name + '.scene.bin', new_scene_tree )
+        self._savePackedData( dir, new_name + '.resrc.bin', new_res_tree )
 
-            #save out new trees
-           self._saveUnPackedData( dir, new_name + '.addin.xml', new_addin_tree )
-           self._saveUnPackedData( dir, new_name + '.text.xml', new_text_tree )
-           self._savePackedData( dir, new_name + '.level.bin', new_level_tree )
-           self._savePackedData( dir, new_name + '.scene.bin', new_scene_tree )
-           self._savePackedData( dir, new_name + '.resrc.bin', new_res_tree )
-
-           self._levels.append( unicode( new_name ) )
-           self._levels.sort( key = unicode.lower )
-           self.__is_dirty = True
+        self._levels.append( unicode( new_name ) )
+        self._levels.sort( key = unicode.lower )
+        self.__is_dirty = True
 
     def _res_swap( self, element, find, replace ):
-           for attribute in element.meta.attributes:
-                if attribute.type == metaworld.REFERENCE_TYPE:
-                    if attribute.reference_family in ['image', 'sound', 'TEXT_LEVELNAME_STR']:
-                        value = element.get( attribute.name, None )
-                        if value is not None:
-                            rv = ','.join( [v.replace( find, replace, 1 ) for v in value.split( ',' )] )
-                            element.set( attribute.name, rv )
-           for child in element.getchildren():
-                self._res_swap( child, find, replace )
-
-    def creategoomod( self, name , goomod_filename, include_deps = False ):
-           model = self.getModel( name )
-           dir = os.path.join( self._res_dir, STR_DIR_STUB, name )
-           goomod_dir = os.path.join( dir, "goomod" )
-           stub = os.path.join( 'res', STR_DIR_STUB, name )
-           compile_dir = os.path.join( goomod_dir, 'compile', stub )
-           if not os.path.isdir( compile_dir ):
-                os.makedirs( compile_dir )
-           files_to_goomod = [os.path.join( goomod_dir, 'addin.xml' )]
-           self._saveUnPackedData( goomod_dir, 'addin.xml', model.addin_root.tree )
-           #@DaB Check if there's text and write file if needed.
-           textfile = os.path.join( goomod_dir, 'text.xml' )
-           if model.hasText:
-               files_to_goomod.append( textfile )
-               self._saveUnPackedData( goomod_dir, 'text.xml', model.text_root.tree )
-           else:
-               # if no text required, remove the goomod text.xml file if it exists.
-               if os.path.exists( textfile ):
-                   os.remove( textfile )
-
-           files_to_goomod.append( os.path.join( compile_dir, name + '.level.xml' ) )
-           self._saveUnPackedData( compile_dir, name + '.level.xml', model.level_root.tree )
-           files_to_goomod.append( os.path.join( compile_dir, name + '.resrc.xml' ) )
-           self._saveUnPackedData( compile_dir, name + '.resrc.xml', model.resource_root.tree )
-           files_to_goomod.append( os.path.join( compile_dir, name + '.scene.xml' ) )
-           self._saveUnPackedData( compile_dir, name + '.scene.xml', model.scene_root.tree )
-
-           #That's the level xml taken care of... now lets see if there are any resources to copy
-           # The dependancy tree is our friend here.
-           # it already contains elements for every (non-original) image and sound
-           # as well as entries for balls, particles and materials.
-           # it's kinda why I did it.
-
-           # if they've said include_all_dep then we include "everything" in the dep_tree
-           # if not, we only do Root Level images and sounds (immediate child of root)
-           global_resources = {}
-           files_to_copy = set()
-           self._add_dep_to_goomod( model.dependancy_root, files_to_copy, files_to_goomod, global_resources, compile_dir, goomod_dir, full_dep = include_deps )
-
-           if len( files_to_copy ) > 0:
-               override_dir = os.path.join( goomod_dir, 'override' )
-               if not os.path.isdir( override_dir ):
-                    os.makedirs( override_dir )
-               for file in files_to_copy:
-
-                   file_bits = os.path.split( file )
-                   dest_dir = os.path.join( override_dir, file_bits[0] )
-                   if not os.path.isdir( dest_dir ):
-                      os.makedirs( dest_dir )
-                   src_file = os.path.join( self._amy_dir, file )
-                   dest_file = os.path.join( override_dir, file )
-                   copy2( src_file, dest_file )
-                   files_to_goomod.append( dest_file )
-                   #print "Copied",src_file," to ",dest_file
-
-           #Now create the zip file.
-           len_gf = len( goomod_dir ) + 1
-           zout = zipfile.ZipFile( goomod_filename, "w" )
-           for file in files_to_goomod:
-                file_in_zip = file[len_gf:].replace( "\\", "/" )
-                #print "goomoding...",file,"as",file_in_zip
-                zout.write( file, file_in_zip )
-           zout.close()
-
-    def _add_dep_to_goomod( self, element, files_to_copy, files_to_goomod, global_resources, compile_dir, goomod_dir, full_dep = False ):
-        # first an any 'image' or 'sound' children at this level
-
+        for attribute in element.meta.attributes:
+            if attribute.type == metaworld.REFERENCE_TYPE:
+                if attribute.reference_family in ['image', 'sound', 'TEXT_LEVELNAME_STR']:
+                    value = element.get( attribute.name, None )
+                    if value is not None:
+                        rv = ','.join( [v.replace( find, replace, 1 ) for v in value.split( ',' )] )
+                        element.set( attribute.name, rv )
         for child in element.getchildren():
-            if child.tag == "image":
-                files_to_copy.add( child.get( 'path' ) + ".png" )
-                if element.tag in ['effect']:
-                    #print "effect image found ",child,child.get('id'),child.get('path')
-                    global_resources[child.get( 'id' )] = child.get( 'path' )
-            elif child.tag == "sound":
-                files_to_copy.add( child.get( 'path' ) + ".ogg" )
-
-        if full_dep:
-        # findall balls and call with full_dep false
-            ball_path = os.path.join( goomod_dir, 'compile', 'res', 'balls' )
-            for ball in element.findall( './/ball' ):
-                # locate ball world
-                ball_world = self.global_world.find_world( metawog.WORLD_BALL, ball.get( 'name' ) )
-                ball_dir = os.path.join( ball_path, ball.get( 'name' ) )
-                # ENSURE PATH EXISTS
-                if not os.path.isdir( ball_dir ):
-                   os.makedirs( ball_dir )
-
-                filename = os.path.join( ball_dir, 'balls.xml.xml' )
-                files_to_goomod.append( filename )
-                xml_data = wogfile.decrypt_file_data( ball_world.find_tree( metawog.TREE_BALL_MAIN ).filename )
-                file( filename, 'wb' ).write( xml_data )
-                #self._saveUnPackedData( ball_dir, 'balls.xml.xml', ball_tree)
-
-                filename = os.path.join( ball_dir, 'resources.xml.xml' )
-                files_to_goomod.append( filename )
-                xml_data = wogfile.decrypt_file_data( ball_world.find_tree( metawog.TREE_BALL_RESOURCE ).filename )
-                file( filename, 'wb' ).write( xml_data )
-#                self._saveUnPackedData( ball_dir, 'resources.xml.xml', ball_tree)
-
-                self._add_dep_to_goomod( ball, files_to_copy, files_to_goomod, global_resources, compile_dir, goomod_dir, full_dep = False )
-
-            for anim in element.findall( 'anim' ):
-                files_to_copy.add( "res/anim/" + anim.get( 'id', '' ) + ".anim.binltl" )
-
-        # findall particles (store xml) and call with fulldep=false
-            particle_xml = ''
-            for effect in element.findall( './/effect' ):
-               res_element = self.global_world.resolve_reference( metawog.WORLD_GLOBAL, 'effect', effect.get( 'name' ) )
-               particle_xml += res_element.to_xml() + "\n"
-               self._add_dep_to_goomod( effect, files_to_copy, files_to_goomod, global_resources, compile_dir, goomod_dir, full_dep = False )
-
-        # findall materials (store xml)
-            material_xml = ''
-            for material in element.findall( './/material' ):
-               res_element = self.global_world.resolve_reference( metawog.WORLD_GLOBAL, 'material', material.get( 'id' ) )
-               material_xml += res_element.to_xml() + "\n"
-
-            # output xsl for particles, and add for goomod
-            merge_path = os.path.join( goomod_dir, 'merge', 'properties' )
-            if particle_xml != '':
-               # print "particle_xml=",particle_xml
-                params = {}
-                params['path'] = '/effects'
-                params['xml_data'] = particle_xml
-                files_to_goomod.append( os.path.join( merge_path, 'fx.xml.xsl' ) )
-                self._output_xsl( metawog.XSL_ADD_TEMPLATE, params, merge_path, 'fx.xml.xsl' )
-
-            # output xsl for materials, and add for goomod
-            if material_xml != '':
-               # print "material_xml=",material_xml
-                params = {}
-                params['path'] = '/materials'
-                params['xml_data'] = material_xml
-                files_to_goomod.append( os.path.join( merge_path, 'materials.xml.xsl' ) )
-                self._output_xsl( metawog.XSL_ADD_TEMPLATE, params, merge_path, 'materials.xml.xsl' )
-
-            # custom resources required for particles effect need to go in 
-            # the global  resources.xml  so require a merge xsl
-            if len( global_resources ) > 0:
-               resource_xml = '<SetDefaults path="./" idprefix=""/>\n'
-               for id, path in global_resources.items():
-                    resource_xml += '<Image id="%(id)s" path="%(path)s" />\n' % {'id':id, 'path':path}
-               params = {}
-               params['path'] = "/ResourceManifest/Resources[@id='common']"
-               params['xml_data'] = resource_xml
-               files_to_goomod.append( os.path.join( merge_path, 'resources.xml.xsl' ) )
-               self._output_xsl( metawog.XSL_ADD_TEMPLATE, params, merge_path, 'resources.xml.xsl' )
-
-            # done?
+            self._res_swap( child, find, replace )
 
     def _output_xsl( self, template, params, directory, filename ):
         if not os.path.isdir( directory ):
@@ -1201,7 +976,7 @@ class GameModel( QtCore.QObject ):
         """
         dir_path = os.path.join( self._res_dir, STR_DIR_STUB, name )
         if not os.path.isdir( dir_path ):
-             os.mkdir( dir_path )
+            os.mkdir( dir_path )
 
 
         # Fix the hard-coded level name in resource tree: <Resources id="scene_NewTemplate" >
@@ -1224,12 +999,6 @@ class GameModel( QtCore.QObject ):
         self._levels.append( unicode( name ) )
         self._levels.sort( key = unicode.lower )
         self.__is_dirty = True
-
-class BallModel( metaworld.World ):
-    def __init__( self, universe, world_meta, ball_name, game_model ):
-        metaworld.World.__init__( self, universe, world_meta, ball_name )
-        self.game_model = game_model
-        self.is_dirty = False
 
 class ThingWorld( metaworld.World,
                  metaworldui.SelectedElementsTracker,
@@ -1297,7 +1066,7 @@ class LevelWorld( ThingWorld ):
 
     @property
     def hasText( self ):
-       return self.find_tree( metawog.TREE_LEVEL_TEXT ).root.find( 'string' ) is not None
+        return self.find_tree( metawog.TREE_LEVEL_TEXT ).root.find( 'string' ) is not None
 
     @property
     def view( self ):
@@ -1308,8 +1077,8 @@ class LevelWorld( ThingWorld ):
 
     #@DaB - Issue checking used when saving the level, or making a goomod
     def hasIssues ( self ):
-		#Checks all 3 element trees for outstanding issues
-		# Returns True if there are any.
+        #Checks all 3 element trees for outstanding issues
+        # Returns True if there are any.
         self._buildDependancyTree()
         tIssue = ISSUE_LEVEL_NONE
         if self.element_issue_level( self.scene_root ):
@@ -1344,8 +1113,8 @@ class LevelWorld( ThingWorld ):
         return tIssue
 
     def getIssues ( self ):
-		#Get a 'report' of outstanding Issues
-		#Used for Popup Message
+        #Get a 'report' of outstanding Issues
+        #Used for Popup Message
         txtIssue = ''
         if self.element_issue_level( self.scene_root ):
             txtIssue = txtIssue + '<p>Scene Tree:<br>' + self.element_issue_report( self.scene_root ) + '</p>'
@@ -1418,7 +1187,7 @@ class LevelWorld( ThingWorld ):
             #only Single poi travel time check
             if len( camera._children ) == 1:
                 if camera._children[0].get_native( 'traveltime', 0 ) > 1:
-                   self.addLevelError( 101, c_aspect )
+                    self.addLevelError( 101, c_aspect )
 
         if not normal_camera:
             self.addLevelError( 102, None )
@@ -1473,42 +1242,8 @@ class LevelWorld( ThingWorld ):
                         self.addLevelError( 108, None )
                         break
 
-        #Final Ball Checks
-        #Need to check that no "funny business" has gone on since the strands were added
-        #also get the max height (y) of any ball
-        # Build Dict of Ball Ids and Types
-        balls = {}
-        ball = root.find( 'BallInstance' )
-        if ball is not None:
-            x, max_ball_height = ball.get_native( 'pos' )
-        else:
-            max_ball_height = 0
-        for ball in root.findall( 'BallInstance' ):
-            balls[ball.get( 'id' )] = ball.get( 'type' )
-            x, y = ball.get_native( 'pos' )
-            if y > max_ball_height:
-                max_ball_height = y
-
-        problem_balls = set()
-        for strand in root.findall( 'Strand' ):
-            gt1, gt2 = balls[strand.get( 'gb1' )], balls[strand.get( 'gb2' )]
-            if gt1 in metawog.BALLS_NO_STRANDS:
-               problem_balls.add( strand.get( 'gb1' ) )
-            if gt2 in metawog.BALLS_NO_STRANDS:
-               problem_balls.add( strand.get( 'gb2' ) )
-            if ( gt1 in metawog.BALLS_MUST_BE_GB1 ) and ( gt2 in metawog.BALLS_MUST_BE_GB1 ):
-               self.addLevelError( 109, ( gt1, strand.get( 'gb1' ), gt2, strand.get( 'gb1' ) ) )
-
-        for problem_ball in problem_balls:
-               self.addLevelError( 110, ( balls[problem_ball], problem_ball ) )
-
         if len( end_conditions ) > 1:
-               self.addLevelError( 111, ','.join( end_conditions ) )
-
-        if targetheight is not None:
-            th = targetheight.get_native( 'y' )
-            if max_ball_height >= th:
-               self.addLevelError( 112, None )
+            self.addLevelError( 111, ','.join( end_conditions ) )
 
         #Ambient Particles on "Local Effect Only" object (fire or signpost)
         ambient_effects = []
@@ -1807,7 +1542,7 @@ class LevelWorld( ThingWorld ):
         if dependancy_tree is not None:
             self.remove_tree( dependancy_tree )
         dependancy_tree = self.make_tree_from_xml( metawog.TREE_LEVEL_DEPENDANCY, metawog.LEVEL_DEPENDANCY_TEMPLATE )
-        current = {'imagedep':set(), 'sounddep':set(), 'effectdep':set(), 'materialdep':set(), 'balldep':set(), 'animdep':set()}
+        current = {'imagedep':set(), 'sounddep':set(), 'effectdep':set(), 'materialdep':set(), 'animdep':set()}
         ball_trace = ''
         self._recursion = []
 
@@ -1896,12 +1631,6 @@ class LevelWorld( ThingWorld ):
             if not remove:
               if not element.get_native( 'found', False ):
                   element.set( 'found', '* particle effect not found *' )
-        elif element.tag == 'ball':
-            if element.get( 'name' ) in metawog.BALLS_ORIGINAL:
-                 remove = True
-            if not remove:
-              if not element.get_native( 'found', False ):
-                  element.set( 'found', '* ball not found *' )
         elif element.tag == 'anim':
             if not element.get_native( 'found', False ):
                  element.set( 'found', '* anim file not found *' )
@@ -1921,21 +1650,9 @@ class LevelWorld( ThingWorld ):
     def _addDependancies( self, element, dep_element, current, ball_trace ):
         #run through the attributes of the element
         # add nodes at this level for any direct deps
-        if element.tag == 'ball':
-            if element.get( 'name' ) in ball_trace.split( ',' ):
-                self._recursion.append( ball_trace + element.get( 'name' ) )
-                return
-            else:
-                ball_trace += element.get( 'name' ) + ","
-            #only bother refreshing custom balls
-            if element.get( 'name' ) not in metawog.BALLS_ORIGINAL:
-                world = element.world
-                element.world.refreshFromFiles()
-                element = world.find_tree( metawog.TREE_BALL_MAIN ).root
-
         for attribute_meta in element.meta.attributes:
             if attribute_meta.type == metaworld.REFERENCE_TYPE:
-             if attribute_meta.reference_family in ['image', 'sound', 'effect', 'material', 'ball']:
+             if attribute_meta.reference_family in ['image', 'sound', 'effect', 'material']:
               if attribute_meta.name != 'filter':
                 attribute_value = attribute_meta.get( element )
                 if attribute_value is not None:
@@ -1949,18 +1666,6 @@ class LevelWorld( ThingWorld ):
                         res_element = self.resolve_reference( attribute_meta.reference_world, attribute_meta.reference_family, reference )
                     except ValueError:
                         res_element = None
-                    if res_element is None:
-                        ball_element = element
-                        for i in range( 4 ):
-                          if ball_element.tag == "ball":
-                             ball_world = ball_element.world
-                             if ball_world is not None:
-                                res_element = ball_world.resolve_reference( attribute_meta.reference_world, attribute_meta.reference_family, reference )
-                             break
-                          elif ball_element.parent is None:
-                              print "ball_element no parent", ball_element.tag, i
-                              break
-                          ball_element = ball_element.parent
 
                     new_dep_meta = dep_element.meta.find_immediate_child_by_tag( attribute_meta.reference_family )
                     child_attrib = {}
@@ -2008,17 +1713,6 @@ class LevelWorld( ThingWorld ):
         if len( self._recursion ) > 0:
             for recurse in self._recursion:
                 self.addDependancyError( 301, recurse.replace( ',', ' --> ' ) )
-
-        # Custom Balls
-        ball_dep = {}
-        for ball in self.dependancy_root.findall( ".//ball" ):
-            ball_dep[ball.get( 'name' )] = ball.get_native( 'found', False )
-
-        if len( ball_dep ) != 0:
-            self.addDependancyError( 302, ','.join( ball_dep.keys() ) )
-            for ball, found in ball_dep.items():
-                if not found:
-                    self.addDependancyError( 303, ball )
 
         # Custom Materials
         material_dep = {}
@@ -2127,11 +1821,10 @@ class LevelWorld( ThingWorld ):
                                                  self.text_root.tree )
 
             if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_GAME ):
-
                 if not self.element_issue_level( self.level_root ):
-                  #clean tree caused an infinite loop when there was a missing ball
-                  # so only clean trees with no issues
-                  self._cleanleveltree()
+                    #clean tree caused an infinite loop when there was a missing ball
+                    # so only clean trees with no issues
+                    self._cleanleveltree()
 
                 self.game_model._savePackedData( dir, name + '.level.bin',
                                                  self.level_root.tree )
@@ -2453,7 +2146,7 @@ class MainWindow( QtGui.QMainWindow ):
         #@DaB - New save routines to save ONLY the current Level
 
     def saveCurrent( self ):
-       if self._game_model:
+        if self._game_model:
             model = self.getCurrentModel()
             if model is not None:
                 if model.isReadOnly:
@@ -2473,24 +2166,24 @@ class MainWindow( QtGui.QMainWindow ):
                     except ( IOError, OSError ), e:
                         QtGui.QMessageBox.warning( self, self.tr( "Failed saving levels (" + APP_NAME_PROPER + " " + CURRENT_VERSION + ")" ), unicode( e ) )
 
-       return False
+        return False
 
     def saveIT( self ):
-       if self.saveCurrent():
-         QtGui.QApplication.setOverrideCursor( Qt.WaitCursor )
-         model = self.getCurrentModel()
-         issue_level = model.hasIssues()
-         QtGui.QApplication.restoreOverrideCursor()
-         if issue_level >= ISSUE_LEVEL_WARNING:
-            txtIssue = self.tr( """<p>There are unresolved issues with this level that may cause problems.<br>
-                                    You should fix these before you try to play or make a goomod.</p>""" )
-            txtIssue = txtIssue + self.tr( model.getIssues() )
-            txtIssue = txtIssue + self.tr( '<br>The level has been saved!' )
-            QtGui.QMessageBox.warning( self, self.tr( "This level has issues!" ),
-                  txtIssue )
+        if self.saveCurrent():
+            QtGui.QApplication.setOverrideCursor( Qt.WaitCursor )
+            model = self.getCurrentModel()
+            issue_level = model.hasIssues()
+            QtGui.QApplication.restoreOverrideCursor()
+            if issue_level >= ISSUE_LEVEL_WARNING:
+                txtIssue = self.tr( """<p>There are unresolved issues with this level that may cause problems.<br>
+                                        You should fix these before you try to play or make a goomod.</p>""" )
+                txtIssue = txtIssue + self.tr( model.getIssues() )
+                txtIssue = txtIssue + self.tr( '<br>The level has been saved!' )
+                QtGui.QMessageBox.warning( self, self.tr( "This level has issues!" ),
+                      txtIssue )
 
     def saveAndPlayLevel( self ):
-		#@DaB only save current level, and don't "play" if it has "Issues"
+        #@DaB only save current level, and don't "play" if it has "Issues"
         if self.saveCurrent(): #returns false if there are issues
             model = self.getCurrentModel()
             if model:
@@ -2515,91 +2208,6 @@ class MainWindow( QtGui.QMainWindow ):
                     self._game_model.playLevel( model )
             else:
                 self.statusBar().showMessage( self.tr( "You must select a level to play" ), 2000 )
-
-    def makegoomod( self ):
-      if self.saveCurrent(): #returns false if it failed
-        if self._game_model:
-            model = self.getCurrentModel()
-            if model is not None:
-                self.statusBar().showMessage( self.tr( "Checking for Issues : " + model.name ), 2000 )
-                QtGui.QApplication.setOverrideCursor( Qt.WaitCursor )
-                issue_level = model.hasIssues()
-                QtGui.QApplication.restoreOverrideCursor()
-
-                if issue_level == ISSUE_LEVEL_ADVICE:
-                    txtIssue = self.tr( """<p>There are Advice issues for this level.<br>
-                               You should probably fix these before you upload the goomod</p>""" )
-                    txtIssue = txtIssue + self.tr( model.getIssues() )
-                    txtIssue = txtIssue + self.tr( '<br>Click OK to make the goomod anyway, or click Cancel to go back.' )
-                    ret = QtGui.QMessageBox.warning( self, self.tr( "This level has advice!" ),
-                        txtIssue, QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel )
-                    if ret == QtGui.QMessageBox.Cancel:
-                        return False
-                elif issue_level >= ISSUE_LEVEL_WARNING:
-                        txtIssue = self.tr( """<p>There are unresolved issues with this level.<br>
-                                           You must fix these before you can produce a .goomod</p>""" )
-                        txtIssue = txtIssue + self.tr( model.getIssues() )
-                        QtGui.QMessageBox.warning( self, self.tr( "This level has issues!" ), txtIssue )
-                        return False
-
-                if model.hasAddinIssues():
-                        txtIssue = self.tr( """<p>There are unresolved issues with the Addin info.<br>
-                                                You must fix these before you can produce a .goomod</p>""" )
-                        txtIssue = txtIssue + self.tr( model.getAddinIssues() )
-                        QtGui.QMessageBox.warning( self, self.tr( "This level has Addin issues!" ), txtIssue )
-                        return False
-
-                include_all_dep = False
-                if model.hasDependancies():
-                    # level has some dependancies (might just be custom gfx or Sounds
-                    if model.hasdependancy_issue():
-                        # has more deps than just GFX or Sound (Balls or Materials or Particles)
-                        if model._dependancy_issue_level > ISSUE_LEVEL_ADVICE:
-                            #Theres a problem and we can't build the goomod
-                            txtIssue = self.tr( """<p>You must fix these before you can produce a .goomod</p>""" )
-                            txtIssue += model.dependancy_issue_report
-                            QtGui.QMessageBox.warning( self, self.tr( "This level has dependancy issues!" ), txtIssue )
-                            return False
-                        else:
-                            #There's no "problem" we need just to ask if they want to localize all
-                            txtIssue = self.tr( """<p>This level depends on several custom resources.</p>""" )
-                            txtIssue += model.dependancy_issue_report
-                            txtIssue += self.tr( '<br>Would you like to include ALL these resources in the goomod?' )
-                            ret = QtGui.QMessageBox.warning( self, self.tr( "This level has dependancies!" ),
-                                txtIssue, QtGui.QMessageBox.Yes | QtGui.QMessageBox.No | QtGui.QMessageBox.Cancel )
-                            if ret == QtGui.QMessageBox.Cancel:
-                                return False
-                            elif ret == QtGui.QMessageBox.Yes:
-                                include_all_dep = True
-
-                #maybe actually think about doing it!
-                #ask here instead?
-                dir = os.path.normpath( os.path.join( os.path.split( self._amy_path )[0], 'res', STR_DIR_STUB, model.name ) )
-                goomod_dir = os.path.join( dir, u'goomod' )
-                if not os.path.isdir( goomod_dir ):
-                    os.mkdir( goomod_dir )
-                id_element = model.addin_root.find( 'id' )
-
-                if self._goomod_path == '':
-                    goomod_filename = os.path.join( goomod_dir, id_element.text ) + ".goomod"
-                else:
-                    goomod_filename = os.path.join( self._goomod_path, id_element.text ) + ".goomod"
-
-                filename = QtGui.QFileDialog.getSaveFileName( self, self.tr( "Save goomod File" ),
-                        goomod_filename,
-                        self.tr( "goomod (*.goomod)" ) );
-                if filename != '':
-                    self.statusBar().showMessage( self.tr( "Creating goomod : " + model.name ), 2000 )
-
-                    filename = os.path.normpath( str( filename ) )
-                    if filename[:len( dir )] == dir:
-                        self._goomod_path = u''
-                    else:
-                        self._goomod_path = os.path.split( filename )[0]
-                    self._game_model.creategoomod( model.name, filename, include_deps = include_all_dep )
-                    self.statusBar().showMessage( self.tr( "goomod Created: " + filename ), 2000 )
-
-      return False
 
     def newLevel( self ):
         """Creates a new blank level."""
@@ -3297,8 +2905,6 @@ class MainWindow( QtGui.QMainWindow ):
                     text = "Show/Hide Geometry" , icon = ":/images/show-geom.png" ),
             'gfx': qthelper.action( self, handler = ShowHideFactory( self , ['SceneLayer', 'signpost', 'pixmap'] ),
                     text = "Show/Hide Graphics" , icon = ":/images/show-gfx.png" ),
-#            'goos': qthelper.action( self, handler = ShowHideFactory( self , ['BallInstance', 'Strand'] ),
-#                    text = "Show/Hide Goos" , icon = ":/images/show-goo.png" ),
             'particles': qthelper.action( self, handler = ShowHideFactory( self , ['particles'] ),
                     text = "Show/Hide Particles" , icon = ":/images/show-particles.png" ),
             'labels': qthelper.action( self, handler = ShowHideFactory( self , ['label'] ),
@@ -3472,8 +3078,6 @@ class MainWindow( QtGui.QMainWindow ):
         self.fileToolBar.addAction( self.saveAction )
         self.fileToolBar.addAction( self.playAction )
         self.fileToolBar.addSeparator()
-#        self.fileToolBar.addAction( self.goomodAction )
-
 
         self.editToolbar = self.addToolBar( self.tr( "Edit" ) )
         self.editToolbar.setObjectName( "editToolbar" )
@@ -3550,7 +3154,7 @@ class MainWindow( QtGui.QMainWindow ):
 
     def createDockWindows( self ):
         self.group_icons = {}
-        for group in 'camera game image physic resource shape text info ball particles strand fire goomod material rect circle compgeom pipe line sign anim'.split():
+        for group in 'camera game image physic resource shape text info particles strand fire material rect circle compgeom pipe line sign anim'.split():
             self.group_icons[group] = QtGui.QIcon( ":/images/group-%s.png" % group )
         self.tree_view_by_element_world = {} # map of all tree views
         scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', metawog.TREE_LEVEL_SCENE )
@@ -3596,11 +3200,6 @@ class MainWindow( QtGui.QMainWindow ):
             self._amy_path = u''
         elif self._amy_path != u'':
             self._amy_path = os.path.normpath( self._amy_path )
-        self._goomod_path = unicode( settings.value( "goomod_path", QtCore.QVariant( u'' ) ).toString() )
-        if self._goomod_path == u'.':
-            self._goomod_path = u''
-        elif self._goomod_path != u'':
-            self._goomod_path = os.path.normpath( self._goomod_path )
 
         if settings.value( "wasMaximized", False ).toBool():
             self.showMaximized()
@@ -3621,7 +3220,6 @@ class MainWindow( QtGui.QMainWindow ):
         settings = QtCore.QSettings() #@todo makes helper to avoid QVariant conversions
         settings.beginGroup( "MainWindow" )
         settings.setValue( "amy_path", QtCore.QVariant( QtCore.QString( self._amy_path or u'' ) ) )
-        settings.setValue( "goomod_path", QtCore.QVariant( QtCore.QString( self._goomod_path or u'' ) ) )
         settings.setValue( "wasMaximized", QtCore.QVariant( self.isMaximized() ) )
         settings.setValue( "size", QtCore.QVariant( self.size() ) )
         settings.setValue( "pos", QtCore.QVariant( self.pos() ) )
