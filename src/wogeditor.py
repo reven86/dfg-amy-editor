@@ -1152,19 +1152,6 @@ class LevelWorld( ThingWorld ):
                 # exit outside scene bounds warning
                 self.addGlobalError( 401, None )
 
-        #Custom Pipe checks
-        pipe = self.level_root.find( 'pipe' )
-        if pipe is not None:
-            pipe_type = pipe.get( 'type', 'default' )
-            if pipe_type not in metawog.PIPES_STANDARD.keys():
-                # it's a custom pipe
-                # Check the necessary resources exist
-                for resource_id_stub in metawog.PIPE_RESOURCE_STUBS:
-                    image_id = metawog.PIPE_RESOURCE + resource_id_stub + "_" + pipe_type
-                    image_element = self.resolve_reference( metawog.WORLD_LEVEL, 'image', image_id )
-                    if image_element is None:
-                        self.addGlobalError( 401, image_id )
-
         return self._global_issue_level != ISSUE_LEVEL_NONE
 
     def haslevel_issue( self ):
@@ -1203,45 +1190,6 @@ class LevelWorld( ThingWorld ):
         if endoncollision is not None:
             end_conditions.append( 'endoncollision' )
 
-        #if there's a levelexit there must be a pipe
-        levelexit = root.find( 'levelexit' )
-        pipe = root.find( 'pipe' )
-        if levelexit is not None:
-            end_conditions.append( 'levelexit' )
-            if pipe is None:
-                self.addLevelError( 104, None )
-
-            else:
-                pipex, pipey = pipe.getchildren()[0].get_native( 'pos' )
-                levelx, levely = levelexit.get_native( 'pos' )
-                levelr = levelexit.get_native( 'radius' ) / 2
-                if levelview.vector2d_length( pipex - levelx, pipey - levely ) > levelr:
-                    self.addLevelError( 105, None )
-
-        if pipe is not None:
-            vertexes = pipe.getchildren()
-            if len( vertexes ) > 2:
-                tvertex = [levelview.toQPointF( vertexes[0].get_native( 'pos' ) ),
-                           levelview.toQPointF( vertexes[0].get_native( 'pos' ) ),
-                           levelview.toQPointF( vertexes[1].get_native( 'pos' ) )]
-                for vertex in vertexes[2:]:
-                    tvertex.pop( 0 )
-                    tvertex.append( levelview.toQPointF( vertex.get_native( 'pos' ) ) )
-                    # normalized dot product
-                    v1, v2 = tvertex[1] - tvertex[0], tvertex[2] - tvertex[1]
-                    v1l = levelview.vector2d_length( v1.x(), v1.y() )
-                    v2l = levelview.vector2d_length( v2.x(), v2.y() )
-                    if v1l <= 40 or v2l <= 40:
-                        self.addLevelError( 106, None )
-                        break
-                    dp = ( ( v1.x()*v2.x() ) + ( v1.y()*v2.y() ) ) / ( v1l * v2l )
-                    if dp >= 0.95:
-                        self.addLevelError( 107, None )
-                        break
-                    elif dp <= -0.95:
-                        self.addLevelError( 108, None )
-                        break
-
         if len( end_conditions ) > 1:
             self.addLevelError( 111, ','.join( end_conditions ) )
 
@@ -1255,16 +1203,15 @@ class LevelWorld( ThingWorld ):
             particles = element.get( 'particles' )
             if particles is not None:
                 if particles in ambient_effects:
-                   self.addLevelError( 113, ( element.get( 'name', '' ), particles ) )
+                    self.addLevelError( 113, ( element.get( 'name', '' ), particles ) )
 
         for element in root.findall( 'fire' ):
             particles = element.get( 'particles' )
             if particles is not None:
                 if particles in ambient_effects:
-                   self.addLevelError( 114, particles )
+                    self.addLevelError( 114, particles )
 
         return self._level_issue_level != ISSUE_LEVEL_NONE
-
 
     def addSceneError( self, error_num, subst ):
         error = errors.ERROR_INFO[error_num]
@@ -1448,16 +1395,6 @@ class LevelWorld( ThingWorld ):
                         else:
                             used[attribute_meta.reference_family].add( element.get( attribute_meta.name ) )
 
-        # Also if there's a custom pipe
-        # Add the required resource names to used... so it thinks they are
-        pipe = self.level_root.find( 'pipe' )
-        if pipe is not None:
-            pipe_type = pipe.get( 'type', 'default' )
-            if pipe_type not in metawog.PIPES_STANDARD.keys():
-                # it's a custom pipe
-                for resource_id_stub in metawog.PIPE_RESOURCE_STUBS:
-                    image_id = metawog.PIPE_RESOURCE + resource_id_stub + "_" + pipe_type
-                    used['image'].add( image_id )
         return used
 
     def hasresrc_issue( self ):
@@ -2032,7 +1969,6 @@ class MainWindow( QtGui.QMainWindow ):
              r'',
              self.tr( 'Amy In Da Farm! (Amy*)' ) )
         if amy_path.isEmpty(): # user canceled action
-            #amy_path="D:\World of Goo.app"
             return
         self._amy_path = os.path.normpath( unicode( amy_path ) )
         #print "_amy_path=",self._amy_path
@@ -2043,7 +1979,7 @@ class MainWindow( QtGui.QMainWindow ):
         try:
             self._game_model = GameModel( self._amy_path, self )
         except GameModelException, e:
-            QtGui.QMessageBox.warning( self, self.tr( "Loading World of Goo levels (" + APP_NAME_PROPER + " " + CURRENT_VERSION + ")" ),
+            QtGui.QMessageBox.warning( self, self.tr( "Loading Amy In Da Farm! levels (" + APP_NAME_PROPER + " " + CURRENT_VERSION + ")" ),
                                       unicode( e ) )
     def _updateRecentFiles( self ):
         if self.recentFiles is None:
@@ -2061,7 +1997,7 @@ class MainWindow( QtGui.QMainWindow ):
         self.recentFiles.removeAll( filename )
         self.recentFiles.prepend( filename )
         if len( self.recentFiles ) > MAXRECENTFILES:
-           self.recentFiles = self.recentFiles[:MAXRECENTFILES]
+            self.recentFiles = self.recentFiles[:MAXRECENTFILES]
         self._updateRecentFiles()
 
     def on_recentfile_action( self ):
@@ -2113,7 +2049,7 @@ class MainWindow( QtGui.QMainWindow ):
 
     def _updateMouseScenePosInStatusBar( self, x, y ):
         """Called whenever the mouse move in the LevelView."""
-		# Round displayed coordinate to 2dp (0.01)
+        # Round displayed coordinate to 2dp (0.01)
         x = round( x, 2 )
         y = -round( y, 2 ) # Reverse transformation done when mapping to scene (in Qt 0 = top, in WOG 0 = bottom)
         self._mousePositionLabel.setText( self.tr( 'x: %1 y: %2' ).arg( x ).arg( y ) )
@@ -2143,16 +2079,15 @@ class MainWindow( QtGui.QMainWindow ):
             return window.widget().getModel()
         return None
 
-        #@DaB - New save routines to save ONLY the current Level
-
+    #@DaB - New save routines to save ONLY the current Level
     def saveCurrent( self ):
         if self._game_model:
             model = self.getCurrentModel()
             if model is not None:
                 if model.isReadOnly:
                     if model.is_dirty:
-                        QtGui.QMessageBox.warning( self, self.tr( "Can not save World Of Goo standard levels!" ),
-                              self.tr( 'You can not save changes made to levels that come with World Of Goo.\n'
+                        QtGui.QMessageBox.warning( self, self.tr( "Can not save Amy In Da Farm! standard levels!" ),
+                              self.tr( 'You can not save changes made to levels that come with Amy In Da Farm!.\n'
                                       'Instead, clone the level using the "Clone selected level" tool.\n'
                                       'Do so now, or your change will be lost once you quit the editor' ) )
                         return False
@@ -2184,7 +2119,7 @@ class MainWindow( QtGui.QMainWindow ):
 
     def saveAndPlayLevel( self ):
         #@DaB only save current level, and don't "play" if it has "Issues"
-        if self.saveCurrent(): #returns false if there are issues
+        if self.saveCurrent():
             model = self.getCurrentModel()
             if model:
                 issue_level = model.hasIssues()
@@ -2255,8 +2190,6 @@ class MainWindow( QtGui.QMainWindow ):
                 except ( IOError, OSError ), e:
                     QtGui.QMessageBox.warning( self, self.tr( "Failed to create the new cloned level! (" + APP_NAME_PROPER + " " + CURRENT_VERSION + ")" ), unicode( e ) )
 
-
-
     def updateResources( self ):
         """Adds the required resource in the level based on existing file."""
         model = self.getCurrentModel()
@@ -2267,80 +2200,6 @@ class MainWindow( QtGui.QMainWindow ):
                 model.set_selection( added_resource_elements )
             model._view.refreshFromModel()
 
-    def setMusic( self ):
-        model = self.getCurrentModel()
-        if model:
-            #game_dir = os.path.normpath( os.path.split( self._amy_path )[0] )
-            #res_dir =  os.path.join( game_dir, 'res' )
-            music_dir = os.path.join( self._game_model._res_dir, 'music' )
-            file = QtGui.QFileDialog.getOpenFileName( self,
-                        self.tr( 'Select the file to use for music...' ),
-                        music_dir,
-                        self.tr( 'Sound File (*.ogg)' ) )
-
-            if file == '': # user canceled action
-                return
-            safefiles = []
-            safefiles.append( os.path.normpath( str( file ) ) )
-
-            added_resource_elements = model.importResources( safefiles, self._game_model._res_dir )
-            if added_resource_elements:
-                music_id = added_resource_elements[0].get( 'id' )
-                music_element = model.level_root.find( 'music' )
-                if music_element is not None:
-                    old_music_id = music_element.get( 'sound' )
-                    music_element.set( 'sound', music_id )
-                    if old_music_id is not None:
-                        if old_music_id != '':
-                           for soundelement in model.resource_root.findall( './/Sound' ):
-                               if soundelement.get( 'id' ) == old_music_id:
-                                   soundelement.parent.remove( soundelement )
-                                   break
-
-                else:
-                    AddItemFactory( self, 'level', 'music', {'sound':music_id} )()
-            else:
-                ie = model.importError()
-                if ie is not None:
-                    QtGui.QMessageBox.warning( self, self.tr( ie[0] ),
-                              self.tr( ie[1] ) )
-
-    def setLoopSound( self ):
-        model = self.getCurrentModel()
-        if model:
-            #game_dir = os.path.normpath( os.path.split( self._amy_path )[0] )
-            #res_dir =  os.path.join( game_dir, 'res' )
-            sound_dir = os.path.join( self._game_model._res_dir, 'sounds' )
-            file = QtGui.QFileDialog.getOpenFileName( self,
-                        self.tr( 'Select the file to use for LoopSound...' ),
-                        sound_dir,
-                        self.tr( 'Sound File (*.ogg)' ) )
-
-            if file == '': # user canceled action
-                return
-            safefiles = []
-            safefiles.append( os.path.normpath( str( file ) ) )
-
-            added_resource_elements = model.importResources( safefiles, self._game_model._res_dir )
-            if added_resource_elements:
-                loopsound_id = added_resource_elements[0].get( 'id' )
-                loopsound_element = model.level_root.find( 'loopsound' )
-                if loopsound_element is not None:
-                    old_loopsound_id = loopsound_element.get( 'sound' )
-                    loopsound_element.set( 'sound', loopsound_id )
-                    if old_loopsound_id is not None:
-                        if old_loopsound_id != '':
-                           for soundelement in model.resource_root.findall( './/Sound' ):
-                               if soundelement.get( 'id' ) == old_loopsound_id:
-                                   soundelement.parent.remove( soundelement )
-                                   break
-                else:
-                    AddItemFactory( self, 'level', 'loopsound', {'sound':loopsound_id} )()
-            else:
-                ie = model.importError()
-                if ie is not None:
-                    QtGui.QMessageBox.warning( self, self.tr( ie[0] ),
-                              self.tr( ie[1] ) )
     def cleanResources( self ):
         model = self.getCurrentModel()
         if model:
@@ -2357,10 +2216,8 @@ class MainWindow( QtGui.QMainWindow ):
                     model._remove_unused_resources( unused )
 
             else:
-                 QtGui.QMessageBox.warning( self, self.tr( "Remove unused resources" ),
+                QtGui.QMessageBox.warning( self, self.tr( "Remove unused resources" ),
                         self.tr( "There are no unused resources\n" ) )
-
-
 
     def importResources( self ):
         """Adds the required resource in the level based on existing file."""
@@ -2389,96 +2246,8 @@ class MainWindow( QtGui.QMainWindow ):
                     QtGui.QMessageBox.warning( self, self.tr( ie[0] ),
                               self.tr( ie[1] ) )
 
-    def autoPipe( self ):
-        model = self.getCurrentModel()
-        if model:
-            exit_element = model.level_root.find( 'levelexit' )
-            if exit_element is None:
-               QtGui.QMessageBox.warning( self, self.tr( "Level Exit Required!" ),
-                              self.tr( 'You cannot use Auto Pipe without a Level Exit\n'
-                                      'Add and position an exit, and try Auto Pipe again.' ) )
-               return
-            exit_posx, exit_posy = exit_element.get_native( 'pos' )
-            minx, maxx = model.scene_root.get_native( 'minx' ), model.scene_root.get_native( 'maxx' )
-            miny, maxy = model.scene_root.get_native( 'miny' ), model.scene_root.get_native( 'maxy' )
-            #find closest "wall"
-            if exit_posx > maxx or exit_posx < minx or exit_posy > maxy or exit_posy < miny:
-                # exit outside scene bounds warning
-               QtGui.QMessageBox.warning( self, self.tr( "Level Exit Outside Scene Bounds!" ),
-                              self.tr( 'The Level Exit is outside the limits of the scene\n'
-                                      'You should correct this, by moving the exit or changing the scene bounds.' ) )
-               return
-
-            pipe_element = model.level_root.find( 'pipe' )
-            if pipe_element is None:
-                # add one
-                pipe_meta = model.level_root.meta.find_immediate_child_by_tag( 'pipe' )
-                attrib = {}
-                pipe_element = _appendChildTag( model.level_root, pipe_meta, attrib )
-            else:
-                ret = QtGui.QMessageBox.warning( self, self.tr( "Existing Pipe will be reset!" ),
-                              self.tr( 'Auto Pipe will replace the current pipe with a simple default pipe.\n\n'
-                                      'Are you sure you want to do this?' ), QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel )
-                if ret == QtGui.QMessageBox.Cancel:
-                    return
-                #remove all existing vertexes
-                for vertex in pipe_element.findall( 'Vertex' ):
-                    pipe_element.remove( vertex )
-
-            attrib = {}
-            vertex_meta = pipe_element.meta.find_immediate_child_by_tag( 'Vertex' )
-            attrib['pos'] = exit_element.get( 'pos' )
-            _appendChildTag( pipe_element, vertex_meta, attrib )
-
-            #get scene bounds...
-            dx1, dx2 = abs( minx - exit_posx ), abs( maxx - exit_posx )
-            if dx1 < dx2:
-                dx = dx1
-                xd = minx - 100
-            else:
-                dx = dx2
-                xd = maxx + 100
-
-            dy1, dy2 = abs( miny - exit_posy ), abs( maxy - exit_posy )
-            if dy1 < dy2:
-                dy = dy1
-                yd = miny - 100
-            else:
-                dy = dy2
-                yd = maxy + 100
-            if dx < dy:
-                v2pos_x = xd
-                v2pos_y = exit_posy
-            else:
-                v2pos_x = exit_posx
-                v2pos_y = yd
-
-            attrib = {}
-            attrib['pos'] = str( v2pos_x ) + "," + str( v2pos_y )
-            _appendChildTag( pipe_element, vertex_meta, attrib )
-
-
-
-    def addPipeVertex( self ):
-        model = self.getCurrentModel()
-        if model:
-          window = self.mdiArea.activeSubWindow()
-          if window:
-            cview = window.widget()
-            cp = cview.mapToScene( cview.width()*0.5, cview.height()*0.5 )
-            attrib = {}
-            pipe_element = model.level_root.find( 'pipe' )
-            if pipe_element is not None:
-                vertex_meta = pipe_element.meta.find_immediate_child_by_tag( 'Vertex' )
-                for attribute_meta in vertex_meta.attributes:
-                    if attribute_meta.type == metaworld.XY_TYPE:
-                        attrib[attribute_meta.name] = str( cp.x() ) + "," + str( -cp.y() )
-                        break
-                _appendChildTag( pipe_element, vertex_meta, attrib )
-
-
     def about( self ):
-        QtGui.QMessageBox.about( self, self.tr( "About World of Goo Level Editor " + CURRENT_VERSION ),
+        QtGui.QMessageBox.about( self, self.tr( "About Amy In Da Farm! Level Editor " + CURRENT_VERSION ),
             self.tr( """<p>World of Goo Level Editor <b>(WooGLE)</b> helps you create new levels for World of Goo.<p>
             <p>Download Page:<br>
             <a href="http://goofans.com/download/utility/world-of-goo-level-editor">http://goofans.com/download/utility/world-of-goo-level-editor</a></p>
@@ -2652,7 +2421,6 @@ class MainWindow( QtGui.QMainWindow ):
             return
         world.redo()
 
-
     def on_delete_action( self, is_cut_action = False ):
         world = self.getCurrentModel()
         if world is None:
@@ -2747,11 +2515,8 @@ class MainWindow( QtGui.QMainWindow ):
         self.updateResourcesAction.setEnabled( can_import )
         self.additem_actions['text'].setEnabled ( can_import )
 
-
         self.addItemToolBar.setEnabled( can_select )
-
         self.showhideToolBar.setEnabled( is_selected )
-
 
         active_view = self.get_active_view()
         enabled_view_tools = set()
@@ -2882,7 +2647,6 @@ class MainWindow( QtGui.QMainWindow ):
                     text = "&Redo",
                     shortcut = QtGui.QKeySequence.Redo )
 
-
         class ShowHideFactory( object ):
                 def __init__( self, window, elements ):
                     self.window = window
@@ -2901,7 +2665,7 @@ class MainWindow( QtGui.QMainWindow ):
                     text = "Show/Hide Camera" , icon = ":/images/show-camera.png" ),
             'fields': qthelper.action( self, handler = ShowHideFactory( self , ['linearforcefield', 'radialforcefield'] ),
                     text = "Show/Hide Forcefields", icon = ":/images/show-physic.png" ),
-            'geom': qthelper.action( self, handler = ShowHideFactory( self , ['rectangle', 'circle', 'compositegeom', 'levelexit', 'pipe', 'Vertex', 'line', 'hinge', 'fire'] ),
+            'geom': qthelper.action( self, handler = ShowHideFactory( self , ['rectangle', 'circle', 'compositegeom', 'levelexit', 'line', 'hinge', 'fire'] ),
                     text = "Show/Hide Geometry" , icon = ":/images/show-geom.png" ),
             'gfx': qthelper.action( self, handler = ShowHideFactory( self , ['SceneLayer', 'signpost', 'pixmap'] ),
                     text = "Show/Hide Graphics" , icon = ":/images/show-gfx.png" ),
@@ -3056,11 +2820,8 @@ class MainWindow( QtGui.QMainWindow ):
         self.resourceMenu.addSeparator()
         self.resourceMenu.addAction( self.cleanResourcesAction )
         self.resourceMenu.addSeparator()
-#        self.resourceMenu.addAction( self.setMusicAction )
-#        self.resourceMenu.addAction( self.setLoopSoundAction )
 
         self.menuBar().addSeparator()
-
 
         # @todo add Windows menu. Take MDI example as model.        
 
@@ -3098,8 +2859,6 @@ class MainWindow( QtGui.QMainWindow ):
         self.resourceToolBar.addSeparator()
         self.resourceToolBar.addAction( self.cleanResourcesAction )
         self.resourceToolBar.addSeparator()
-#        self.resourceToolBar.addAction( self.setMusicAction )
-#        self.resourceToolBar.addAction( self.setLoopSoundAction )
 
         self.levelViewToolBar = self.addToolBar( self.tr( "Level View" ) )
         self.levelViewToolBar.setObjectName( "levelViewToolbar" )
@@ -3154,7 +2913,7 @@ class MainWindow( QtGui.QMainWindow ):
 
     def createDockWindows( self ):
         self.group_icons = {}
-        for group in 'camera game image physic resource shape text info particles strand fire material rect circle compgeom pipe line sign anim'.split():
+        for group in 'camera game image physic resource shape text info particles strand fire material rect circle compgeom line sign anim'.split():
             self.group_icons[group] = QtGui.QIcon( ":/images/group-%s.png" % group )
         self.tree_view_by_element_world = {} # map of all tree views
         scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', metawog.TREE_LEVEL_SCENE )
@@ -3208,7 +2967,7 @@ class MainWindow( QtGui.QMainWindow ):
             self.move( settings.value( "pos", QtCore.QVariant( QtCore.QPoint( 200, 200 ) ) ).toPoint() )
         windowstate = settings.value( "windowState", None );
         if windowstate is not None:
-           self.restoreState( windowstate.toByteArray() )
+            self.restoreState( windowstate.toByteArray() )
 
         self.recentFiles = settings.value( "recent_files" ).toStringList()
         self._updateRecentFiles()
