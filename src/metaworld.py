@@ -28,17 +28,6 @@ import math
 import wogfile
 from PyQt4 import QtCore
 
-BALL_STATES = ['attached', 'climbing', 'detaching', 'dragging', 'falling',
-             'pipe', 'sleeping', 'standing', 'stuck', 'stuck_attached', 'stuck_detaching',
-             'tank', 'walking' ]
-
-BALL_STATES_PARTICLES = ['attached', 'climbing', 'detaching', 'dragging', 'falling', 'onfire',
-             'pipe', 'sleeping', 'standing', 'stuck', 'stuck_attached', 'stuck_detaching',
-             'tank', 'walking' ]
-
-
-BALL_NAMES = []
-
 AMY_PATH = ''
 PLATFORM_WIN = 0
 PLATFORM_LINUX = 1
@@ -358,9 +347,9 @@ class OCDAttributeMeta( AttributeMeta ):
             if nb_components != 2:
                 message = 'Value must have %(nb)s components separated by a comma '
                 return message, {'nb': '2'}
-            valid_ocd = ['balls', 'moves', 'time']
+            valid_ocd = ['moves', 'time']
             if values[0] not in valid_ocd:
-                message = 'First Value must be balls or moves or time'
+                message = 'First Value must be moves or time'
                 return message, {}
             try:
                 value = int( str( values[1] ) )
@@ -534,9 +523,9 @@ class PathAttributeMeta( AttributeMeta ):
     def __init__( self, name, strip_extension = None, **kwargs ):
         AttributeMeta.__init__( self, name, PATH_TYPE, **kwargs )
         self.strip_extension = strip_extension
-	#@DaB - Converts \ to /  and // into /
+    #@DaB - Converts \ to /  and // into /
     def set( self, element, value ):
-         if ON_PLATFORM == PLATFORM_WIN:
+        if ON_PLATFORM == PLATFORM_WIN:
             filename = os.path.normpath( os.path.join( AMY_PATH, self._clean_path( value ) + self.strip_extension ) )
             if os.path.exists( filename ):
                 #confirm extension on drive is lower case
@@ -544,7 +533,7 @@ class PathAttributeMeta( AttributeMeta ):
                 real_filename = os.path.normpath( _getRealFilename( filename ) )
                 value = os.path.splitext( real_filename )[0][len_wogdir:]
 
-         return element.set( self.name, self._clean_path( value ) )
+        return element.set( self.name, self._clean_path( value ) )
 
     def _clean_path( self, path ):
         path = path.replace( '\\', '/' ).replace( '//', '/' )
@@ -692,7 +681,10 @@ class ObjectsMetaOwner:
         """Returns a dict of all element desc found in the owner and all its descendant keyed by tag."""
         element_metas_by_tag = self.elements_by_tag.copy()
         for element_meta in self.elements_by_tag.itervalues():
-            element_metas_by_tag.update( element_meta.all_descendant_element_metas() )
+            try:
+                element_metas_by_tag.update( element_meta.all_descendant_element_metas() )
+            except RuntimeError:    # there could be infinite recursion
+                pass
         return element_metas_by_tag
 
     def _element_added( self, element_meta ):
@@ -910,7 +902,8 @@ def print_element_meta_tree( element, indent ):
         suffix = '{%d-%d}' % ( element.min_occurrence, element.max_occurrence )
     print indent + element.tag + suffix
     for child_element in element.elements_by_tag.itervalues():
-        print_element_meta_tree( child_element, indent + '    ' )
+        if child_element is not element:
+            print_element_meta_tree( child_element, indent + '    ' )
 
 
 

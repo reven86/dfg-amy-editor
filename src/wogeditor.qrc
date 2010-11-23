@@ -43,7 +43,6 @@
   <file>images/tool-resize.png</file>
   <file>images/tool-select.png</file>
   <file>images/zoom.png</file>
-  <file>images/strand.png</file>
   <file>images/importres.png</file>
   <file>images/cleanres.png</file>
   <file>images/addline.png</file>
@@ -74,26 +73,6 @@
   <file>images/show-gfx.png</file>
   <file>images/show-label.png</file>
   <file>images/show-particles.png</file>
-  <file>images/goos/common32.png</file>
-  <file>images/goos/albino32.png</file>
-  <file>images/goos/black32.png</file>
-  <file>images/goos/ivy32.png</file>
-  <file>images/goos/fuse32.png</file>
-  <file>images/goos/water32.png</file>
-  <file>images/goos/gooproduct32.png</file>
-  <file>images/goos/balloon32.png</file>
-  <file>images/goos/beauty32.png</file>
-  <file>images/goos/pixel32.png</file>
-  <file>images/goos/bit32.png</file>
-  <file>images/goos/pilot32.png</file>
-  <file>images/goos/pokey32.png</file>
-  <file>images/goos/blockhead32.png</file>
-  <file>images/goos/recthead32.png</file>
-    <file>images/goos/bone32.png</file>
-    <file>images/goos/bombsticky32.png</file>
-    <file>images/goos/anchor32.png</file>
-    <file>images/goos/anchorfriendly32.png</file>
-    <file>images/goos/anchorsticky32.png</file>
     <file>images/clean.png</file>
     <file>images/dirty.png</file>
     <file>images/nosave.png</file>

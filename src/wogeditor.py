@@ -1480,20 +1480,19 @@ class LevelWorld( ThingWorld ):
             self.remove_tree( dependancy_tree )
         dependancy_tree = self.make_tree_from_xml( metawog.TREE_LEVEL_DEPENDANCY, metawog.LEVEL_DEPENDANCY_TEMPLATE )
         current = {'imagedep':set(), 'sounddep':set(), 'effectdep':set(), 'materialdep':set(), 'animdep':set()}
-        ball_trace = ''
         self._recursion = []
 
         self.game_model.global_world.refreshFromFiles()
 
-        self._addDependancies( self.level_root, dependancy_tree.root, current, ball_trace )
-        self._addDependancies( self.scene_root, dependancy_tree.root, current, ball_trace )
+        self._addDependancies( self.level_root, dependancy_tree.root, current )
+        self._addDependancies( self.scene_root, dependancy_tree.root, current )
 
         #additional non-recursive stuff
         for element in self.scene_root.findall( './/SceneLayer' ):
             anim = element.get( 'anim', '' )
             if anim != '':
-               if anim not in metawog.ANIMATIONS_ORIGINAL:
-                  if anim not in current['animdep']:
+                if anim not in metawog.ANIMATIONS_ORIGINAL and \
+                   anim not in current['animdep']:
                     child_attrib = {'id':anim}
                     if anim in metawog.ANIMATIONS_GLOBAL:
                         child_attrib['found'] = "true"
@@ -1505,7 +1504,7 @@ class LevelWorld( ThingWorld ):
         for element in self.resource_root.findall( './/Image' ):
             child_attrib = {'found':"true"}
             for attribute in element.meta.attributes:
-               child_attrib[attribute.name] = element.get( attribute.name )
+                child_attrib[attribute.name] = element.get( attribute.name )
             if child_attrib['path'] not in current['imagedep']:
                 child_element = metaworld.Element( metawog.DEP_IMAGE, child_attrib )
                 dependancy_tree.root._children.append( child_element )
@@ -1579,65 +1578,65 @@ class LevelWorld( ThingWorld ):
 
         if remove and len( element.getchildren() ) == 0 and element.get_native( 'found', False ):
 #            print "Actually Removing",element.tag
-             index = element.parent._children.index( element )
-             del element.parent._children[index]
-             element._parent = None
-             del element
+            index = element.parent._children.index( element )
+            del element.parent._children[index]
+            element._parent = None
+            del element
 
-    def _addDependancies( self, element, dep_element, current, ball_trace ):
+    def _addDependancies( self, element, dep_element, current ):
         #run through the attributes of the element
         # add nodes at this level for any direct deps
         for attribute_meta in element.meta.attributes:
-            if attribute_meta.type == metaworld.REFERENCE_TYPE:
-             if attribute_meta.reference_family in ['image', 'sound', 'effect', 'material']:
-              if attribute_meta.name != 'filter':
+            if attribute_meta.type == metaworld.REFERENCE_TYPE and \
+              attribute_meta.reference_family in ['image', 'sound', 'effect', 'material'] and \
+              attribute_meta.name != 'filter':
                 attribute_value = attribute_meta.get( element )
                 if attribute_value is not None:
-                  if attribute_meta.is_list:
-                      references = attribute_value.split( ',' )
-                  else:
-                      references = [attribute_value]
-                  for reference in references:
-                   if reference.strip() != '' and not self._isNumber( reference ):
-                    try:
-                        res_element = self.resolve_reference( attribute_meta.reference_world, attribute_meta.reference_family, reference )
-                    except ValueError:
-                        res_element = None
-
-                    new_dep_meta = dep_element.meta.find_immediate_child_by_tag( attribute_meta.reference_family )
-                    child_attrib = {}
-                    id_attribute = None
-                    if res_element is None:
-                        #print "Empty res_element",element.tag, attribute_meta.name, attribute_meta.reference_world,attribute_meta.reference_family, reference
-                        for dep_attribute in new_dep_meta.attributes:
-                            if dep_attribute.type == metaworld.IDENTIFIER_TYPE:
-                                child_attrib[dep_attribute.name] = reference
-                                id_attribute = dep_attribute
+                    if attribute_meta.is_list:
+                        references = attribute_value.split( ',' )
                     else:
-                        child_attrib['found'] = "true"
-                        for dep_attribute in new_dep_meta.attributes:
-                            if dep_attribute.name != 'found':
-                             child_attrib[dep_attribute.name] = res_element.get( dep_attribute.name )
-                             if dep_attribute.type == metaworld.IDENTIFIER_TYPE:
-                                id_attribute = dep_attribute
+                        references = [attribute_value]
+                    for reference in references:
+                        if reference.strip() != '' and not self._isNumber( reference ):
+                            try:
+                                res_element = self.resolve_reference( attribute_meta.reference_world, attribute_meta.reference_family, reference )
+                            except ValueError:
+                                res_element = None
 
-                    if id_attribute is None or res_element is None:
-                        if reference not in current[id_attribute.reference_family]:
-                            child_element = metaworld.Element( new_dep_meta, child_attrib )
-                            dep_element._children.append( child_element )
-                            child_element._parent = dep_element
-                            current[id_attribute.reference_family].add( reference )
-                    elif res_element.get( id_attribute.name ) not in current[id_attribute.reference_family]:
-                        child_element = metaworld.Element( new_dep_meta, child_attrib )
-                        dep_element._children.append( child_element )
-                        child_element._parent = dep_element
-                        current[id_attribute.reference_family].add( res_element.get( id_attribute.name ) )
-                        self._addDependancies( res_element, child_element, current, ball_trace )
+                            new_dep_meta = dep_element.meta.find_immediate_child_by_tag( attribute_meta.reference_family )
+                            child_attrib = {}
+                            id_attribute = None
+                            if res_element is None:
+                                #print "Empty res_element",element.tag, attribute_meta.name, attribute_meta.reference_world,attribute_meta.reference_family, reference
+                                for dep_attribute in new_dep_meta.attributes:
+                                    if dep_attribute.type == metaworld.IDENTIFIER_TYPE:
+                                        child_attrib[dep_attribute.name] = reference
+                                        id_attribute = dep_attribute
+                            else:
+                                child_attrib['found'] = "true"
+                                for dep_attribute in new_dep_meta.attributes:
+                                    if dep_attribute.name != 'found':
+                                        child_attrib[dep_attribute.name] = res_element.get( dep_attribute.name )
+                                        if dep_attribute.type == metaworld.IDENTIFIER_TYPE:
+                                            id_attribute = dep_attribute
+
+                            if id_attribute is None or res_element is None:
+                                if reference not in current[id_attribute.reference_family]:
+                                    child_element = metaworld.Element( new_dep_meta, child_attrib )
+                                    dep_element._children.append( child_element )
+                                    child_element._parent = dep_element
+                                    current[id_attribute.reference_family].add( reference )
+                            elif res_element.get( id_attribute.name ) not in current[id_attribute.reference_family]:
+                                child_element = metaworld.Element( new_dep_meta, child_attrib )
+                                dep_element._children.append( child_element )
+                                child_element._parent = dep_element
+                                current[id_attribute.reference_family].add( res_element.get( id_attribute.name ) )
+                                self._addDependancies( res_element, child_element, current )
 
 
         #now run through child elements
         for child_element in element.getchildren():
-            self._addDependancies( child_element, dep_element, current, ball_trace )
+            self._addDependancies( child_element, dep_element, current )
 
     def hasDependancies( self ):
         return len( self.dependancy_root.getchildren() ) > 0
@@ -1691,11 +1690,7 @@ class LevelWorld( ThingWorld ):
         return self._dependancyissues
 
     def _cleanleveltree( self ):
-        self.suspend_undo()
-        for strand in self.level_root.findall( 'Strand' ):
-            self.level_root.remove( strand )
-            self.level_root.append( strand )
-        self.activate_undo()
+        pass
 
     def _cleanscenetree( self ):
         self.suspend_undo()
@@ -2679,13 +2674,6 @@ class MainWindow( QtGui.QMainWindow ):
 
         self.view_action_group = QtGui.QActionGroup( self )
         self.view_actions = {
-            levelview.TOOL_SELECT: qthelper.action( self,
-                    handler = self.on_select_tool_action,
-                    icon = ":/images/strand.png",
-                    text = "&Strand Mode",
-                    shortcut = QtGui.QKeySequence( Qt.Key_Space ),
-                    checkable = True,
-                    status_tip = "Click a Goo, hold, move to another Goo and release to connect them." ),
             levelview.TOOL_PAN: qthelper.action( self,
                     handler = self.on_pan_tool_action,
                     icon = ":/images/zoom.png",
@@ -2863,7 +2851,7 @@ class MainWindow( QtGui.QMainWindow ):
         self.levelViewToolBar = self.addToolBar( self.tr( "Level View" ) )
         self.levelViewToolBar.setObjectName( "levelViewToolbar" )
 
-        for name in ( 'move', 'pan', 'select' ):
+        for name in ( 'move', 'pan' ):
             action = self.view_actions[name]
             self.levelViewToolBar.addAction( action )
 
