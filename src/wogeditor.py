@@ -17,7 +17,6 @@
 # - updated level
 # - specific text/fx resources
 import xml.etree.ElementTree #@UnresolvedImport
-import sys
 import os.path
 import glob #@UnresolvedImport
 import subprocess #@UnresolvedImport
@@ -36,9 +35,10 @@ from PyQt4.QtCore import Qt #@UnresolvedImport
 import qthelper
 import editleveldialog
 import newleveldialog_ui
-import zipfile #@UnresolvedImport
 import errors
+from utils import * #@UnusedWildImport
 from datetime import datetime
+
 LOG_TO_FILE = False
 APP_NAME_UPPER = 'DFG-AMY-EDITOR'
 APP_NAME_LOWER = 'dfg-amy-editor'
@@ -50,52 +50,7 @@ ISSUE_LEVEL_NONE = 0
 ISSUE_LEVEL_ADVICE = 1
 ISSUE_LEVEL_WARNING = 2
 ISSUE_LEVEL_CRITICAL = 4
-PLATFORM_WIN = 0
-PLATFORM_LINUX = 1
-PLATFORM_MAC = 2
 MAXRECENTFILES = 4
-#print "platform=",sys.platform
-
-if sys.platform == 'win32' or sys.platform == 'cygwin':
-    ON_PLATFORM = PLATFORM_WIN
-elif sys.platform == 'darwin':
-    ON_PLATFORM = PLATFORM_MAC
-else:
-    ON_PLATFORM = PLATFORM_LINUX
-metaworld.ON_PLATFORM = ON_PLATFORM
-
-def app_path():
-    if hasattr( sys, 'frozen' ):
-        return os.path.dirname( sys.executable )
-    else:
-        return os.path.dirname( sys._getframe( 1 ).f_code.co_filename )
-
-def _getRealFilename( path ):
-    # Only required on Windows
-    # will return the filename in the AcTuaL CaSe it is stored on the drive
-    # ensure "clean" split
-    path_bits = path.replace( '\\', '/' ).replace( '//', '/' ).split( '/' )
-    currentpath = path_bits.pop( 0 ) + "\\"
-    for path_bit in path_bits:
-        insensitive_match = ''
-        sensitive_match = ''
-        for entry in os.listdir( currentpath ):
-            if entry == path_bit:
-                # case senstive match - we can bail
-                sensitive_match = entry
-                break
-            elif entry.lower() == path_bit.lower():
-                # case insenstive match
-                insensitive_match = entry
-                break
-        else:
-            print "File not Found!", path
-            return ''
-        if sensitive_match != '':
-            currentpath = os.path.join( currentpath, entry )
-        elif insensitive_match != '':
-            currentpath = os.path.join( currentpath, insensitive_match )
-    return currentpath
 
 
 #@DaB New actions for Add item toolbar
@@ -326,7 +281,7 @@ class GameModel( QtCore.QObject ):
             skipped, processed, found = 0, 0, 0
             lresdir = len( self._res_dir )
             toconvert = []
-            for ( path, dirs, files ) in os.walk( self._res_dir ):
+            for ( path, dirs, files ) in os.walk( self._res_dir ): #@UnusedVariable
                 for name in files:
                     if name.endswith( '.png.binltl' ):
                         found += 1
@@ -349,7 +304,7 @@ class GameModel( QtCore.QObject ):
                         break
                     progress.setValue( progress.value() + 1 );
                     progress.setLabelText( filepair[2] )
-                    width, height = wogfile.pngbinltl2png( filepair[0], filepair[1] )
+                    wogfile.pngbinltl2png( filepair[0], filepair[1] )
                 progress.setValue( progress.value() + 1 );
 
         window.statusBar().showMessage( self.tr( "Game Model : Initializing" ) )
@@ -550,22 +505,15 @@ class GameModel( QtCore.QObject ):
                 if element.tag == 'SetDefaults':
                     default_path = element.get( 'path', '' ).strip()
                     if not default_path.endswith( '/' ):
-                       default_path += '/'
+                        default_path += '/'
                     default_path = default_path.replace( "./", "" )
                     default_idprefix = element.get( 'idprefix', '' )
                 elif element.tag in ( 'Image', 'Sound', 'font' ):
                     new_id = default_idprefix + element.get( 'id' )
                     new_path = default_path + element.get( 'path' )
-##                    if element.tag == 'Sound':
-##                        full_path = os.path.join( self._amy_dir, new_path + '.ogg' )
-##                    else:
-##                        full_path = os.path.join( self._amy_dir, new_path + '.png' )
-##                    if not os.path.isfile( full_path ):
-##                        print 'Invalid resource:', element.get('id'), element.get('path'), new_id, full_path
                     element.set( 'id', new_id )
                     element.set( 'path', new_path )
                 self._readonly_resources.add( element )
-
 
     @property
     def names( self ):
@@ -596,22 +544,6 @@ class GameModel( QtCore.QObject ):
 
             self._processSetDefaults( world.find_tree( metawog.TREE_LEVEL_RESOURCE ) )
 
-#            #clean up resource paths for Linux
-# *** Done in _processSetDefaults
-
-#            for resource in world.resource_root.findall('.//Image'):
-#                res_path = resource.get('path')
-#                clean_res_path = res_path.replace('\\','/')
-#                if res_path != clean_res_path:
-#                    print "Normalizing Path:",res_path,"->",clean_res_path
-#                    resource.set( 'path', clean_res_path )
-#            for resource in world.resource_root.findall('.//Sound'):
-#                res_path = resource.get('path')
-#                clean_res_path = res_path.replace('\\','/')
-#                if res_path != clean_res_path:
-#                    print "Normalizing Path:",res_path,"->",clean_res_path
-#                    resource.set( 'path', clean_res_path )
-
             #Find any Global Strings and Localize them
             root = world.text_root
             rootmbt = root.meta.find_immediate_child_by_tag( 'string' )
@@ -624,21 +556,21 @@ class GameModel( QtCore.QObject ):
             for element_with_text in elements_with_text:
                 tid = element_with_text.get( 'text' )
                 if tid is not None:
-                  if not world.is_valid_reference( metawog.WORLD_LEVEL, 'TEXT_LEVELNAME_STR', tid ):
-                    if  world.is_valid_reference( metawog.WORLD_GLOBAL, 'text', tid ):
-                        global_text_element = world.resolve_reference( metawog.WORLD_GLOBAL, 'text' , tid )
-                        local_attrib = global_text_element.attrib.copy()
-                        new_text = _appendChildTag( root, rootmbt, local_attrib, keepid = True )
-                        #print tid,"is Global Text ... Localized as ",new_text.get('id')
-                        element_with_text.set( 'text', new_text.get( 'id' ) )
-                    else:
-                        print "Text resource ", tid, "not found locally or Globally."
+                    if not world.is_valid_reference( metawog.WORLD_LEVEL, 'TEXT_LEVELNAME_STR', tid ):
+                        if  world.is_valid_reference( metawog.WORLD_GLOBAL, 'text', tid ):
+                            global_text_element = world.resolve_reference( metawog.WORLD_GLOBAL, 'text' , tid )
+                            local_attrib = global_text_element.attrib.copy()
+                            new_text = _appendChildTag( root, rootmbt, local_attrib, keepid = True )
+                            #print tid,"is Global Text ... Localized as ",new_text.get('id')
+                            element_with_text.set( 'text', new_text.get( 'id' ) )
+                        else:
+                            print "Text resource ", tid, "not found locally or Globally."
 
             world._buildDependancyTree()
             #world.make_tree_from_xml( metawog.TREE_LEVEL_DEPENDANCY, metawog.LEVEL_DEPENDANCY_TEMPLATE )
 
             if world.isReadOnly:
-               world.clean_dirty_tracker()
+                world.clean_dirty_tracker()
             world.clear_undo_queue()
             self.models_by_name[name] = world
 
@@ -668,8 +600,6 @@ class GameModel( QtCore.QObject ):
             if model.is_dirty and model.isReadOnly:
                 return True
         return False
-
-
 
     def playLevel( self, level_model ):
         """Starts WOG to test the specified level."""
@@ -758,7 +688,7 @@ class GameModel( QtCore.QObject ):
             xml_data = tree.to_xml()
             xml_data = xml_data.replace( '><', '>\n<' )
             wogfile.encrypt_file_data( path, xml_data )
-         #   print "Done",path
+            #   print "Done",path
 
         #load res/levels/island1/island1.scene.bin
         path = os.path.join( self._res_dir, u'levels', u'island1', u'island1.scene.bin' )
@@ -766,18 +696,18 @@ class GameModel( QtCore.QObject ):
             print "File not found:", path
             return False
         else:
-          #  print "Doing",path
+            #  print "Doing",path
             xml_data = wogfile.decrypt_file_data( path )
             tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_SCENE, xml_data )
             root = tree.root
             # seek WooGLE_Test Label element
-          #  print "seeking label"
+            #  print "seeking label"
             for label in root.findall( 'label' ):
                 x, y = label.get_native( 'position' )
                 if abs( x - label_x ) < 1:
-                 if abs( y - label_y ) < 1:
-          #          print "Removing old label",label.get('id')
-                    label.parent.remove( label )
+                    if abs( y - label_y ) < 1:
+                        #print "Removing old label",label.get('id')
+                        label.parent.remove( label )
 
 
             attrib = {'id':'txt_' + level_name, 'text':APP_NAME_UPPER + "_TEST_NAME",
@@ -787,15 +717,15 @@ class GameModel( QtCore.QObject ):
             rootmbt = root.meta.find_immediate_child_by_tag( 'label' )
             _appendChildTag( root, rootmbt, attrib, keepid = True )
 
-           # print "seek scenelayer"
+            # print "seek scenelayer"
             for scenelayer in root.findall( 'SceneLayer' ):
                 x, y = scenelayer.get_native( 'center' )
                 if abs( x - scenelayer_x ) < 1:
-                 if abs( y - scenelayer_y ) < 1:
-           #         print "removing old scenelayer",scenelayer.get('id')
-                    scenelayer.parent.remove( scenelayer )
+                    if abs( y - scenelayer_y ) < 1:
+                        #         print "removing old scenelayer",scenelayer.get('id')
+                        scenelayer.parent.remove( scenelayer )
 
-           # print "create scenelayer",'ocd_'+level_name
+            # print "create scenelayer",'ocd_'+level_name
             attrib = { 'id':'ocd_' + level_name, 'name':"OCD_flag1",
                     'depth':"-0.1", 'center':`scenelayer_x` + "," + `scenelayer_y`,
                     'scale':"0.7,0.7", 'rotation':"17.59",
@@ -806,7 +736,7 @@ class GameModel( QtCore.QObject ):
             _appendChildTag( root, rootmbt, attrib, keepid = True )
 
             # seek WooGLE_Test Button element
-           # print "seeking button"
+            # print "seeking button"
             for buttongroup in root.findall( 'buttongroup' ):
                 if buttongroup.get( 'id' ) == 'levelMarkerGroup':
                     buttongroupelement = buttongroup
@@ -1409,7 +1339,7 @@ class LevelWorld( ThingWorld ):
             full_filename = os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + ".png" )
             if ON_PLATFORM == PLATFORM_WIN:
                 #confirm extension on drive is lower case
-                real_filename = _getRealFilename( full_filename )
+                real_filename = getRealFilename( full_filename )
                 real_ext = os.path.splitext( real_filename )[1]
                 if real_ext != ".png":
                   self.addResourceError( 201, resource.get( 'path' ) + real_ext )
@@ -1426,7 +1356,7 @@ class LevelWorld( ThingWorld ):
 
             if ON_PLATFORM == PLATFORM_WIN:
                 #confirm extension on drive is lower case
-                real_filename = _getRealFilename( full_filename )
+                real_filename = getRealFilename( full_filename )
                 real_ext = os.path.splitext( real_filename )[1]
                 if real_ext != ".ogg":
                     self.addResourceError( 203, resource.get( 'path' ) + real_ext )
@@ -1716,7 +1646,7 @@ class LevelWorld( ThingWorld ):
             if os.path.exists( full_filename ):
                 #confirm extension on drive is lower case
                 len_wogdir = len( os.path.normpath( self.game_model._amy_dir ) ) + 1
-                real_filename = os.path.normpath( _getRealFilename( full_filename ) )
+                real_filename = os.path.normpath( getRealFilename( full_filename ) )
                 real_file = os.path.splitext( real_filename )[0][len_wogdir:]
                 full_file = os.path.splitext( full_filename )[0][len_wogdir:]
                 if real_file != full_file:
@@ -1728,7 +1658,7 @@ class LevelWorld( ThingWorld ):
             if os.path.exists( full_filename ):
                 #confirm extension on drive is lower case
                 len_wogdir = len( os.path.normpath( self.game_model._amy_dir ) )
-                real_filename = os.path.normpath( _getRealFilename( full_filename ) )
+                real_filename = os.path.normpath( getRealFilename( full_filename ) )
                 real_file = os.path.splitext( real_filename )[0][len_wogdir:]
                 full_file = os.path.splitext( full_filename )[0][len_wogdir:]
                 if real_file != full_file:
@@ -1838,7 +1768,7 @@ class LevelWorld( ThingWorld ):
                     added_elements.append( new_resource )
         return added_elements
 
-	#@DaB New Functionality - Import resources direct from files
+    #@DaB New Functionality - Import resources direct from files
     def importError( self ):
         return self._importError
 

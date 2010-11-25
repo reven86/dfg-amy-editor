@@ -30,7 +30,6 @@ ERROR_INFO = {0:[ISSUE_LEVEL_NONE, ''],
     101:[ISSUE_LEVEL_ADVICE, '<tt>%s</tt> poi traveltime will cause a delay starting the level'],
     102:[ISSUE_LEVEL_WARNING, 'Level has no <tt>normal</tt> camera'],
     103:[ISSUE_LEVEL_WARNING, 'Level has no <tt>widescreen</tt> camera'],
-    106:[ISSUE_LEVEL_ADVICE, 'Pipe vertexes are too close together'],
     109:[ISSUE_LEVEL_CRITICAL, 'You can\'t connect <tt>%s (%s)</tt> to <tt>%s (%s)</tt>'],
     111:[ISSUE_LEVEL_ADVICE, 'Multiple end conditions <tt>%s</tt>'],
     112:[ISSUE_LEVEL_WARNING, 'Gooballs start above the <tt>targetheight</tt>'],
@@ -54,5 +53,4 @@ ERROR_INFO = {0:[ISSUE_LEVEL_NONE, ''],
 
 #Global Level Errors
     401:[ISSUE_LEVEL_WARNING, 'the levelexit is outside scene bounds'],
-    402:[ISSUE_LEVEL_WARNING, 'Custom Pipe resource %s is missing'],
 }

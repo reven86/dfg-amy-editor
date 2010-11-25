@@ -26,12 +26,10 @@ import os
 import louie
 import math
 import wogfile
+from utils import * #@UnusedWildImport
 from PyQt4 import QtCore
 
 AMY_PATH = ''
-PLATFORM_WIN = 0
-PLATFORM_LINUX = 1
-PLATFORM_MAC = 2
 # Different type of attributes
 
 BOOLEAN_TYPE = 'boolean'
@@ -53,34 +51,6 @@ ANGLE_RADIANS_TYPE = 'angle.radians'
 REFERENCE_TYPE = 'reference'
 IDENTIFIER_TYPE = 'identifier'
 PATH_TYPE = 'path'
-
-def _getRealFilename( path ):
-    # Only required on Windows
-    # will return the filename in the AcTuaL CaSe it is stored on the drive
-    # ensure "clean" split
-    path_bits = path.replace( '\\', '/' ).replace( '//', '/' ).split( '/' )
-    real_path_bits = []
-    currentpath = path_bits.pop( 0 ) + "\\"
-    for path_bit in path_bits:
-        insensitive_match = ''
-        sensitive_match = ''
-        for entry in os.listdir( currentpath ):
-            if entry == path_bit:
-                # case senstive match - we can bail
-                sensitive_match = entry
-                break
-            elif entry.lower() == path_bit.lower():
-                # case insenstive match
-                insensitive_match = entry
-                break
-        else:
-            print "File not Found!", path
-            return ''
-        if sensitive_match != '':
-           currentpath = os.path.join( currentpath, entry )
-        elif insensitive_match != '':
-            currentpath = os.path.join( currentpath, insensitive_match )
-    return currentpath
 
 class AttributeMeta( object ):
     def __init__( self, name, attribute_type, init = None, default = None,
@@ -530,7 +500,7 @@ class PathAttributeMeta( AttributeMeta ):
             if os.path.exists( filename ):
                 #confirm extension on drive is lower case
                 len_wogdir = len( os.path.normpath( AMY_PATH ) ) + 1
-                real_filename = os.path.normpath( _getRealFilename( filename ) )
+                real_filename = os.path.normpath( getRealFilename( filename ) )
                 value = os.path.splitext( real_filename )[0][len_wogdir:]
 
         return element.set( self.name, self._clean_path( value ) )

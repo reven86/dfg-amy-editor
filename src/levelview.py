@@ -11,7 +11,6 @@ import louie
 import metaworld
 import metaworldui
 import qthelper
-import metawog
 
 ROUND_DIGITS = 2 #Rounds Sizes, Positions, Radii and Angles to 2 Decimal Places
 Z_TOOL_ITEMS = 1000000 # makes sure always on top
@@ -571,59 +570,15 @@ class MoveToolDelegate( ToolDelegate ):
                 delta_pos = QtCore.QPointF( 0, delta_pos.y() )
 
         new_pos = self.item.pos() + delta_pos
-        #Special Case for handling Pipe Vertexes since they need to be
-        #exactly Horizontal or Vertical to be display correctly in the game
-        if self.item.data( KEY_TYPE ).toString() == 'Vertex':
-            data = self.item.data( KEY_ELEMENT )
-            if data.isValid():
-                velement = data.toPyObject()
-                ei = velement.index_in_parent()
-                # First Vertex (Pipe End) allow to move freely.. otherwise
-                if ei != 0:
-                    return self._moveVertex( new_pos, velement )
 
         self.item.setPos( new_pos )
         self.view._update_tools_handle()
         if self.activation_value is None: # Default value to (0,0)
             return delta_pos.x(), -delta_pos.y()
         #@DaB - Round position atrributes
-	element_pos_x = round( ( self.activation_value[0] + delta_pos.x() ), ROUND_DIGITS )
+        element_pos_x = round( ( self.activation_value[0] + delta_pos.x() ), ROUND_DIGITS )
         element_pos_y = round( ( self.activation_value[1] - delta_pos.y() ), ROUND_DIGITS )
         return element_pos_x, element_pos_y
-
-    def _moveVertex( self, new_pos, velement ):
-          pchild = velement.previous_element()
-          prefx, prefy = pchild.get_native( 'pos', ( 0.0, 0.0 ) )
-          ppchild = pchild.previous_element()
-          ddx = 1
-          ddy = 1
-          if ppchild != velement.parent:
-              # limit to a single dimension
-              pprefx, pprefy = ppchild.get_native( 'pos', ( 0.0, 0.0 ) )
-              if abs( prefx - pprefx ) > abs( prefy - pprefy ):
-                ddx = 0
-              else:
-                ddy = 0
-
-          dx = abs( new_pos.x() - prefx ) * ddx
-          dy = abs( new_pos.y() + prefy ) * ddy
-          if dx >= dy:
-              new_pos = QtCore.QPointF( new_pos.x(), -prefy )
-          else:
-              new_pos = QtCore.QPointF( prefx, new_pos.y() )
-
-          #Offset center of Item because of Line Width
-          new_item_pos = new_pos + QtCore.QPointF( -5, -5 )
-
-          self.item.setPos( new_item_pos )
-          self.view._update_tools_handle()
-
-          if self.activation_value is None: # Default value to (0,0)
-               return new_pos.x(), -new_pos.y()
-        #@DaB - Round position atrributes
-          element_pos_x = round( new_pos.x(), ROUND_DIGITS )
-          element_pos_y = -round( new_pos.y(), ROUND_DIGITS )
-          return element_pos_x, element_pos_y
 
 class MultiMoveToolDelegate( ToolDelegate ):
     """This tool allow the user to move the element in its parent (scene or compositegeom).
@@ -2032,8 +1987,8 @@ class LevelGraphicView( QtGui.QGraphicsView ):
         self._last_press_at = self.mapToScene( event.pos() )
         self._get_active_tool().on_mouse_press_event( event )
         event.accept()
-	#@DaB - Ensure if Click then Press to move is quick enough to be consider a Double-click
-	# that it still works.
+    #@DaB - Ensure if Click then Press to move is quick enough to be consider a Double-click
+    # that it still works.
     def mouseDoubleClickEvent( self, event ):
         self._last_press_at = self.mapToScene( event.pos() )
         self._get_active_tool().on_mouse_press_event( event )
@@ -2856,7 +2811,7 @@ class LevelGraphicView( QtGui.QGraphicsView ):
 
 
 if __name__ == "__main__":
-    import unittest
+    import unittest #@UnresolvedImport
 
     class VectorTest( unittest.TestCase ):
 
