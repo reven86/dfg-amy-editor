@@ -23,12 +23,9 @@
   <file>images/group-circle.png</file>
   <file>images/group-compgeom.png</file>
   <file>images/group-pipe.png</file>
-  <file>images/group-sign.png</file>
   <file>images/group-line.png</file>
   <file>images/group-material.png</file>
   <file>images/group-particles.png</file>
-  <file>images/group-strand.png</file>
-  <file>images/group-fire.png</file>
   <file>images/group-goomod.png</file>
   <file>images/group-image.png</file>
   <file>images/group-physic.png</file>
@@ -55,12 +52,9 @@
   <file>images/rff.png</file>
   <file>images/fire.png</file>
   <file>images/hinge.png</file>
-  <file>images/pipe.png</file>
-  <file>images/pipebend.png</file>
   <file>images/compgeom.png</file>
   <file>images/childrect.png</file>
   <file>images/childcircle.png</file>
-  <file>images/sign32.png</file>
   <file>images/label.png</file>
   <file>images/goomod.png</file>
   <file>images/text.png</file>

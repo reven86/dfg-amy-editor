@@ -757,14 +757,6 @@
       <file name="pterminalPole" type="png" />
       <file name="screw1" type="png" />
       <file name="sign_yield" type="png" />
-      <file name="signpost_brown" type="png" />
-      <file name="SignPost_dlg_pole" type="png" />
-      <file name="SignPost_dlg_sign" type="png" />
-      <file name="signpost_gray" type="png" />
-      <file name="signpost_ish" type="png" />
-      <file name="signpostPole_brown" type="png" />
-      <file name="signpostPole_gray" type="png" />
-      <file name="signpostPole_ish" type="png" />
       <file name="sky_blue2a" type="png" />
       <file name="sky_pissorangestripes" type="png" />
       <file name="sky_pissyellowstripes" type="png" />
@@ -1521,7 +1513,6 @@
       <file name="s4_mist" type="png" />
       <file name="s4_squareBig" type="png" />
       <file name="s4_wireframe" type="png" />
-      <file name="signpostIsh" type="png" />
       <file name="thumb" type="png" />
       <file name="white32" type="png" />
       <file name="wogLogo01" type="png" />

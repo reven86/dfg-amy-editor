@@ -548,8 +548,6 @@ class GameModel( QtCore.QObject ):
             root = world.text_root
             rootmbt = root.meta.find_immediate_child_by_tag( 'string' )
             elements_with_text = []
-            for element_with_text in world.level_root.findall( './/signpost' ):
-                elements_with_text.append( element_with_text )
             for element_with_text in world.scene_root.findall( './/label' ):
                 elements_with_text.append( element_with_text )
 
@@ -1113,33 +1111,15 @@ class LevelWorld( ThingWorld ):
             self.addLevelError( 103, None )
 
         end_conditions = []
-        targetheight = root.find( 'targetheight' )
-        if targetheight is not None:
-            end_conditions.append( 'targetheight' )
-        endoncollision = root.find( 'endoncollision' )
-        if endoncollision is not None:
-            end_conditions.append( 'endoncollision' )
 
         if len( end_conditions ) > 1:
             self.addLevelError( 111, ','.join( end_conditions ) )
 
-        #Ambient Particles on "Local Effect Only" object (fire or signpost)
+        #Ambient Particles on "Local Effect Only" object
         ambient_effects = []
         fx_tree = self.game_model._effects_tree
         for effect in fx_tree.root.findall( 'ambientparticleeffect' ):
             ambient_effects.append( effect.get( 'name' ) )
-
-        for element in root.findall( 'signpost' ):
-            particles = element.get( 'particles' )
-            if particles is not None:
-                if particles in ambient_effects:
-                    self.addLevelError( 113, ( element.get( 'name', '' ), particles ) )
-
-        for element in root.findall( 'fire' ):
-            particles = element.get( 'particles' )
-            if particles is not None:
-                if particles in ambient_effects:
-                    self.addLevelError( 114, particles )
 
         return self._level_issue_level != ISSUE_LEVEL_NONE
 
@@ -1641,29 +1621,29 @@ class LevelWorld( ThingWorld ):
         #Only required on windows...
         #If path was not CaSe SenSitivE match on Linux / Mac would be File not found earlier
         if ON_PLATFORM == PLATFORM_WIN:
-          for resource in root.findall( './/Image' ):
-            full_filename = os.path.normpath( os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + ".png" ) )
-            if os.path.exists( full_filename ):
-                #confirm extension on drive is lower case
-                len_wogdir = len( os.path.normpath( self.game_model._amy_dir ) ) + 1
-                real_filename = os.path.normpath( getRealFilename( full_filename ) )
-                real_file = os.path.splitext( real_filename )[0][len_wogdir:]
-                full_file = os.path.splitext( full_filename )[0][len_wogdir:]
-                if real_file != full_file:
-                    print "Correcting Path", resource.get( 'id' ), full_file, "-->", real_file
-                    resource.attribute_meta( 'path' ).set( resource, real_file )
+            for resource in root.findall( './/Image' ):
+                full_filename = os.path.normpath( os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + ".png" ) )
+                if os.path.exists( full_filename ):
+                    #confirm extension on drive is lower case
+                    len_wogdir = len( os.path.normpath( self.game_model._amy_dir ) ) + 1
+                    real_filename = os.path.normpath( getRealFilename( full_filename ) )
+                    real_file = os.path.splitext( real_filename )[0][len_wogdir:]
+                    full_file = os.path.splitext( full_filename )[0][len_wogdir:]
+                    if real_file != full_file:
+                        print "Correcting Path", resource.get( 'id' ), full_file, "-->", real_file
+                        resource.attribute_meta( 'path' ).set( resource, real_file )
 
-          for resource in root.findall( './/Sound' ):
-            full_filename = os.path.normpath( os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + ".ogg" ) )
-            if os.path.exists( full_filename ):
-                #confirm extension on drive is lower case
-                len_wogdir = len( os.path.normpath( self.game_model._amy_dir ) )
-                real_filename = os.path.normpath( getRealFilename( full_filename ) )
-                real_file = os.path.splitext( real_filename )[0][len_wogdir:]
-                full_file = os.path.splitext( full_filename )[0][len_wogdir:]
-                if real_file != full_file:
-                    print "Correcting Path", resource.get( 'id' ), full_file, "-->", real_file
-                    resource.attribute_meta( 'path' ).set( resource, real_file )
+            for resource in root.findall( './/Sound' ):
+                full_filename = os.path.normpath( os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + ".ogg" ) )
+                if os.path.exists( full_filename ):
+                    #confirm extension on drive is lower case
+                    len_wogdir = len( os.path.normpath( self.game_model._amy_dir ) )
+                    real_filename = os.path.normpath( getRealFilename( full_filename ) )
+                    real_file = os.path.splitext( real_filename )[0][len_wogdir:]
+                    full_file = os.path.splitext( full_filename )[0][len_wogdir:]
+                    if real_file != full_file:
+                        print "Correcting Path", resource.get( 'id' ), full_file, "-->", real_file
+                        resource.attribute_meta( 'path' ).set( resource, real_file )
 
         self.activate_undo()
 
@@ -1790,7 +1770,7 @@ class LevelWorld( ThingWorld ):
         for file in importedfiles:
             file = os.path.normpath( file )
             # "Are you Local?"
-			# Check if the files were imported from outside the Wog/Res folder
+            # Check if the files were imported from outside the Wog/Res folder
             fileext = os.path.splitext( file )[1][1:4]
             if fileext.lower() == "ogg":
                 includesogg = True
@@ -2379,9 +2359,6 @@ class MainWindow( QtGui.QMainWindow ):
         if active_view is not None:
             active_view.tool_activated( tool_name )
 
-    def on_select_tool_action( self ):
-        self._on_view_tool_actived( levelview.TOOL_SELECT )
-
     def on_pan_tool_action( self ):
         self._on_view_tool_actived( levelview.TOOL_PAN )
 
@@ -2537,7 +2514,7 @@ class MainWindow( QtGui.QMainWindow ):
             status_tip = "Show the application's About box" )
 
         self.recentfile_actions = [qthelper.action( self, handler = self.on_recentfile_action, visible = False )
-                                    for i in range( 0, MAXRECENTFILES )]
+                                    for i in range( 0, MAXRECENTFILES )] #@UnusedVariable
 
         self.common_actions = {
             'cut': qthelper.action( self, handler = self.on_cut_action,
@@ -2590,9 +2567,9 @@ class MainWindow( QtGui.QMainWindow ):
                     text = "Show/Hide Camera" , icon = ":/images/show-camera.png" ),
             'fields': qthelper.action( self, handler = ShowHideFactory( self , ['linearforcefield', 'radialforcefield'] ),
                     text = "Show/Hide Forcefields", icon = ":/images/show-physic.png" ),
-            'geom': qthelper.action( self, handler = ShowHideFactory( self , ['rectangle', 'circle', 'compositegeom', 'levelexit', 'line', 'hinge', 'fire'] ),
+            'geom': qthelper.action( self, handler = ShowHideFactory( self , ['rectangle', 'circle', 'compositegeom', 'levelexit', 'line', 'hinge'] ),
                     text = "Show/Hide Geometry" , icon = ":/images/show-geom.png" ),
-            'gfx': qthelper.action( self, handler = ShowHideFactory( self , ['SceneLayer', 'signpost', 'pixmap'] ),
+            'gfx': qthelper.action( self, handler = ShowHideFactory( self , ['SceneLayer', 'pixmap'] ),
                     text = "Show/Hide Graphics" , icon = ":/images/show-gfx.png" ),
             'particles': qthelper.action( self, handler = ShowHideFactory( self , ['particles'] ),
                     text = "Show/Hide Particles" , icon = ":/images/show-particles.png" ),
@@ -2682,11 +2659,6 @@ class MainWindow( QtGui.QMainWindow ):
                     handler = AddItemFactory( self, 'text', 'string', {} ),
                     icon = ":/images/text.png",
                     text = "&Add Text Resource" ),
-
-        'sign':     qthelper.action( self,
-                    handler = AddItemFactory( self, 'level', 'signpost', {} ),
-                    icon = ":/images/sign32.png",
-                    text = "&Add Sign" ),
 
         'label':    qthelper.action( self,
                     handler = AddItemFactory( self, 'scene', 'label', {} ),
@@ -2831,7 +2803,7 @@ class MainWindow( QtGui.QMainWindow ):
 
     def createDockWindows( self ):
         self.group_icons = {}
-        for group in 'camera game image physic resource shape text info particles strand fire material rect circle compgeom line sign anim'.split():
+        for group in 'camera game image physic resource shape text info particles material rect circle compgeom line anim'.split():
             self.group_icons[group] = QtGui.QIcon( ":/images/group-%s.png" % group )
         self.tree_view_by_element_world = {} # map of all tree views
         scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', metawog.TREE_LEVEL_SCENE )
@@ -2847,7 +2819,7 @@ class MainWindow( QtGui.QMainWindow ):
                                                                             metawog.TREE_LEVEL_TEXT,
                                                                             addin_dock )
 
-        dep_dock, self.depTree = self.createElementTreeView( 'Depends',
+        dep_dock, self.depTree = self.createElementTreeView( 'Depends', #@UnusedVariable
                                                                             metawog.TREE_LEVEL_DEPENDANCY,
                                                                             text_dock )
 

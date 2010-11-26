@@ -2195,8 +2195,6 @@ class LevelGraphicView( QtGui.QGraphicsView ):
             return None
         builders = {
             # .level.xml builders
-            'signpost': self._levelSignPostBuilder,
-            'fire': self._levelFireBuilder,
             'levelexit': self._levelExit,
             'camera': self._levelCameraBuilder,
             'poi': self._levelPoiBuilder,
@@ -2288,58 +2286,28 @@ class LevelGraphicView( QtGui.QGraphicsView ):
             return self.__world.getImagePixmap( image_id )
         return None
 
-    def _levelSignPostBuilder( self, scene, element ):
-        x, y = self._elementV2Pos( element, 'center' )
-        depth = element.get_native( 'depth', 0.0 )
-        image = element.get( 'image' )
-        rotation = element.get_native( 'rotation', 0.0 )
-        scalex, scaley = element.get_native( 'scale', ( 1.0, 1.0 ) )
-        alpha = element.get_native( 'alpha', 1.0 )
-
-	#@DaB If signpost image is valid, display it!
-        pixmap = None
-        if image:
-           pixmap = self.getImagePixmap( image )
-
-        if pixmap:
-            item = scene.addPixmap( pixmap )
-            item.setData( KEY_AREA , QtCore.QVariant( pixmap.height()*pixmap.width()*scalex * scaley ) )
-            item.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
-            item.setTransformationMode( Qt.SmoothTransformation )
-            self._applyPixmapTransform( item, pixmap, x, y, rotation, scalex, scaley, depth )
-            item.setOpacity( alpha )
-        else:
-            pen = QtGui.QPen( QtGui.QColor( 255, 0, 0 ) )
-            pen.setWidth( 4 )
-            item = scene.addRect( 0, 0, 100, 100, pen )
-            item.setData( KEY_AREA , QtCore.QVariant( 10000 ) )
-            item.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
-            self._applyTransform( item, 50, 50, x, y, rotation, 1.0, 1.0, Z_PHYSIC_ITEMS )
-        return item
-
     def _levelCameraBuilder( self, scene, element ):
-
         x, y = self._elementV2Pos( element, 'endpos' )
         rotation = 0
         zoom = element.get_native( 'endzoom' )
         cameraitem = None
         if zoom is not None:
-          if element.get( 'aspect' ) == 'widescreen':
-            sizex = 1060 / zoom
-            sizey = 600 / zoom
-            pen = QtGui.QPen( QtGui.QColor( 0, 96, 48 ) )
-            scalex = 10
-          else:
-            pen = QtGui.QPen( QtGui.QColor( 0, 64, 64 ) )
-            sizex = 800 / zoom
-            sizey = 600 / zoom
-            scalex = 3
-          sizex = sizex / scalex
-          pen.setWidth( 2 )
-          cameraitem = scene.addRect( 0, 0, sizex, sizey, pen )
-          cameraitem.setData( KEY_AREA , QtCore.QVariant( sizex * sizey * scalex ) )
-          cameraitem.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
-          self._applyTransform( cameraitem, sizex / 2.0, sizey / 2.0, x, y, rotation,
+            if element.get( 'aspect' ) == 'widescreen':
+                sizex = 1060 / zoom
+                sizey = 600 / zoom
+                pen = QtGui.QPen( QtGui.QColor( 0, 96, 48 ) )
+                scalex = 10
+            else:
+                pen = QtGui.QPen( QtGui.QColor( 0, 64, 64 ) )
+                sizex = 800 / zoom
+                sizey = 600 / zoom
+                scalex = 3
+            sizex = sizex / scalex
+            pen.setWidth( 2 )
+            cameraitem = scene.addRect( 0, 0, sizex, sizey, pen )
+            cameraitem.setData( KEY_AREA , QtCore.QVariant( sizex * sizey * scalex ) )
+            cameraitem.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
+            self._applyTransform( cameraitem, sizex / 2.0, sizey / 2.0, x, y, rotation,
                               scalex, 1.0, Z_PHYSIC_ITEMS )
         return cameraitem
 
@@ -2386,18 +2354,6 @@ class LevelGraphicView( QtGui.QGraphicsView ):
         self._applyTransform( item, sizex / 2.0, sizey / 2.0, x, y, rotation,
                               rescalex, rescaley, Z_PHYSIC_ITEMS )
         item.setOpacity( alpha )
-        return item
-
-    def _levelFireBuilder( self, scene, element ):
-        x, y = self._elementV2Pos( element, 'center' )
-        r = element.get_native( 'radius', 1.0 )
-        pen = QtGui.QPen( QtGui.QColor( 255, 64, 0 ) )
-        pen.setWidth( 3 )
-        #item = scene.addEllipse( -r/2, -r/2, r, r, pen )
-        item = scene.addEllipse( -r, -r, r * 2, r * 2, pen )
-        item.setData( KEY_AREA , QtCore.QVariant( 3.14 * r * r ) )
-        item.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
-        self._setLevelItemXYZ( item, x, y )
         return item
 
     def _levelExit( self, scene, element ):

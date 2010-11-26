@@ -53,16 +53,16 @@ MATERIALS_ORIGINAL = ["ice", "rock", "grass", "fruit",
                       ]
 
 PARTICLEEFFECTS_ORIGINAL = ['unlockfuse', 'unlockburst', 'snowStormFromPoint', 'splash', 'gooFallWide2', 'gooSplatter',
-                          'gooSplatterSubtle', 'mistUp', 'fireStack1', 'fireStackSmaller1', 'fireStackSmaller2',
-                          'fireRobotHead', 'fireStackSquat', 'fireStackLanternBw', 'fireBallBurn', 'thruster',
-                          'fireArmBurn', 'poisonBallBurn', 'poisonArmBurn', 'blackSmokeRising', 'bubblesRisingFromPoint',
+                          'gooSplatterSubtle', 'mistUp',
+                          'thruster',
+                          'poisonBallBurn', 'poisonArmBurn', 'blackSmokeRising', 'bubblesRisingFromPoint',
                           'bubblesRisingFromPointSlow', 'wogcSmoke', 'wogcSmokeIsh', 'whiteSmokeRising', 'sleepyZzz',
-                          'ish_sleepyZzz', 'ishr_sleepyZzz', 'signpostAlert', 'signpostAlertMom', 'whistle',
+                          'ish_sleepyZzz', 'ishr_sleepyZzz', 'whistle',
                           'worldMap_FactorySmoke', 'BurningManSmoke', 'RobotHeadSmoke', 'distantSmokestack',
                           'worldMap_FactorySmokeWhite', 'cigSmoke', 'gentleFactorySmoke', 'puffyFactorySmoke',
                           'gentleFactorySmokeSepia', 'matchSmoke', 'gooTankStream', 'gooDrips', 'polFountain1', 'polFountain2',
                           'gooMist', 'timebugFizz', 'flashes', 'tubeAirFlowUp', 'tubeAirFlowLeft', 'geomExplosionDust',
-                          'ish_smallfire', 'ish_FlingTrail', 'ishr_FlingTrail', 'ish_gpu_bitspew', 'ish_bitPop', 'beautypop',
+                          'ish_FlingTrail', 'ishr_FlingTrail', 'ish_gpu_bitspew', 'ish_bitPop', 'beautypop',
                           'flowerDust', 'OOS_gooDrips', 'OOS_gooGlobs', 'BallExplode_Fuse', 'BallExplode_Bomb', 'BallExplode_ISH',
                           'ISH_undeleteFizz', 'ish_bubbles']
 
@@ -155,13 +155,8 @@ TREE_LEVEL_GAME.add_elements( [
         bool_attribute( 'visualdebug', init = False, allow_empty = True, remove_empty = True ),
         bool_attribute( 'autobounds', init = False, tooltip = 'If true, the camera is restricted to the explored area\nIf false, the camera can move anywhere', allow_empty = True, remove_empty = True ),
         rgb_attribute( 'textcolor', init = ( 255, 255, 255 ), allow_empty = True, remove_empty = True ),
-        real_attribute( 'timebugprobability', init = 0, min_value = 0, max_value = 1, allow_empty = True, remove_empty = True , tooltip = 'Set 0 for No Timebugs\n0.1 for some\n0.5 for LOTS!' ),
         bool_attribute( 'allowskip', default = True, allow_empty = True, remove_empty = True ),
         bool_attribute( 'texteffects', default = False , allow_empty = True, remove_empty = True ),
-        rgb_attribute( 'cursor1color', default = ( 255, 255, 255 ) ),
-        rgb_attribute( 'cursor2color', default = ( 255, 255, 255 ) ),
-        rgb_attribute( 'cursor3color', default = ( 255, 255, 255 ) ),
-        rgb_attribute( 'cursor4color', default = ( 255, 255, 255 ) ),
         ],
         elements = [
         describe_element( 'camera', exact_occurrence = 2, groups = 'camera', attributes = [
@@ -176,22 +171,6 @@ TREE_LEVEL_GAME.add_elements( [
                 real_attribute( 'traveltime', min_value = 0, default = 0, init = 3 , mandatory = True, tooltip = 'Time taken to travel TO this position\nIgnored on first POI' )
                 ] )
             ] ),
-        describe_element( 'signpost', groups = 'sign', attributes = [
-            string_attribute( 'name', init = '', mandatory = 'True', display_id = True ),
-            xy_attribute( 'center', init = '0,0', mandatory = True, map_to = ( 'x', 'y' ), position = True ),
-            scale_attribute( 'scale', init = '1,1', min_value = 0.0000001, mandatory = True,
-                             map_to = ( 'scalex', 'scaley' ) ),
-            angle_degrees_attribute( 'rotation', init = 0, mandatory = True ),
-            real_attribute( 'depth', init = 0, mandatory = True ),
-            # @todo makes x,y a composite attribute
-            reference_attribute( 'text', reference_family = 'TEXT_LEVELNAME_STR', reference_world = WORLD_LEVEL, init = '', mandatory = True ),
-            reference_attribute( 'image', reference_family = 'image', reference_world = WORLD_LEVEL,
-                                 init = '', mandatory = True ),
-            real_attribute( 'alpha', min_value = 0, max_value = 1, init = 1, mandatory = True ),
-            rgb_attribute( 'colorize', init = '255,255,255', mandatory = True ),
-            reference_attribute( 'particles', reference_family = 'effect', reference_world = WORLD_GLOBAL ),
-            bool_attribute( 'pulse', allow_empty = True, remove_empty = True )
-            ] ),
         describe_element( 'music', groups = 'resource', max_occurrence = 1, attributes = [
             reference_attribute( 'sound', map_to = 'id', display_id = True, mandatory = True,
                 reference_family = 'sound', reference_world = WORLD_LEVEL )
@@ -205,28 +184,6 @@ TREE_LEVEL_GAME.add_elements( [
             xy_attribute( 'pos', mandatory = True, init = '0,0' , position = True ),
             radius_attribute( 'radius', mandatory = True, init = '75' ),
             ] ),
-        describe_element( 'endoncollision', groups = 'game', attributes = [
-            reference_attribute( 'id1', reference_family = 'geometry', reference_world = WORLD_LEVEL, mandatory = True ),
-            reference_attribute( 'id2', reference_family = 'geometry', reference_world = WORLD_LEVEL, mandatory = True ),
-            real_attribute( 'delay', mandatory = True, init = '1' )
-            ] ),
-        describe_element( 'endonmessage', groups = 'game', attributes = [
-            string_attribute( 'id', display_id = True, mandatory = True )  # values seems to be hard-coded
-            ] ),
-
-        #DaB End on no Geom functions fine...
-        describe_element( 'endonnogeom', groups = 'game', attributes = [] ),
-
-        describe_element( 'fire', groups = 'fire', attributes = [
-            xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ( 'x', 'y' ) , position = True ),
-            radius_attribute( 'radius', mandatory = True, init = '50' ),
-            real_attribute( 'depth', mandatory = True, init = '0' ),
-            reference_attribute( 'particles', reference_family = 'effect',
-                                 reference_world = WORLD_GLOBAL, mandatory = True )
-            ] ),
-        describe_element( 'targetheight', groups = 'game', max_occurrence = 1, attributes = [
-            real_attribute( 'y', mandatory = True, init = '300' ),
-            ] )
         ] )
     ] )
 
@@ -676,7 +633,7 @@ TREE_ISLAND.add_elements( [
 
 
 LEVEL_GAME_TEMPLATE = """\
-<level letterboxed="false" visualdebug="false" autobounds="false" textcolor="255,255,255" timebugprobability="0" allowskip="true" >
+<level letterboxed="false" visualdebug="false" autobounds="false" textcolor="255,255,255" allowskip="true" >
 
 	<!-- Camera -->
 	<camera aspect="normal" endpos="0,0" endzoom="1">
@@ -764,7 +721,6 @@ GLOBAL_FONT_RESOURCES = """\
 <font  id="FONT_OUTLINE_18" path="res/fonts/TwCenMTCondensedExtraBold18"/>
 <font  id="FONT_LOADING"                 path="res/fonts/TwCenMTCondensedExtraBold18"/>
 <font  id="FONT_OUTLINE_26"              path="res/fonts/TwCenMTCondensedExtraBold26"/>
-<font  id="FONT_SIGNPOST"                path="res/fonts/TwCenMTCondensedExtraBold36"/>
 <font  id="FONT_BIGWHITE_52"             path="res/fonts/TwCenMTCondensedExtraBold52"/>
 <font  id="FONT_INGAME36"                path="res/fonts/wogSmall"/>
 <font  id="FONT_TITLE"                   path="res/fonts/wogBig"/>

@@ -31,10 +31,6 @@ ERROR_INFO = {0:[ISSUE_LEVEL_NONE, ''],
     102:[ISSUE_LEVEL_WARNING, 'Level has no <tt>normal</tt> camera'],
     103:[ISSUE_LEVEL_WARNING, 'Level has no <tt>widescreen</tt> camera'],
     109:[ISSUE_LEVEL_CRITICAL, 'You can\'t connect <tt>%s (%s)</tt> to <tt>%s (%s)</tt>'],
-    111:[ISSUE_LEVEL_ADVICE, 'Multiple end conditions <tt>%s</tt>'],
-    112:[ISSUE_LEVEL_WARNING, 'Gooballs start above the <tt>targetheight</tt>'],
-    113:[ISSUE_LEVEL_CRITICAL, 'Signpost %s uses an Ambient Particle effect <tt>%s</tt>'],
-    114:[ISSUE_LEVEL_CRITICAL, 'Fire object uses an Ambient Particle effect <tt>%s</tt>'],
 
 #Resource Errors
     201:[ISSUE_LEVEL_WARNING, 'Image file extensions must be png (lowercase) %s'],
