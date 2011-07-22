@@ -102,7 +102,7 @@ TREE_LEVEL_GAME.add_elements( [
 
 
 # Values for Tag attribute (Physic items)
-_TAG_VALUES = ( 'walkable' )
+_TAG_VALUES = ( 'walkable', )
 
 ELEMENT_BUTTON = describe_element( 'button', groups = 'image', attributes = [
         string_attribute( 'id', display_id = True, mandatory = True ),

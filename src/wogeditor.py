@@ -108,8 +108,6 @@ class AddItemFactory( object ):
                     root = model.level_root
                 elif self.parent == 'scene':
                     root = model.scene_root
-                elif self.parent == 'text':
-                    root = model.text_root
                 elif self.parent == 'compositegeom':
                     thisworld = cview.world
                     selected_elements = thisworld.selected_elements
@@ -341,22 +339,25 @@ class GameModel( QtCore.QObject ):
         if not os.path.isfile( path ):
             raise GameModelException( tr( 'LoadData',
                 'File "%1" does not exist. You likely provided an incorrect Amy In Da Farm! directory.' ).arg( path ) )
-        xml_data = wogfile.decrypt_file_data( path )
+        data = wogfile.decrypt_file_data( path )
         try:
-            new_tree = world.make_tree_from_xml( meta_tree, xml_data )
+            if YAML_FORMAT:
+                new_tree = world.make_tree_from_yaml( meta_tree, data )
+            else:
+                new_tree = world.make_tree_from_xml( meta_tree, data )
         except IOError, e:
             raise GameModelException( unicode( e ) + u' in file ' + file_name )
         new_tree.setFilename( path )
         return new_tree
 
-    def _loadUnPackedTree( self, world, meta_tree, directory, file_name, template ):
+    def _loadUnPackedTree( self, world, meta_tree, directory, file_name ):
         input_path = os.path.join( directory, file_name )
-        if not os.path.isfile( input_path ):
-            xml_data = template
-        else:
-            xml_data = file( input_path, 'rb' ).read()
+        data = file( input_path, 'rb' ).read()
         try:
-            new_tree = world.make_tree_from_xml( meta_tree, xml_data )
+            if YAML_FORMAT:
+                new_tree = world.make_tree_from_yaml( meta_tree, data )
+            else:
+                new_tree = world.make_tree_from_xml( meta_tree, data )
         except IOError, e:
             raise GameModelException( unicode( e ) + u' in file ' + file_name )
         new_tree.setFilename( input_path )
@@ -700,8 +701,6 @@ class LevelWorld( ThingWorld ):
             txtIssue += '<p>Resource Checks:<br>' + self.resrc_issue_report + '</p>'
         if self.global_issue_report != '':
             txtIssue += '<p>Global Checks:<br>' + self.global_issue_report + '</p>'
-        if self.element_issue_level( self.text_root ):
-            txtIssue = txtIssue + '<p>Text Tree:<br>' + self.element_issue_report( self.text_root ) + '</p>'
 
         return txtIssue
 
@@ -890,7 +889,6 @@ class LevelWorld( ThingWorld ):
     def _get_unused_resources( self ):
         used = self._get_used_resources()
         resources = {}
-        resources['TEXT_LEVELNAME_STR'] = self._get_all_resource_ids( self.text_root, "string" )
         unused = {'image':set(), 'sound':set(), 'TEXT_LEVELNAME_STR':set()}
         for restype in unused.keys():
             unused[restype] = resources[restype] - used[restype]
@@ -899,10 +897,10 @@ class LevelWorld( ThingWorld ):
     def _remove_unused_resources( self, unused ):
         self.suspend_undo()
         for family, unusedset in unused.items():
-          for unusedid in unusedset:
-            element = self.resolve_reference( metawog.WORLD_LEVEL, family, unusedid )
-            if element is not None:
-                element.parent.remove( element )
+            for unusedid in unusedset:
+                element = self.resolve_reference( metawog.WORLD_LEVEL, family, unusedid )
+                if element is not None:
+                    element.parent.remove( element )
         self.activate_undo()
 
     def _get_used_resources( self ):

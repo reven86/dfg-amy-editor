@@ -93,6 +93,16 @@ class AttributeMeta( object ):
         if value is not None:
             attributes_by_name[self.name] = value
 
+    def from_yaml( self, element, attributes_by_name ):
+        """Set attributes values in attributes_by_name using xml_element attributes
+           as input."""
+        if self.map_to == 'value':
+            value = None
+        else:
+            value = element.get( self.map_to )
+        if value is not None:
+            attributes_by_name[self.name] = ','.join( map( str, value ) ) if isinstance( value, list ) else str( value )
+
     def to_xml( self, element, attributes_by_name ):
         if self.name == 'value':
             value = None
@@ -224,6 +234,26 @@ class ComponentsAttributeMeta( AttributeMeta ):
             for name in self.map_to:
                 value = xml_element.get( name )
                 values.append( value or '' )
+                defined = defined or value is not None
+            if defined:
+                attributes_by_name[self.name] = ','.join( values )
+
+    def from_yaml( self, element, attributes_by_name ):
+        """Set attributes values in attributes_by_name using YAML element attributes
+           as input.
+           If map_to is a list, then map each component to the corresponding attribute
+           specified in map_to. For example if map_to is ('x','y'), then the first
+           component of the attribute is obtains from the 'x' attribute of the
+           XML element, and the second component of the attribute from the 'y'
+           attribute of the XML element."""
+        if isinstance( self.map_to, ( str, unicode ) ):
+            AttributeMeta.from_yaml( self, element, attributes_by_name )
+        else:
+            values = []
+            defined = False
+            for name in self.map_to:
+                value = element.get( name )
+                values.append( str( value ) if value else '' )
                 defined = defined or value is not None
             if defined:
                 attributes_by_name[self.name] = ','.join( values )
@@ -444,6 +474,16 @@ class BooleanAttributeMeta( EnumeratedAttributeMeta ):
         elif raw == 'false':
             return False
         return default
+
+    def from_yaml( self, element, attributes_by_name ):
+        """Set attributes values in attributes_by_name using xml_element attributes
+           as input."""
+        if self.map_to == 'value':
+            value = None
+        else:
+            value = element.get( self.map_to )
+        if value is not None:
+            attributes_by_name[self.name] = 'true' if value else 'false'
 
 class ReferenceAttributeMeta( ComponentsAttributeMeta ):
     def __init__( self, name, reference_family, reference_world, is_list = False,
@@ -734,6 +774,29 @@ class ElementMeta( ObjectsMetaOwner ):
                          tag = xml_element.tag,
                          child = xml_element_child.tag )
         return Element( self, attributes = known_attributes, children = children, text = xml_element.text )
+
+    def make_element_from_yaml_element( self, element, warning = None ):
+        """Create an Element from a parsed YAML structure.
+           Returns the created element. The element tag must match this meta element tag.
+           warning: callable(message,arguments) => formatted using message % arguments
+        """
+        # Map element attributes
+        known_attributes = {}
+        for attribute_meta in self.attributes_by_name.itervalues():
+            attribute_meta.from_yaml( element, known_attributes )
+
+        # Map element children
+        children = []
+        for tag, el_list in element.get( '#children', {} ).iteritems():
+            child_meta = self.find_immediate_child_by_tag( tag )
+            if child_meta:
+                for element_child in el_list:
+                    children.append( child_meta.make_element_from_yaml_element( element_child, warning ) )
+            elif warning is not None:
+                warning( u'Element %(tag)s, the following child tag missing in the element description: %(child)s.',
+                         tag = element.keys()[0],
+                         child = element_child.keys()[0] )
+        return Element( self, attributes = known_attributes, children = children, text = '' )
 
     def __repr__( self ):
         return '%s(tag=%s, attributes=[%s], elements=[%s])' % ( 
@@ -1260,6 +1323,28 @@ class Universe( WorldsOwner ):
                                                                 self._warning )
         return Tree( self, tree_meta, root_element = root_element )
 
+    def make_unattached_tree_from_yaml( self, tree_meta, data ):
+        """Makes a tree from the provided yaml data for the specified kind of tree.
+           The tree is NOT attached to any world. Use World.add_tree to do so.
+           Returns the created tree if successful (root was successfully parsed),
+           otherwise raise the exception WorldException.
+           Warning may be raised at the universe level.
+           tree_meta: description of the kind of tree to load. Used to associated xml tag to element description.
+           data: raw YAML data.
+        """
+        try:
+            element = yaml.load( data )
+        except yaml.YAMLError, e:
+            raise IOError( u'YAML Parse Error:' + unicode( e ) )
+
+        if tree_meta.root_element_meta.tag != element.keys()[0]:
+            raise WorldException( u'Expected root tag "%(root)s", but got "%(actual)s" instead.' % {
+                'root': tree_meta.root_element_meta.tag, 'actual': element.keys()[0] } )
+        root_meta = tree_meta.root_element_meta
+        root_element = root_meta.make_element_from_yaml_element( element.values()[0],
+                                                                self._warning )
+        return Tree( self, tree_meta, root_element = root_element )
+
 
 class WorldException( Exception ):
     pass
@@ -1410,6 +1495,20 @@ class World( WorldsOwner ):
         """
 
         tree = self.universe.make_unattached_tree_from_xml( tree_meta, xml_data )
+        self.add_tree( [tree] )
+        return tree
+
+    def make_tree_from_yaml( self, tree_meta, data ):
+        """Makes a tree from the provided YAML data for the specified kind of tree.
+           The tree is automatically attached to the world.
+           Returns the created tree if successful (root was successfully parsed),
+           otherwise raise the exception WorldException.
+           Warning may be raised at the universe level.
+           tree_meta: description of the kind of tree to load. Used to associated xml tag to element description.
+           data: raw YAML data.
+        """
+
+        tree = self.universe.make_unattached_tree_from_yaml( tree_meta, data )
         self.add_tree( [tree] )
         return tree
 
@@ -1782,20 +1881,8 @@ class Element( _ElementBase ):
         meta_element = xml.etree.ElementTree.Element( 'MetaWorldElement',
                                                       meta_attributes )
         #@DaB - Fixes incorrectly pasted combined properties (x,y)
-	meta_element.append( self._to_xml_element() )
+        meta_element.append( self._to_xml_element() )
         return xml.etree.ElementTree.tostring( meta_element, encoding )
-
-    def can_add_child_from_xml( self, xml_data ):
-        """Tests if the an XML string generated by to_xml_with_meta() can be added as a child.
-           Returns True if xml_data contains an element that can be a child of this element.
-        """
-        child_elements = self._make_element_from_xml( xml_data )
-        if child_elements is None:
-            return False
-        child_tags = self.meta.immediate_child_tags()
-        # check if there is at least one compatible child
-        return len( [ element for element in child_elements
-                      if element.tag in child_tags ] ) > 0
 
     def _make_element_from_xml( self, xml_data ):
         try:
