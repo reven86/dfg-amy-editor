@@ -28,6 +28,7 @@ import math
 import wogfile
 from utils import * #@UnusedWildImport
 from PyQt4 import QtCore
+import yaml
 
 AMY_PATH = ''
 # Different type of attributes
@@ -97,6 +98,14 @@ class AttributeMeta( object ):
             value = None
         else:
             value = element.get( self.name )
+        if value is not None:
+            attributes_by_name[self.map_to] = value
+
+    def to_yaml( self, element, attributes_by_name ):
+        if self.name == 'value':
+            value = None
+        else:
+            value = self.get_native( element )
         if value is not None:
             attributes_by_name[self.map_to] = value
 
@@ -176,7 +185,7 @@ class ComponentsAttributeMeta( AttributeMeta ):
                               for component in components ]
             if len( native_values ) < self.min_components:
                 return default
-            return tuple( native_values )
+            return native_values
         except ValueError:
             return default
 
@@ -228,6 +237,19 @@ class ComponentsAttributeMeta( AttributeMeta ):
             values = element.get( self.name )
             if values is not None:
                 values = values.split( ',' )
+                for index, name in enumerate( self.map_to ):
+                    if index >= len( values ):
+                        break
+                    attributes_by_name[name] = values[index]
+
+    def to_yaml( self, element, attributes_by_name ):
+        """Set attribute values in attributes_by_name using the world Element
+           attributes' as input."""
+        if isinstance( self.map_to, ( str, unicode ) ):
+            AttributeMeta.to_yaml( self, element, attributes_by_name )
+        else:
+            values = self.get_native( element )
+            if values is not None:
                 for index, name in enumerate( self.map_to ):
                     if index >= len( values ):
                         break
@@ -318,27 +340,6 @@ class OCDAttributeMeta( AttributeMeta ):
             except ValueError:
                 return 'Second Value must be a number', ()
         return status
-
-class RadiansAngleAttributeMeta( NumericAttributeMeta ):
-
-    def from_xml( self, xml_element, attributes_by_name ):
-        """Convert radians to degree."""
-        value = xml_element.get( self.map_to )
-        if value is not None:
-            try:
-                attributes_by_name[self.name] = str( math.degrees( float( value ) ) )
-            except ValueError:
-                attributes_by_name[self.name] = float( value )
-
-    def to_xml( self, element, attributes_by_name ):
-        """Convert degree to radians."""
-        value = element.get( self.name )
-        if value is not None:
-            try:
-                attributes_by_name[self.map_to] = str( math.radians( float( value ) ) )
-            except ValueError:
-                attributes_by_name[self.map_to] = value
-
 
 class ColorAttributeMeta( ComponentsAttributeMeta ):
     def __init__( self, name, attribute_type, components, **kwargs ):
@@ -565,11 +566,6 @@ def ocd_attribute( name, **kwargs ):
 
 def angle_degrees_attribute( name, min_value = None, max_value = None, **kwargs ):
     return NumericAttributeMeta( name, ANGLE_DEGREES_TYPE, float,
-                                 'value must be a real number',
-                                 min_value = min_value, max_value = max_value, **kwargs )
-
-def angle_radians_attribute( name, min_value = None, max_value = None, **kwargs ):
-    return RadiansAngleAttributeMeta( name, ANGLE_RADIANS_TYPE, float,
                                  'value must be a real number',
                                  min_value = min_value, max_value = max_value, **kwargs )
 
@@ -1319,16 +1315,8 @@ class World( WorldsOwner ):
     def _refreshTree( self, tree ):
         tree_meta = tree.meta
         tree_filename = tree.filename
-        #tree_path = os.path.split(tree_filename)
-        tree_ext = os.path.splitext( tree_filename )[1]
-        #self.remove_tree(tree)
-        if tree_ext == '.bin':
-            #new_tree = self._loadTree( self, tree_meta,  tree_path[0], tree_path[1])
-            xml_data = wogfile.decrypt_file_data( tree_filename )
-        else:
-            #new_tree = self._loadUnPackedTree( self, tree_meta,  tree_path[0], tree_path[1])
-            xml_data = file( tree_filename, 'rb' ).read()
-        #new_tree =  self.make_tree_from_xml( tree_meta, xml_data )
+
+        xml_data = file( tree_filename, 'rb' ).read()
         new_tree = self.universe.make_unattached_tree_from_xml( tree_meta, xml_data )
         if new_tree.root.tag == 'ResourceManifest':
             self._processSetDefaults( new_tree )
@@ -1556,11 +1544,18 @@ class Tree:
         assert self.root is not None
         return self.root.to_xml( encoding )
 
+    def to_yaml( self, encoding = None ):
+        """Outputs a YAML string representing the tree.
+           The YAML is encoded using the specified encoding, or UTF-8 if none is specified.
+        """
+        assert self.root is not None
+        return self.root.to_yaml( encoding )
+
     def clone( self ):
         """Makes a deep clone of the tree root element.
            The returned tree is not attached to a world.
         """
-        cloned_root = self.root and self.root.clone() or None
+        cloned_root = self.root is not None and self.root.clone() or None
         return Tree( self, self.meta, cloned_root )
 
 
@@ -1685,6 +1680,35 @@ class Element( _ElementBase ):
             element.append( child._to_xml_element() )
         return element
 
+    def to_yaml( self, encoding = None ):
+        """Outputs a YAML string representing the element and its children.
+           The YAML is encoded using the specified encoding, or UTF-8 if none is specified.
+        """
+        encoding = encoding or 'utf-8'
+        return yaml.dump( { self.meta.tag : self._to_yaml_element() }, encoding = encoding )
+
+    def _to_yaml_element( self ):
+        props = {}
+        for attribute in self.meta.attributes:
+            attribute.to_yaml( self, props )
+
+#        if self.text is not None:
+#            props[ '@text' ] = self.text
+        if len( self ) > 0:
+            children = []
+            for child in self:
+                children.append( ( child.meta.tag, child._to_yaml_element() ) )
+
+            # since child order have no matter, create a list of
+            # children with duplicated tags
+            taglist = set( [ x.meta.tag for x in self ] )
+            props[ '#children' ] = {}
+            for tag in taglist:
+                props[ '#children' ][ tag ] = []
+            for child in children:
+                props[ '#children' ][ child[0] ].append( child[1] )
+
+        return props
 
     def is_detached( self ):
         """Indicates if the element does not belong to a tree. 

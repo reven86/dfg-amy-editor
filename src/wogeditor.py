@@ -39,13 +39,14 @@ import errors
 from utils import * #@UnusedWildImport
 from datetime import datetime
 
+YAML_FORMAT = True
 LOG_TO_FILE = False
 APP_NAME_UPPER = 'DFG-AMY-EDITOR'
 APP_NAME_LOWER = 'dfg-amy-editor'
 APP_NAME_PROPER = 'Amy In Da Farm! Editor'
 STR_DIR_STUB = 'levels'
 CURRENT_VERSION = "v0.1"
-CREATED_BY = '<!-- Created by ' + APP_NAME_PROPER + ' ' + CURRENT_VERSION + ' -->\n'
+CREATED_BY = 'Created by ' + APP_NAME_PROPER + ' ' + CURRENT_VERSION
 ISSUE_LEVEL_NONE = 0
 ISSUE_LEVEL_ADVICE = 1
 ISSUE_LEVEL_WARNING = 2
@@ -361,36 +362,28 @@ class GameModel( QtCore.QObject ):
         new_tree.setFilename( input_path )
         return new_tree
 
-    def _loadUnPackedXML( self, directory, file_name, template ):
-        input_path = os.path.join( directory, file_name )
-        if not os.path.isfile( input_path ):
-            return template
-        else:
-            return file( input_path, 'rb' ).read()
-
-    def _savePackedXML( self, directory, file_name, xml_data ):
-        if not os.path.isdir( directory ):
-            os.makedirs( directory )
-        path = os.path.join( directory, file_name )
-        xml_data = xml_data.replace( '><', '>\n<' )
-        wogfile.encrypt_file_data( path, xml_data )
-
-    def _saveUnPackedData( self, directory, file_name, tree ):
+    def _saveUnPackedTree( self, directory, file_name, tree ):
         if not os.path.isdir( directory ):
             os.makedirs( directory )
         output_path = os.path.join( directory, file_name )
-        xml_data = tree.to_xml()
-        xml_data = CREATED_BY + xml_data.replace( '><', '>\n<' )
-        file( output_path, 'wb' ).write( xml_data )
+        if YAML_FORMAT:
+            data = '## ' + CREATED_BY + '\n' + tree.to_yaml()
+        else:
+            data = tree.to_xml()
+            data = '<!-- ' + CREATED_BY + ' -->\n' + data.replace( '><', '>\n<' )
+        file( output_path, 'wb' ).write( data )
         tree.setFilename( output_path )
 
-    def _savePackedData( self, directory, file_name, tree ):
+    def _saveTree( self, directory, file_name, tree ):
         if not os.path.isdir( directory ):
             os.makedirs( directory )
         path = os.path.join( directory, file_name )
-        xml_data = tree.to_xml()
-        xml_data = xml_data.replace( '><', '>\n<' )
-        wogfile.encrypt_file_data( path, xml_data )
+        if YAML_FORMAT:
+            data = '## ' + CREATED_BY + '\n' + tree.to_yaml()
+        else:
+            data = tree.to_xml()
+            data = '<!-- ' + CREATED_BY + ' -->\n' + data.replace( '><', '>\n<' )
+        wogfile.encrypt_file_data( path, data )
         tree.setFilename( path )
 
     def _loadDirList( self, directory, filename_filter ):
@@ -439,9 +432,9 @@ class GameModel( QtCore.QObject ):
                                                         LevelWorld,
                                                         self )
 
-            self._loadTree( world, metawog.TREE_LEVEL_GAME,
+            self._loadUnPackedTree( world, metawog.TREE_LEVEL_GAME,
                             dir, name + '.level' )
-            self._loadTree( world, metawog.TREE_LEVEL_SCENE,
+            self._loadUnPackedTree( world, metawog.TREE_LEVEL_SCENE,
                             dir, name + '.scene' )
 
             if world.isReadOnly:
@@ -529,8 +522,8 @@ class GameModel( QtCore.QObject ):
         self._res_swap( new_scene_tree.root, '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_' )
 
         #save out new trees
-        self._savePackedData( dir, new_name + '.level.bin', new_level_tree )
-        self._savePackedData( dir, new_name + '.scene.bin', new_scene_tree )
+        self._saveUnPackedTree( dir, new_name + '.level', new_level_tree )
+        self._saveUnPackedTree( dir, new_name + '.scene', new_scene_tree )
 
         self._levels.append( unicode( new_name ) )
         self._levels.sort( key = unicode.lower )
@@ -552,7 +545,7 @@ class GameModel( QtCore.QObject ):
             os.makedirs( directory )
         output_path = os.path.join( directory, filename )
         xsl = template % params
-        output_data = CREATED_BY + xsl.replace( '><', '>\n<' )
+        output_data = '<!-- ' + CREATED_BY + ' -->\n' + xsl.replace( '><', '>\n<' )
         file( output_path, 'wb' ).write( output_data )
 
     def _isOriginalFile( self, filename, extension ):
@@ -583,7 +576,7 @@ class GameModel( QtCore.QObject ):
                     return self._seekFile( folder, path, file, ext )
             return False
 
-    def _addNewLevel( self, name, level_tree, scene_tree, resource_tree, text_tree = None ):
+    def _addNewLevel( self, name, level_tree, scene_tree ):
         """Adds a new level using the specified level, scene and resource tree.
            The level directory is created, but the level xml files will not be saved immediately.
         """
@@ -596,15 +589,10 @@ class GameModel( QtCore.QObject ):
             os.mkdir( os.path.join( dir_path, 'shaders' ) )
             os.mkdir( os.path.join( dir_path, 'sounds' ) )
 
-        # Fix the hard-coded level name in resource tree: <Resources id="scene_NewTemplate" >
-        for resource_element in resource_tree.root.findall( './/Resources' ):
-            resource_element.set( 'id', 'scene_%s' % name )
         # Creates and register the new level
         world = self.global_world.make_world( metawog.WORLD_LEVEL, name,
                                                     LevelWorld, self, is_dirty = True )
-        treestoadd = [level_tree, scene_tree, resource_tree]
-        if text_tree is not None:
-            treestoadd.append( text_tree )
+        treestoadd = [level_tree, scene_tree]
 
         world.add_tree( treestoadd )
 
@@ -670,13 +658,10 @@ class LevelWorld( ThingWorld ):
     def hasIssues ( self ):
         #Checks all 3 element trees for outstanding issues
         # Returns True if there are any.
-        self._buildDependancyTree()
         tIssue = ISSUE_LEVEL_NONE
         if self.element_issue_level( self.scene_root ):
             tIssue |= ISSUE_LEVEL_CRITICAL
         if self.element_issue_level( self.level_root ):
-            tIssue |= ISSUE_LEVEL_CRITICAL
-        if self.element_issue_level( self.text_root ):
             tIssue |= ISSUE_LEVEL_CRITICAL
         #If we have a tree Issue.. don't perform the extra checks
         #because that can cause rt errors (because of the tree issues)
@@ -1007,8 +992,7 @@ class LevelWorld( ThingWorld ):
                     # so only clean trees with no issues
                     self._cleanleveltree()
 
-                self.game_model._savePackedData( dir, name + '.level.bin',
-                                                 self.level_root.tree )
+                self.game_model._saveUnPackedTree( dir, name + '.level', self.level_root.tree )
 
             # ON Mac
             # Convert all "custom" png to .png.binltl
@@ -1022,13 +1006,11 @@ class LevelWorld( ThingWorld ):
 #                        in_path += '.png'
 #                        wogfile.png2pngbinltl( in_path, out_path )
 
-
             if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_SCENE ):
                 if not self.element_issue_level( self.scene_root ):
                     # so only clean trees with no issues
                     self._cleanscenetree()
-                self.game_model._savePackedData( dir, name + '.scene.bin',
-                                                 self.scene_root.tree )
+                self.game_model._saveUnPackedTree( dir, name + '.scene', self.scene_root.tree )
 
         self.__dirty_tracker.clean()
 
