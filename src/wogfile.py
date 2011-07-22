@@ -1,5 +1,5 @@
-import sys, zlib, struct
-import optparse
+import sys, zlib, struct #@UnresolvedImport
+import optparse #@UnresolvedImport
 import os.path
 import png
 
@@ -17,7 +17,7 @@ else:
 #ON_PLATFORM=PLATFORM_MAC
 
 if ON_PLATFORM != PLATFORM_MAC:
-    from Crypto.Cipher import AES
+    from Crypto.Cipher import AES #@UnresolvedImport
 
 def pngbinltl2png( input_path, output_path ):
     # repack .png.binltl files into png

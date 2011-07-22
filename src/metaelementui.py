@@ -72,7 +72,7 @@ class MetaWorldPropertyListModel( QtGui.QStandardItemModel ):
             # Element issues have changed, refresh all properties name face
             for item in qthelper.standardModelTreeItems( self ): # returns first columns item
                 element, property_name = self.get_item_element_and_property( item )
-                if element:
+                if element is not None:
                     attribute_meta = element.meta.attribute_by_name( property_name )
                     self._update_property_name_face( element, attribute_meta, item )
                 else:

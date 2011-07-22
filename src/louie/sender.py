@@ -1,14 +1,14 @@
 """Sender classes."""
 
 
-class _SENDER(type):
+class _SENDER( type ):
     """Base metaclass for sender classes."""
 
-    def __str__(cls):
-        return '<Sender: %s>' % (cls.__name__, )
+    def __str__( self ):
+        return '<Sender: %s>' % ( self.__name__, )
 
 
-class Any(object):
+class Any( object ):
     """Used to represent either 'any sender'.
 
     The Any class can be used with connect, disconnect, send, or
@@ -19,7 +19,7 @@ class Any(object):
     __metaclass__ = _SENDER
 
 
-class Anonymous(object):
+class Anonymous( object ):
     """Singleton used to signal 'anonymous sender'.
 
     The Anonymous class is used to signal that the sender of a message

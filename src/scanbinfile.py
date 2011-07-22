@@ -1,17 +1,18 @@
 import wogfile
 import os
 import os.path
-import glob
-import optparse
+import glob #@UnresolvedImport
+import optparse #@UnresolvedImport
+import sys
 
 def make_path_dirs( path ):
     """Creates the parent directory of the specified file path if required.
     """
-    parent_dir = os.path.split(path)[0]
+    parent_dir = os.path.split( path )[0]
     if not os.path.exists( parent_dir ):
         os.makedirs( parent_dir )
         print 'Created directory: "%s"' % parent_dir
-    return True        
+    return True
 
 def decrypt_dir_files( input_dir, output_dir ):
     """Decrypts all .bin files found in the directory and
@@ -24,7 +25,7 @@ def decrypt_dir_files( input_dir, output_dir ):
                 return False
         elif os.path.splitext( entry )[1].lower() == '.bin':
             entry_xml = os.path.splitext( entry )[0]
-            if not entry_xml.lower().endswith('.xml'):
+            if not entry_xml.lower().endswith( '.xml' ):
                 entry_xml += '.xml'
             output_path = os.path.join( output_dir, entry_xml )
             if not make_path_dirs( output_path ):
@@ -39,8 +40,8 @@ def main():
 This applications decrypt all *.bin files found in res-dir-path sub-directories,
 and output them in output-dir-path after replacing the extension with .xml.
 """ )
-    (options, args) = parser.parse_args()
-    if len(args) != 2:
+    ( options, args ) = parser.parse_args()
+    if len( args ) != 2:
         parser.error( 'You must specify the input and ouput path' )
 
     levels_dir, output_dir = args[0], args[1]

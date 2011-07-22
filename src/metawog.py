@@ -1,49 +1,25 @@
 """Describes the structure and constraints of elements used in data file of WOG."""
-from metaworld import *
-from PyQt4 import QtCore, QtGui
+from metaworld import * #@UnusedWildImport
 
 # Declares all file types
-TREE_GLOBAL_FX = describe_tree( 'game.fx' )
-TREE_GLOBAL_MATERIALS = describe_tree( 'game.materials' )
-TREE_GLOBAL_RESOURCE = describe_tree( 'game.resources' )
-TREE_GLOBAL_TEXT = describe_tree( 'game.text' )
-TREE_GLOBAL_FILES = describe_tree ( 'game.files' )
-
-TREE_ISLAND = describe_tree( 'island' )
+TREE_CAMPAIGN = describe_tree( 'campaign' )
 
 TREE_LEVEL_GAME = describe_tree( 'level.game' )
 TREE_LEVEL_SCENE = describe_tree( 'level.scene' )
-TREE_LEVEL_RESOURCE = describe_tree( 'level.resource' )
-#@DaB
-TREE_LEVEL_ADDIN = describe_tree ( 'level.addin' )
-TREE_LEVEL_TEXT = describe_tree ( 'level.text' )
-
-TREE_LEVEL_DEPENDANCY = describe_tree( 'level.dep' )
 
 # Declares the world hierarchy
 WORLD_LEVEL = describe_world( 'level', trees_meta = [
     TREE_LEVEL_GAME,
     TREE_LEVEL_SCENE,
-    TREE_LEVEL_RESOURCE,
-    TREE_LEVEL_ADDIN,
-    TREE_LEVEL_TEXT,
-    TREE_LEVEL_DEPENDANCY
     ] )
-WORLD_ISLAND = describe_world( 'island', trees_meta = [
-    TREE_ISLAND
+WORLD_CAMPAIGN = describe_world( 'campaign', trees_meta = [
+    TREE_CAMPAIGN
     ] )
 WORLD_GLOBAL = describe_world( 'game',
-                               child_worlds = [ WORLD_ISLAND, WORLD_LEVEL ],
-                               trees_meta = [
-    TREE_GLOBAL_RESOURCE,
-    TREE_GLOBAL_FX,
-    TREE_GLOBAL_MATERIALS,
-    TREE_GLOBAL_TEXT,
-    TREE_GLOBAL_FILES
-    ] )
+                               child_worlds = [ WORLD_CAMPAIGN, WORLD_LEVEL ],
+                               trees_meta = [ ] )
 
-LEVELS_ORIGINAL = set()
-
+LEVELS_ORIGINAL = set( ['level_name_1'] )
 LEVELS_ORIGINAL_LOWER = [level_name.lower() for level_name in LEVELS_ORIGINAL]
 
 MATERIALS_ORIGINAL = ["ice", "rock", "grass", "fruit",
@@ -88,76 +64,13 @@ FOLDER_ELEMENT = describe_element( 'folder', attributes = [
         string_attribute( 'name', mandatory = True )], elements = [
         FILE_ELEMENT] )
 FOLDER_ELEMENT.add_elements( [FOLDER_ELEMENT] )
-TREE_GLOBAL_FILES.add_elements ( [
-    describe_element( 'folder', exact_occurrence = 1,
-      attributes = [ string_attribute( 'name', mandatory = True )],
-      elements = [FILE_ELEMENT, FOLDER_ELEMENT] )] )
 
 LANGUAGE_ATTRIBUTES = []
 for lang in ['de', 'es', 'fr', 'it', 'nl', 'pl']:
     LANGUAGE_ATTRIBUTES.append( string_attribute( lang, allow_empty = True, remove_empty = True ) )
 
-ADDIN_LEVEL_NAME_ATTRIBUTES = [ string_attribute ( 'text', init = "Level Name", mandatory = True, display_id = True, tooltip = 'Level Name to display in the Game' )]
-ADDIN_LEVEL_NAME_ATTRIBUTES.extend( LANGUAGE_ATTRIBUTES )
-ADDIN_LEVEL_NAME_ELEMENT = describe_element ( 'name', groups = 'info', exact_occurrence = 1, attributes = ADDIN_LEVEL_NAME_ATTRIBUTES )
-
-ADDIN_LEVEL_SUBTITLE_ATTRIBUTES = [ string_attribute ( 'text', init = "subtitle", mandatory = True, display_id = True, tooltip = 'Subtitle to show on Level Start screen\nEasy as Goo pie!' )]
-ADDIN_LEVEL_SUBTITLE_ATTRIBUTES.extend( LANGUAGE_ATTRIBUTES )
-ADDIN_LEVEL_SUBTITLE_ELEMENT = describe_element ( 'subtitle', groups = 'info', exact_occurrence = 1, attributes = ADDIN_LEVEL_SUBTITLE_ATTRIBUTES )
-
-TREE_LEVEL_ADDIN.add_elements ( [
-    describe_element( 'addin', groups = 'info', exact_occurrence = 1, attributes = [
-        real_attribute( 'spec-version', init = "1.1", mandatory = True, read_only = True, tooltip = 'Version of the Addin file\nAlways 1.1 (read only)' )],
-        elements = [
-        describe_element( 'id', groups = 'info', exact_occurrence = 1, read_only = True, attributes = [
-        addinid_attribute( 'value', init = "unique.addin.id", display_id = True, mandatory = True, tooltip = 'Unique Addin Id\ncom.goofans.{yourname}.levels.{levelname}' )] ),
-        describe_element( 'name', groups = 'info', read_only = True, exact_occurrence = 1, attributes = [
-        string_attribute( 'value', init = "Addin Name", min_length = 2, display_id = True , mandatory = True, tooltip = 'Level/Addin Name shown in GooTool' )] ),
-        describe_element( 'type', groups = 'info', read_only = True, exact_occurrence = 1, attributes = [
-        string_attribute( 'value', init = "level", mandatory = True, display_id = True, read_only = True, tooltip = 'Always "level" (read-only)' )] ),
-        describe_element( 'thumbnail', groups = 'image', attributes = [
-           string_attribute( 'value', display_id = True, init = "thumbnail filename", mandatory = True ),
-           enum_attribute( 'type', values = ( 'image/jpeg', 'image/png' ), mandatory = True ),
-           int_attribute ( 'width', mandatory = True, init = '200' ),
-           int_attribute ( 'height', mandatory = True, init = '150' ) ] ),
-        describe_element( 'version', groups = 'info', read_only = True, exact_occurrence = 1, attributes = [
-           string_attribute( 'value', init = "0.1", mandatory = True, display_id = True, tooltip = 'Version Number of your level\n Valid Formats: 1  |  0.1  |  1.0.2  |  1.5.0.1' )] ),
-        describe_element( 'description', read_only = True, groups = 'info', exact_occurrence = 1, attributes = [
-            text_attribute( 'value', init = "Addin Description", display_id = True, mandatory = True, tooltip = 'Description of the level shown in GooTool' )] ),
-        describe_element( 'author', groups = 'info', read_only = True, exact_occurrence = 1, attributes = [
-            string_attribute( 'value', init = "Your Name Here", display_id = True, mandatory = True, tooltip = 'Your name here' )] ),
-        describe_element( 'dependencies', max_occurrence = 1, groups = 'info', elements = [
-            describe_element( 'depends', groups = 'info', min_occurrence = 1, attributes = [
-                string_attribute ( 'ref', init = "unique.addin.id", mandatory = True ),
-                real_attribute ( 'min-version' ),
-                real_attribute ( 'max-version' ) ] )
-        ] ),
-        describe_element( 'levels', read_only = True, exact_occurrence = 1, groups = 'info', elements = [
-            describe_element( 'level', groups = 'info', min_occurrence = 1, elements = [
-                describe_element ( 'dir', groups = 'info', exact_occurrence = 1, attributes = [
-                    string_attribute( 'value', init = "LevelFolder", mandatory = True, display_id = True, tooltip = 'Level Folder Name' )] ),
-                ADDIN_LEVEL_NAME_ELEMENT,
-                ADDIN_LEVEL_SUBTITLE_ELEMENT,
-                describe_element ( 'ocd', max_occurrence = 1, groups = 'info', attributes = [
-                    ocd_attribute( 'value', default = "", allow_empty = True, display_id = True, tooltip = 'OCD requirement. Valid Format\nmoves,23\ntime,30\nLeave blank for no OCD' )] ),
-                describe_element ( 'skipeolsequence', groups = 'info', max_occurrence = 1 ),
-                describe_element ( 'cutscene', groups = 'info', max_occurrence = 1, attributes = [
-                    string_attribute( 'value', init = "x,x,x", mandatory = True )] )
-            ] )
-        ] )
-        ]
-        )
-] )
-
 TREE_LEVEL_GAME.add_elements( [
-    describe_element( 'level', exact_occurrence = 1, groups = 'game', attributes = [
-        bool_attribute( 'letterboxed', init = False, allow_empty = True, remove_empty = True ),
-        bool_attribute( 'visualdebug', init = False, allow_empty = True, remove_empty = True ),
-        bool_attribute( 'autobounds', init = False, tooltip = 'If true, the camera is restricted to the explored area\nIf false, the camera can move anywhere', allow_empty = True, remove_empty = True ),
-        rgb_attribute( 'textcolor', init = ( 255, 255, 255 ), allow_empty = True, remove_empty = True ),
-        bool_attribute( 'allowskip', default = True, allow_empty = True, remove_empty = True ),
-        bool_attribute( 'texteffects', default = False , allow_empty = True, remove_empty = True ),
-        ],
+    describe_element( 'level', exact_occurrence = 1, groups = 'game', attributes = [],
         elements = [
         describe_element( 'camera', exact_occurrence = 2, groups = 'camera', attributes = [
             enum_attribute( 'aspect', values = ( 'widescreen', 'normal' ), default = 'normal', display_id = True ),
@@ -187,57 +100,9 @@ TREE_LEVEL_GAME.add_elements( [
         ] )
     ] )
 
-def _describe_resource_file( tree_meta, resource_world, is_global = False ):
-    if is_global:
-        resources_element = describe_element( 'Resources', min_occurrence = 1 )
-    else:
-        resources_element = describe_element( 'Resources', exact_occurrence = 1, read_only = True )
-    resources_element.add_attributes( [
-        identifier_attribute( 'id', mandatory = True, read_only = True, tooltip = "Resource Id for this level\nMust be scene_{Levelname} (read only)",
-                              reference_family = 'resources',
-                              reference_world = resource_world ),
-        ] )
-    resources_element.add_elements( [
-        describe_element( 'Image', groups = 'image', attributes = [
-            identifier_attribute( 'id', mandatory = True, reference_family = 'image',
-                display_id = True, reference_world = resource_world ),
-            path_attribute( 'path', strip_extension = '.png', mandatory = True )
-            ] ),
-        describe_element( 'Sound', groups = 'resource', attributes = [
-            identifier_attribute( 'id', mandatory = True, reference_family = 'sound',
-                display_id = True, reference_world = resource_world ),
-            path_attribute( 'path', strip_extension = '.ogg', mandatory = True )
-            ] ),
-        describe_element( 'SetDefaults', read_only = True, groups = 'resource',
-                          attributes = [
-            string_attribute( 'path', mandatory = True, read_only = True ),
-            string_attribute( 'idprefix', mandatory = True, allow_empty = True, read_only = True )
-            ] )
-        ] )
-    if is_global:
-        resources_element.add_elements( [
-            describe_element( 'font', groups = 'resource', attributes = [
-                identifier_attribute( 'id', mandatory = True, reference_family = 'font',
-                    display_id = True, reference_world = resource_world ),
-                path_attribute( 'path', strip_extension = '.png', mandatory = True ) # @todo also check existence of .txt
-                ] )
-        ] )
 
-    tree_meta.add_elements( [
-        # DUPLICATED FROM GLOBAL SCOPE => makes FACTORY function ?
-        describe_element( 'ResourceManifest', exact_occurrence = 1, groups = 'resource',
-                          attributes = [], elements = [
-            resources_element
-            ] )
-        ] )
-
-_describe_resource_file( TREE_LEVEL_RESOURCE, WORLD_LEVEL )
-
-
-# Values for Tag attribute
-#v0.70 - kindasticky tag removed - came from a mistake by 2dBoy in Second Hand Smoke
-_TAG_VALUES = ( 'break=1', 'break=2', 'deadly', 'detaching', 'geomkiller',
-      'mostlydeadly', 'stopsign', 'unwalkable', 'walkable' )
+# Values for Tag attribute (Physic items)
+_TAG_VALUES = ( 'walkable' )
 
 ELEMENT_BUTTON = describe_element( 'button', groups = 'image', attributes = [
         string_attribute( 'id', display_id = True, mandatory = True ),
@@ -460,86 +325,14 @@ TREE_LEVEL_SCENE.add_elements( [
             real_attribute( 'stopcfm' , allow_empty = True, remove_empty = True ),
             real_attribute( 'stoperp' , allow_empty = True, remove_empty = True )
             ] ),
-
         describe_element( 'motor', groups = 'physic', attributes = [
             reference_attribute( 'body', reference_family = 'geometry', reference_world = WORLD_LEVEL, mandatory = True ),
             real_attribute( 'maxforce', mandatory = True, init = '20' ),
             real_attribute( 'speed', mandatory = True, init = '-0.01' )
             ] ),
-        describe_element( 'particles', groups = 'particles', attributes = [
-            reference_attribute( 'effect', mandatory = True, display_id = True,
-                reference_family = 'effect', reference_world = WORLD_GLOBAL ),
-            xy_attribute( 'pos' , position = True ),
-            real_attribute( 'depth', mandatory = True, init = '-20' ),
-            real_attribute( 'pretick', default = '0' )
-            ] )
         ] )
     ] )
 
-LEVEL_TREE_TEXT = describe_element( 'strings', groups = 'text', exact_occurrence = 1, attributes = [],
-        elements = [
-        describe_element( 'string', groups = 'text', attributes = [
-            identifier_attribute( 'id', mandatory = True, display_id = True,
-                reference_family = 'TEXT_LEVELNAME_STR', reference_world = WORLD_LEVEL ),
-            text_attribute( 'text', mandatory = True, tooltip = "Use | symbol (pipe) to get new pages on signs, and new lines in labels" ),
-            text_attribute( 'de' , allow_empty = True, remove_empty = True ),
-            text_attribute( 'es' , allow_empty = True, remove_empty = True ),
-            text_attribute( 'fr' , allow_empty = True, remove_empty = True ),
-            text_attribute( 'it' , allow_empty = True, remove_empty = True ),
-            text_attribute( 'nl' , allow_empty = True, remove_empty = True ),
-            text_attribute( 'pt' , allow_empty = True, remove_empty = True )
-            ] )
-        ] )
-
-GLOBAL_TREE_TEXT = describe_element( 'strings', exact_occurrence = 1, attributes = [], elements = [
-        describe_element( 'string', min_occurrence = 1 , attributes = [
-            identifier_attribute( 'id', mandatory = True, display_id = True,
-                reference_family = 'text', reference_world = WORLD_GLOBAL ),
-            string_attribute( 'text', mandatory = True ),
-            string_attribute( 'de' ),
-            string_attribute( 'es' ),
-            string_attribute( 'fr' ),
-            string_attribute( 'it' ),
-            string_attribute( 'nl' ),
-            string_attribute( 'pt' )
-            ] )
-        ] )
-
-TREE_GLOBAL_TEXT.add_elements( [GLOBAL_TREE_TEXT] )
-TREE_LEVEL_TEXT.add_elements( [LEVEL_TREE_TEXT] )
-
-DEP_IMAGE = describe_element( 'image', groups = 'image', read_only = True, attributes = [
-      string_attribute( 'id', read_only = True ),
-      identifier_attribute( 'path', read_only = True, display_id = True, reference_family = "imagedep", reference_world = WORLD_LEVEL )
-      , bool_attribute( 'found', read_only = True, mandatory = True, default = False )
-] )
-DEP_SOUND = describe_element( 'sound', groups = 'resource', read_only = True, attributes = [
-      string_attribute( 'id', read_only = True ),
-      identifier_attribute( 'path', read_only = True, display_id = True, reference_family = "sounddep", reference_world = WORLD_LEVEL )
-      , bool_attribute( 'found', read_only = True, mandatory = True, default = False )
-] )
-
-DEP_PARTICLES = describe_element( 'effect', read_only = True, groups = 'particles', attributes = [
-      identifier_attribute( 'name', read_only = True, display_id = True, reference_family = "effectdep", reference_world = WORLD_LEVEL )
-     , bool_attribute( 'found', read_only = True, mandatory = True, default = False )
-],
-      elements = [DEP_IMAGE] )
-
-DEP_MATERIAL = describe_element( 'material', groups = 'material', read_only = True, attributes = [
-    identifier_attribute( 'id', read_only = True, display_id = True, reference_family = "materialdep", reference_world = WORLD_LEVEL )
-    , bool_attribute( 'found', read_only = True, mandatory = True, default = False )
-] )
-
-DEP_ANIM = describe_element( 'anim', groups = 'anim', read_only = True, attributes = [
-    enum_attribute( 'id', ANIMATIONS_GLOBAL, read_only = True, display_id = True ),
-    bool_attribute( 'found', read_only = True, mandatory = True, default = False )
-] )
-
-TREE_LEVEL_DEPENDANCY.add_elements( [describe_element( 'dependancy', groups = "goomod",
-            read_only = True, exact_occurrence = 1, attributes = [],
-            elements = [DEP_IMAGE, DEP_SOUND, DEP_PARTICLES, DEP_MATERIAL, DEP_ANIM] )] )
-
-_describe_resource_file( TREE_GLOBAL_RESOURCE, WORLD_GLOBAL, is_global = True )
 
 ELEMENT_PARTICLE = describe_element( 'particle', groups = 'image',
                                      min_occurrence = 1, attributes = [
@@ -568,64 +361,21 @@ ELEMENT_PARTICLE = describe_element( 'particle', groups = 'image',
         ] )
     ] )
 
-TREE_GLOBAL_FX.add_elements( [
-    describe_element( 'effects', groups = 'image',
-                      exact_occurrence = 1, attributes = [], elements = [
-        describe_element( 'ambientparticleeffect', attributes = [
-            identifier_attribute( 'name', display_id = True, mandatory = True,
-                reference_family = 'effect', reference_world = WORLD_GLOBAL ),
-            int_attribute( 'maxparticles', min_value = 1, mandatory = True, init = '1' ),
-            int_attribute( 'margin' ) # ???
-            ],
-            elements = [
-                ELEMENT_PARTICLE
-            ] ),
-        describe_element( 'particleeffect', groups = 'image',
-                          attributes = [
-            identifier_attribute( 'name', display_id = True, mandatory = True,
-                reference_family = 'effect', reference_world = WORLD_GLOBAL ),
-            int_attribute( 'maxparticles', min_value = 1, mandatory = True, init = '1' ),
-            real_attribute( 'rate', min_value = 0.00001 ),
-            int_attribute( 'margin' ) # ???
-            ],
-            elements = [
-                ELEMENT_PARTICLE
-            ] )
-        ] )
-    ] )
-
-
-
-TREE_GLOBAL_MATERIALS.add_elements( [
-    describe_element( 'materials', groups = 'physic',
-                      exact_occurrence = 1, attributes = [], elements = [
-        describe_element( 'material', attributes = [
-            identifier_attribute( 'id', display_id = True, mandatory = True,
-                reference_family = 'material', reference_world = WORLD_GLOBAL ),
-            real_attribute( 'bounce', min_value = 0, mandatory = True, init = '0' ),
-            real_attribute( 'friction', min_value = 0, mandatory = True, init = '0' ),
-            real_attribute( 'minbouncevel', min_value = 0, mandatory = True, init = '100' ),
-            real_attribute( 'stickiness', min_value = 0 )
-            ] )
-        ] )
-    ] )
-
-
-TREE_ISLAND.add_elements( [
-        describe_element( 'island', exact_occurrence = 1, attributes = [
+TREE_CAMPAIGN.add_elements( [
+        describe_element( 'campaign', exact_occurrence = 1, attributes = [
             reference_attribute( 'icon', reference_family = 'image', reference_world = WORLD_GLOBAL, mandatory = True ),
-            string_attribute( 'map', mandatory = True, init = 'island5' ),
+            string_attribute( 'map', mandatory = True, init = 'campaign1' ),
             string_attribute( 'name', display_id = True, mandatory = True,
-                init = 'Cog in the Machine' ), # Samples: Cog in the Machine | The Goo Filled Hills | Information Superhighay | Little Miss World of Goo | End of the World
+                init = 'Tutorial' )
         ], elements = [
             describe_element( 'level', min_occurrence = 1, attributes = [
                 identifier_attribute( 'id', display_id = True, mandatory = True,
-                    reference_family = 'level', reference_world = WORLD_ISLAND ),
-                reference_attribute( 'name', reference_family = 'text', reference_world = WORLD_ISLAND, init = '', mandatory = True ),
-                reference_attribute( 'text', reference_family = 'text', reference_world = WORLD_ISLAND, init = '', mandatory = True ),
-                reference_attribute( 'depends', reference_family = 'level', reference_world = WORLD_ISLAND ),
-                string_attribute( 'cutscene' ), # Samples: levelFadeOut,Chapter5End,gooTransition_out | x,whistleUnlock,gooTransition_out | levelFadeOut,Chapter4End,gooTransition_out | x,Chapter2Mid,gooTransition_out | levelFadeOut,Chapter1End,gooTransition_out
-                string_attribute( 'oncomplete' ), # Samples: expandchapter4 | unlockwogcorp | unlockwhistle
+                    reference_family = 'level', reference_world = WORLD_CAMPAIGN ),
+                reference_attribute( 'name', reference_family = 'text', reference_world = WORLD_CAMPAIGN, init = '', mandatory = True ),
+                reference_attribute( 'text', reference_family = 'text', reference_world = WORLD_CAMPAIGN, init = '', mandatory = True ),
+                reference_attribute( 'depends', reference_family = 'level', reference_world = WORLD_CAMPAIGN ),
+                string_attribute( 'cutscene' ),
+                string_attribute( 'oncomplete' ),
                 bool_attribute( 'skipeolsequence', init = 'true' )
             ] )
         ] )
@@ -633,7 +383,7 @@ TREE_ISLAND.add_elements( [
 
 
 LEVEL_GAME_TEMPLATE = """\
-<level letterboxed="false" visualdebug="false" autobounds="false" textcolor="255,255,255" allowskip="true" >
+<level>
 
 	<!-- Camera -->
 	<camera aspect="normal" endpos="0,0" endzoom="1">
@@ -654,44 +404,10 @@ LEVEL_SCENE_TEMPLATE = """\
 <scene minx="-500" miny="0" maxx="500" maxy="1000" backgroundcolor="0,0,0" >
 	<linearforcefield type="gravity" force="0,-10" dampeningfactor="0" antigrav="true"  />
 
-	<line id="right" tag="detaching" anchor="500,300" normal="-1,0" />
-	<line id="left" tag="detaching" anchor="-500,300" normal="1,0" />
+	<line id="right" tag="" anchor="500,300" normal="-1,0" />
+	<line id="left" tag="" anchor="-500,300" normal="1,0" />
 	<line id="ground" anchor="0,20" normal="0,1" />
 </scene>"""
-
-LEVEL_RESOURCE_TEMPLATE = """\
-<ResourceManifest>
-	<Resources id="scene_NewTemplate" >
-		<SetDefaults path="./" idprefix="" />
-	</Resources>
-</ResourceManifest>
-"""
-LEVEL_ADDIN_TEMPLATE = """\
-<addin spec-version="1.1">
-  <id></id>
-  <name>LevelName</name>
-  <type>level</type>
-  <version>0.1</version>
-  <description></description>
-  <author></author>
-  <levels>
-    <level>
-      <dir>LevelName</dir>
-      <name text="LevelName"/>
-      <subtitle text=""/>
-      <ocd></ocd>
-    </level>
-  </levels>
-</addin>
-"""
-
-LEVEL_TEXT_TEMPLATE = """\
-<strings spec-version="1.1"/>
-"""
-
-LEVEL_DEPENDANCY_TEMPLATE = """\
-<dependancy/>
-"""
 
 XSL_ADD_TEMPLATE = """\
 <xsl:transform version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
@@ -713,23 +429,5 @@ XSL_ADD_TEMPLATE = """\
   </xsl:template>
 </xsl:transform>"""
 
-#@DaB - New Resource Tree - Only has Fonts in
-# to eliminate all the useless images and sounds appearing in the completer boxes.
-GLOBAL_FONT_RESOURCES = """\
-<ResourceManifest>
-<Resources id="init">
-<font  id="FONT_OUTLINE_18" path="res/fonts/TwCenMTCondensedExtraBold18"/>
-<font  id="FONT_LOADING"                 path="res/fonts/TwCenMTCondensedExtraBold18"/>
-<font  id="FONT_OUTLINE_26"              path="res/fonts/TwCenMTCondensedExtraBold26"/>
-<font  id="FONT_BIGWHITE_52"             path="res/fonts/TwCenMTCondensedExtraBold52"/>
-<font  id="FONT_INGAME36"                path="res/fonts/wogSmall"/>
-<font  id="FONT_TITLE"                   path="res/fonts/wogBig"/>
-<font  id="FONT_STAT"                    path="res/fonts/wog150numbers"/>
-<font  id="FONT_CONSOLE"                    path="res/fonts/console"/>
-</Resources>
-</ResourceManifest>
-"""
-
 if __name__ == "__main__":
     print_world_meta( WORLD_GLOBAL )
-

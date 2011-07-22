@@ -846,8 +846,19 @@ class MoveAndScaleToolDelegate( ToolDelegate ):
     def _on_mouse_move( self, item_pos, modifiers ):
         if self.activation_pos is None:
             return None
+
+        # Computes new item bounds
+        bound_rect = self.get_item_bound()
+        if not bound_rect.isValid(): # has 0 width or height ?
+            return None
+
+        xminmax = [bound_rect.x(), bound_rect.right()]
+        yminmax = [bound_rect.y(), bound_rect.bottom()]
+
+        old_width, old_height = xminmax[1] - xminmax[0], yminmax[1] - yminmax[0]
+
         if self.activation_value is None:
-            return [( 0, 0 ), ( scale_x, scale_y )]
+            return [( 0, 0 ), ( old_width / bound_rect.width(), old_height / bound_rect.height() )]
 
         activation_pos, activation_scale = self.activation_value
         if activation_scale is None:
@@ -865,16 +876,8 @@ class MoveAndScaleToolDelegate( ToolDelegate ):
         self.restore_activation_state()
         item_pos = self.item.mapFromParent( parent_item_pos )
 
-        # Computes new item bounds
-        bound_rect = self.get_item_bound()
-        if not bound_rect.isValid(): # has 0 width or height ?
-            return None
-        xminmax = [bound_rect.x(), bound_rect.right()]
-        yminmax = [bound_rect.y(), bound_rect.bottom()]
-
         oldcenter = self.item.mapToParent( QtCore.QPointF( ( bound_rect.left() + bound_rect.right() )*0.5, ( bound_rect.top() + bound_rect.bottom() )*0.5 ) )
         # x/y minmax impacted indexes by position
-        old_width, old_height = xminmax[1] - xminmax[0], yminmax[1] - yminmax[0]
 
         impacts_by_position = { # tuple(xindex,yindex)
             POS_TOP_LEFT: ( 0, 0, 2, 2 ),
@@ -901,18 +904,18 @@ class MoveAndScaleToolDelegate( ToolDelegate ):
         scale_y = new_height / bound_rect.height()
         if ( modifiers & Qt.AltModifier ) == Qt.AltModifier:
             if scale_x < scale_y:
-               # use scale_x
-               scale_y = scale_x
-               if impact[1] == 0: #moving top
+                # use scale_x
+                scale_y = scale_x
+                if impact[1] == 0: #moving top
                     yminmax[0] = yminmax[1] - old_height * scale_y
-               else: # moving bottom
+                else: # moving bottom
                     yminmax[1] = yminmax[0] + old_height * scale_y
             else:
-               # use scale_y
-               scale_x = scale_y
-               if impact[0] == 0: #moving top
+                # use scale_y
+                scale_x = scale_y
+                if impact[0] == 0: #moving top
                     xminmax[0] = xminmax[1] - old_width * scale_x
-               else: # moving bottom
+                else: # moving bottom
                     xminmax[1] = xminmax[0] + old_width * scale_x
 
         elif ( modifiers & Qt.ControlModifier ) == Qt.ControlModifier:
@@ -920,18 +923,18 @@ class MoveAndScaleToolDelegate( ToolDelegate ):
             real_scaley = activation_scale[1] * scale_y
 
             if real_scalex < real_scaley:
-               # use scale_x
-               scale_y = real_scalex / activation_scale[1]
-               if impact[1] == 0: #moving top
+                # use scale_x
+                scale_y = real_scalex / activation_scale[1]
+                if impact[1] == 0: #moving top
                     yminmax[0] = yminmax[1] - old_height * scale_y
-               else: # moving bottom
+                else: # moving bottom
                     yminmax[1] = yminmax[0] + old_height * scale_y
             else:
-               # use scale_y
-               scale_x = real_scaley / activation_scale[0]
-               if impact[0] == 0: #moving top
+                # use scale_y
+                scale_x = real_scaley / activation_scale[0]
+                if impact[0] == 0: #moving top
                     xminmax[0] = xminmax[1] - old_width * scale_x
-               else: # moving bottom
+                else: # moving bottom
                     xminmax[1] = xminmax[0] + old_width * scale_x
 
         newcenter = self.item.mapToParent( QtCore.QPointF( ( xminmax[0] + xminmax[1] ) * 0.5, ( yminmax[0] + yminmax[1] ) * 0.5 ) )

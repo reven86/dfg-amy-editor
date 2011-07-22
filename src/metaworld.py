@@ -298,16 +298,6 @@ class NumericAttributeMeta( AttributeMeta ):
                 return self.value_type_error, ()
         return status
 
-class addinidAttributeMeta( AttributeMeta ):
-    def  is_valid_value( self, text, world ): #IGNORE:W0613
-        status = AttributeMeta.is_valid_value( self, text, world )
-        if status is None and text:
-           rx = QtCore.QRegExp( "^([a-zA-Z0-9]([a-zA-Z0-9]+)?\.)+[a-zA-Z0-9]+$" )
-           if not rx.exactMatch( text ):
-                message = 'Addin Id is not valid. It can only contain letters,numbers and . (dots) No Spaces or other symbols!  It should be something like  com.goofans.YourName.LevelName'
-                return message, {}
-        return status
-
 class OCDAttributeMeta( AttributeMeta ):
     def  is_valid_value( self, text, world ): #IGNORE:W0613
         status = AttributeMeta.is_valid_value( self, text, world )
@@ -572,10 +562,6 @@ def text_attribute( name, **kwargs ):
 
 def ocd_attribute( name, **kwargs ):
     return OCDAttributeMeta( name, STRING_TYPE, **kwargs )
-
-def addinid_attribute( name, **kwargs ):
-    return addinidAttributeMeta( name, STRING_TYPE, **kwargs )
-
 
 def angle_degrees_attribute( name, min_value = None, max_value = None, **kwargs ):
     return NumericAttributeMeta( name, ANGLE_DEGREES_TYPE, float,
@@ -1267,7 +1253,7 @@ class Universe( WorldsOwner ):
         """
         try:
             xml_element = xml.etree.ElementTree.fromstring( xml_data )
-        except xml.parsers.expat.ExpatError, e:
+        except xml.parsers.expat.ExpatError, e: #@UndefinedVariable
             raise IOError( u'XML Parse Error:' + unicode( e ) )
 
         if tree_meta.root_element_meta.tag != xml_element.tag:
@@ -1790,7 +1776,7 @@ class Element( _ElementBase ):
     def _make_element_from_xml( self, xml_data ):
         try:
             metaworld_element = xml.etree.ElementTree.fromstring( xml_data )
-        except xml.parsers.expat.ExpatError:
+        except xml.parsers.expat.ExpatError: #@UndefinedVariable
             return None
         if metaworld_element is None:
             return None

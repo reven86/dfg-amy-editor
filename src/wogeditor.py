@@ -107,10 +107,6 @@ class AddItemFactory( object ):
                     root = model.level_root
                 elif self.parent == 'scene':
                     root = model.scene_root
-                elif self.parent == 'resource':
-                    root = model.resource_root
-                elif self.parent == 'addin':
-                    root = model.addin_root
                 elif self.parent == 'text':
                     root = model.text_root
                 elif self.parent == 'compositegeom':
@@ -252,8 +248,8 @@ class PixmapCache( object ):
 
 class GameModel( QtCore.QObject ):
     def __init__( self, amy_path, window ):
-        """Loads FX, material, text and global resources.
-           Loads Levels
+        """Loads text and global resources.
+           Loads Levels.
 
            The following signals are provided:
            QtCore.SIGNAL('selectedObjectChanged(PyQt_PyObject,PyQt_PyObject,PyQt_PyObject)')
@@ -264,14 +260,14 @@ class GameModel( QtCore.QObject ):
 
         if ON_PLATFORM == PLATFORM_MAC:
             # on Mac
-            # amydir is Contents\esources\game\
+            # amydir is Contents\resources\game\
             self._amy_dir = os.path.join( self._amy_path, u'Contents', u'Resources', u'game' )
         else:
             self._amy_dir = os.path.split( amy_path )[0]
 
         metaworld.AMY_PATH = self._amy_dir
         self._properties_dir = os.path.join( self._amy_dir, u'properties' )
-        self._res_dir = os.path.join( self._amy_dir, u'res' )
+        self._res_dir = os.path.join( self._amy_dir, u'Data' )
 
         # On MAC
         # enumerate all files in res folder
@@ -312,32 +308,13 @@ class GameModel( QtCore.QObject ):
         self.global_world = self._universe.make_world( metawog.WORLD_GLOBAL, 'game' )
         window.statusBar().showMessage( self.tr( "Game Model : Loading Properties XMLs" ) )
 
-        self._loadTree( self.global_world, metawog.TREE_GLOBAL_FX,
-                                             self._properties_dir, 'fx.xml.bin' )
-
-        self._loadTree( self.global_world, metawog.TREE_GLOBAL_MATERIALS,
-                                               self._properties_dir, 'materials.xml.bin' )
-
-        self._loadUnPackedTree( self.global_world, metawog.TREE_GLOBAL_FILES,
-                                               app_path(), 'files.xml.xml' , '' )
-
-        self._loadTree( self.global_world, metawog.TREE_GLOBAL_RESOURCE,
-                                               self._properties_dir, 'resources.xml.bin' )
-
-        self._readonly_resources = set()    # resources in resources.xml that have expanded defaults idprefix & path
-        self._loadTree( self.global_world, metawog.TREE_GLOBAL_TEXT,
-                                           self._properties_dir, 'text.xml.bin' )
+        self._readonly_resources = set()
 
         self._levels = self._loadDirList( os.path.join( self._res_dir, 'levels' ),
-                                          filename_filter = '%s.scene.bin' )
-
-        anims = self._loadFileList( os.path.join( self._res_dir, 'anim' ),
-                                          filename_filter = '.anim.binltl' )
-        metawog.ANIMATIONS_GLOBAL.extend( anim[:len( anim ) - 12] for anim in anims )
+                                          filename_filter = '%s.scene' )
 
         self.models_by_name = {}
         self.__is_dirty = False
-        self._initializeGlobalReferences()
 
         self.modified_worlds_to_check = set()
         louie.connect( self._onElementAdded, metaworld.ElementAdded )
@@ -345,26 +322,6 @@ class GameModel( QtCore.QObject ):
         louie.connect( self._onElementUpdated, metaworld.AttributeUpdated )
         self.pixmap_cache = PixmapCache( self._amy_dir, self._universe )
         window.statusBar().showMessage( self.tr( "Game Model : Complete" ) )
-
-    @property
-    def _effects_tree( self ):
-        return self.global_world.find_tree( metawog.TREE_GLOBAL_FX )
-
-    @property
-    def _materials_tree( self ):
-        return self.global_world.find_tree( metawog.TREE_GLOBAL_MATERIALS )
-
-    @property
-    def _resources_tree( self ):
-        return self.global_world.find_tree( metawog.TREE_GLOBAL_RESOURCE )
-
-    @property
-    def _files_tree( self ):
-        return self.global_world.find_tree( metawog.TREE_GLOBAL_FILES )
-
-    @property
-    def _texts_tree( self ):
-        return self.global_world.find_tree( metawog.TREE_GLOBAL_TEXT )
 
     @property
     def is_dirty( self ):
@@ -469,52 +426,6 @@ class GameModel( QtCore.QObject ):
         files.sort( key = unicode.lower )
         return files
 
-    def _processSetDefaults( self, resource_tree ):
-        #Unwraps the SetDefaults "processing instruction"
-        #updates all paths and ids to full
-        resource_element = resource_tree.root.find( 'Resources' )
-        idprefix = ''
-        pathprefix = ''
-        for element in resource_element:
-            if element.tag == 'SetDefaults':
-                idprefix = element.get( 'idprefix', '' )
-                pathprefix = element.get( 'path' ).strip().replace( "\\", "/" )
-                if not pathprefix.endswith( '/' ):
-                    pathprefix += '/'
-                pathprefix = pathprefix.replace( "./", "" )
-
-                element.set( 'idprefix', "" )
-                element.set( 'path', "./" )
-            else:
-                element.set( 'path', pathprefix + element.get( 'path' ).replace( '\\', '/' ) )
-                element.set( 'id', idprefix + element.get( 'id' ) )
-
-    def _initializeGlobalReferences( self ):
-        """Initialize global effects, materials, resources and texts references."""
-        self._expandResourceDefaultsIdPrefixAndPath()
-
-    def _expandResourceDefaultsIdPrefixAndPath( self ):
-        """Expands the default idprefix and path that are used as short-cut in the XML file."""
-        # Notes: there is an invalid global resource:
-        # IMAGE_GLOBAL_ISLAND_6_ICON res/images/islandicon_6
-        resource_manifest = self._resources_tree.root
-        default_idprefix = ''
-        default_path = ''
-        for resources in resource_manifest:
-            for element in resources:
-                if element.tag == 'SetDefaults':
-                    default_path = element.get( 'path', '' ).strip()
-                    if not default_path.endswith( '/' ):
-                        default_path += '/'
-                    default_path = default_path.replace( "./", "" )
-                    default_idprefix = element.get( 'idprefix', '' )
-                elif element.tag in ( 'Image', 'Sound', 'font' ):
-                    new_id = default_idprefix + element.get( 'id' )
-                    new_path = default_path + element.get( 'path' )
-                    element.set( 'id', new_id )
-                    element.set( 'path', new_path )
-                self._readonly_resources.add( element )
-
     @property
     def names( self ):
         return self._levels
@@ -527,45 +438,11 @@ class GameModel( QtCore.QObject ):
                                                         name,
                                                         LevelWorld,
                                                         self )
-            #@DaB Prepare addin template
-            addin_template = metawog.LEVEL_ADDIN_TEMPLATE.replace( "LevelName", name )
-            self._loadUnPackedTree ( world, metawog.TREE_LEVEL_ADDIN,
-                            dir, name + '.addin.xml', addin_template )
-
-            self._loadUnPackedTree ( world, metawog.TREE_LEVEL_TEXT,
-                            dir, name + '.text.xml', metawog.LEVEL_TEXT_TEMPLATE )
 
             self._loadTree( world, metawog.TREE_LEVEL_GAME,
-                            dir, name + '.level.bin' )
+                            dir, name + '.level' )
             self._loadTree( world, metawog.TREE_LEVEL_SCENE,
-                            dir, name + '.scene.bin' )
-            self._loadTree( world, metawog.TREE_LEVEL_RESOURCE,
-                            dir, name + '.resrc.bin' )
-
-            self._processSetDefaults( world.find_tree( metawog.TREE_LEVEL_RESOURCE ) )
-
-            #Find any Global Strings and Localize them
-            root = world.text_root
-            rootmbt = root.meta.find_immediate_child_by_tag( 'string' )
-            elements_with_text = []
-            for element_with_text in world.scene_root.findall( './/label' ):
-                elements_with_text.append( element_with_text )
-
-            for element_with_text in elements_with_text:
-                tid = element_with_text.get( 'text' )
-                if tid is not None:
-                    if not world.is_valid_reference( metawog.WORLD_LEVEL, 'TEXT_LEVELNAME_STR', tid ):
-                        if  world.is_valid_reference( metawog.WORLD_GLOBAL, 'text', tid ):
-                            global_text_element = world.resolve_reference( metawog.WORLD_GLOBAL, 'text' , tid )
-                            local_attrib = global_text_element.attrib.copy()
-                            new_text = _appendChildTag( root, rootmbt, local_attrib, keepid = True )
-                            #print tid,"is Global Text ... Localized as ",new_text.get('id')
-                            element_with_text.set( 'text', new_text.get( 'id' ) )
-                        else:
-                            print "Text resource ", tid, "not found locally or Globally."
-
-            world._buildDependancyTree()
-            #world.make_tree_from_xml( metawog.TREE_LEVEL_DEPENDANCY, metawog.LEVEL_DEPENDANCY_TEMPLATE )
+                            dir, name + '.scene' )
 
             if world.isReadOnly:
                 world.clean_dirty_tracker()
@@ -600,167 +477,18 @@ class GameModel( QtCore.QObject ):
         return False
 
     def playLevel( self, level_model ):
-        """Starts WOG to test the specified level."""
-        # Check for level_text
-        # Update GLOBAL_TEXT_TREE  (self._texts_tree)
-        local_text_ids = ['WOOGLE_TEST_NAME', 'WOOGLE_TEST_TEXT']
-        for text_element in level_model.text_root.findall( 'string' ):
-            local_text_ids.append( text_element.get( 'id' ) )
-
-        for text_element in self._texts_tree.root.findall( 'string' ):
-            if text_element.get( 'id' ) in local_text_ids:
-                text_element.parent.remove( text_element )
-#                    print "removing",text_element.get('id'),text_element,"from",text_element.parent
-
-        # Because GLOBAL_TEXT and LOCAL_TEXT are different meta+types
-        # we cannot just clone the local element and appned it to the global tree
-        # we need to add a new child to the global_tree with the attributes of the local element
-        root = self._texts_tree.root
-        rootmbt = root.meta.find_immediate_child_by_tag( 'string' )
-        for text_element in level_model.text_root.findall( 'string' ):
-            #print "appending",text_element.get('id'),text_element
-            local_attrib = text_element.attrib.copy()
-            _appendChildTag( root, rootmbt, local_attrib, keepid = True )
-
-        #if ON_PLATFORM==PLATFORM_MAC:
-        #ADD WOOGLE_TEST_ENTRIES
-        if ON_PLATFORM == PLATFORM_MAC:
-            local_attrib = {'id':'WOOGLE_TEST_NAME', 'text':"WooGLE : Save n Play|" + level_model.name}
-            _appendChildTag( root, rootmbt, local_attrib, keepid = True )
-            local_attrib = {'id':'WOOGLE_TEST_TEXT', 'text':'(testing 1 2 3)'}
-            _appendChildTag( root, rootmbt, local_attrib, keepid = True )
-        # Save it
-        self._savePackedData( self._properties_dir, 'text.xml.bin', self._texts_tree )
-
+        """Starts Amy to test the specified level."""
         #On Mac
         if ON_PLATFORM == PLATFORM_MAC:
-            # Also Add this level as Chapter 1 Button
             #print "ON MAC - Save and Play"
-            if self.addLevelButton( level_model.name ):
-                #Then run the program file itself with no command-line parameters
-                #print "launch ",os.path.join(self._amy_path,u'Contents',u'MacOS',u'Amy In Da Farm')
-                pid = subprocess.Popen( os.path.join( self._amy_path, u'Contents', u'MacOS', u'Amy In Da Farm' ), cwd = self._amy_dir ).pid
+            #Then run the program file itself with no command-line parameters
+            #print "launch ",os.path.join(self._amy_path,u'Contents',u'MacOS',u'Amy In Da Farm')
+            pid = subprocess.Popen( os.path.join( self._amy_path, u'Contents', u'MacOS', u'Amy In Da Farm' ), cwd = self._amy_dir ).pid
         else:
-            #self.addLevelButton(level_model.name)
             #pid = subprocess.Popen( self._amy_path, cwd = self._amy_dir ).pid
             pid = subprocess.Popen( [self._amy_path, level_model.name], cwd = self._amy_dir ).pid
             # Don't wait for process end...
             # @Todo ? Monitor process so that only one can be launched ???
-
-
-    def addLevelButton( self, level_name ):
-        #print "addLevelButton"
-            # To prevent "problems" we need to remove
-            # a) Old / Last WOOGLE Test level entries
-            # and
-            # b) Entries for the Level to be tested, if it's been added by GooTool already.
-            # then add our new entries
-        button_x, button_y = -660, 680
-        label_x, label_y = button_x + 30, button_y
-        scenelayer_x, scenelayer_y = button_x, button_y + 20
-        #load res/islands/island1.xml.bin
-        path = os.path.join( self._res_dir, u'islands', u'island1.xml.bin' )
-        if not os.path.isfile( path ):
-            print "File not found:", path
-            return False
-        else:
-        #    print "Doing",path
-            xml_data = wogfile.decrypt_file_data( path )
-            tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_ISLAND, xml_data )
-            root = tree.root
-            rootmbt = root.meta.find_immediate_child_by_tag( 'level' )
-            # seek WooGLE_Test element
-
-            for level in root.findall( 'level' ):
-                if level.get( 'name' ) == APP_NAME_UPPER + '_TEST_NAME':
-                    # remove if found
-                    level.parent.remove( level )
-                #elif level.get('id')==level_name:
-                #    level.parent.remove(level)
-
-            #add new WooGLE_Test element
-            attrib = {'id':level_name, 'name':APP_NAME_UPPER + "_TEST_NAME", 'text':APP_NAME_UPPER + "_TEST_TEXT"}
-            _appendChildTag( root, rootmbt, attrib, keepid = True )
-
-            #save file
-            xml_data = tree.to_xml()
-            xml_data = xml_data.replace( '><', '>\n<' )
-            wogfile.encrypt_file_data( path, xml_data )
-            #   print "Done",path
-
-        #load res/levels/island1/island1.scene.bin
-        path = os.path.join( self._res_dir, u'levels', u'island1', u'island1.scene.bin' )
-        if not os.path.isfile( path ):
-            print "File not found:", path
-            return False
-        else:
-            #  print "Doing",path
-            xml_data = wogfile.decrypt_file_data( path )
-            tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_SCENE, xml_data )
-            root = tree.root
-            # seek WooGLE_Test Label element
-            #  print "seeking label"
-            for label in root.findall( 'label' ):
-                x, y = label.get_native( 'position' )
-                if abs( x - label_x ) < 1:
-                    if abs( y - label_y ) < 1:
-                        #print "Removing old label",label.get('id')
-                        label.parent.remove( label )
-
-
-            attrib = {'id':'txt_' + level_name, 'text':APP_NAME_UPPER + "_TEST_NAME",
-            'depth':"0.1", 'position':`label_x` + "," + `label_y`,
-            'align':"left", 'rotation':"6.337", 'scale':"0.7",
-            'overlay':"false", 'screenspace':"false", 'font':"FONT_INGAME36"}
-            rootmbt = root.meta.find_immediate_child_by_tag( 'label' )
-            _appendChildTag( root, rootmbt, attrib, keepid = True )
-
-            # print "seek scenelayer"
-            for scenelayer in root.findall( 'SceneLayer' ):
-                x, y = scenelayer.get_native( 'center' )
-                if abs( x - scenelayer_x ) < 1:
-                    if abs( y - scenelayer_y ) < 1:
-                        #         print "removing old scenelayer",scenelayer.get('id')
-                        scenelayer.parent.remove( scenelayer )
-
-            # print "create scenelayer",'ocd_'+level_name
-            attrib = { 'id':'ocd_' + level_name, 'name':"OCD_flag1",
-                    'depth':"-0.1", 'center':`scenelayer_x` + "," + `scenelayer_y`,
-                    'scale':"0.7,0.7", 'rotation':"17.59",
-                    'alpha':"1", 'colorize':"255,255,255",
-                    'image':"IMAGE_SCENE_ISLAND1_OCD_FLAG1",
-                    'anim':"ocdFlagWave", 'animspeed':"1"}
-            rootmbt = root.meta.find_immediate_child_by_tag( 'SceneLayer' )
-            _appendChildTag( root, rootmbt, attrib, keepid = True )
-
-            # seek WooGLE_Test Button element
-            # print "seeking button"
-            for buttongroup in root.findall( 'buttongroup' ):
-                if buttongroup.get( 'id' ) == 'levelMarkerGroup':
-                    buttongroupelement = buttongroup
-                for button in buttongroup.findall( 'button' ):
-                    x, y = button.get_native( 'center' )
-                    if abs( x - button_x ) < 1:
-                     if abs( y - button_y ) < 1:
-            #            print "removing button",button.get('id')
-                        button.parent.remove( button )
-
-           # print "create button","lb_"+level_name
-            rootmbt = buttongroupelement.meta.find_immediate_child_by_tag( 'button' )
-            attrib = {'id':"lb_" + level_name, 'onclick':"pl_" + level_name,
-                    'depth': "0", 'center':`button_x` + "," + `button_y`,
-                    'scale':"1.008,0.848", 'rotation':"-0.5",
-                    'alpha':"1", 'colorize':"255,255,255",
-                    'up':"IMAGE_SCENE_ISLAND1_LEVELMARKERA_UP",
-                    'over':"IMAGE_SCENE_ISLAND1_LEVELMARKERA_OVER"}
-            _appendChildTag( buttongroupelement, rootmbt, attrib, keepid = True )
-
-            #save file
-            xml_data = tree.to_xml()
-            xml_data = xml_data.replace( '><', '>\n<' )
-            wogfile.encrypt_file_data( path, xml_data )
-           # print "Done",path
-        return True
 
     def newLevel( self, name ):
         """Creates a new blank level with the specified name.
@@ -769,15 +497,7 @@ class GameModel( QtCore.QObject ):
             self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_GAME,
                                                           metawog.LEVEL_GAME_TEMPLATE ),
             self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_SCENE,
-                                                          metawog.LEVEL_SCENE_TEMPLATE ),
-            self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_RESOURCE,
-                                                          metawog.LEVEL_RESOURCE_TEMPLATE ),
-            self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_ADDIN,
-                                                          metawog.LEVEL_ADDIN_TEMPLATE.replace( "LevelName", name ) ),
-            self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_TEXT,
-                                                          metawog.LEVEL_TEXT_TEMPLATE ) ,
-            self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_DEPENDANCY,
-                                                          metawog.LEVEL_DEPENDANCY_TEMPLATE ) )
+                                                          metawog.LEVEL_SCENE_TEMPLATE ) )
 
 
     def cloneLevel( self, cloned_name, new_name ):
@@ -786,6 +506,11 @@ class GameModel( QtCore.QObject ):
         dir = os.path.join( self._res_dir, STR_DIR_STUB, new_name )
         if not os.path.isdir( dir ):
             os.mkdir( dir )
+            os.mkdir( os.path.join( dir, 'animations' ) )
+            os.mkdir( os.path.join( dir, 'fx' ) )
+            os.mkdir( os.path.join( dir, 'scripts' ) )
+            os.mkdir( os.path.join( dir, 'shaders' ) )
+            os.mkdir( os.path.join( dir, 'sounds' ) )
 
         #new cloning method... #2
         # worked for balls... might be going back to the old Nitrozark way..
@@ -799,55 +524,13 @@ class GameModel( QtCore.QObject ):
         new_scene_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_SCENE,
                                                                     model.scene_root.tree.to_xml() )
 
-        new_res_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_RESOURCE,
-                                                                        model.resource_root.tree.to_xml() )
-
-        new_addin_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_ADDIN,
-                                                                        model.addin_root.tree.to_xml() )
-        new_text_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_TEXT,
-                                                                        model.text_root.tree.to_xml() )
-
         #change stuff
-        for resource_element in new_res_tree.root.findall( './/Resources' ):
-            resource_element.set( 'id', 'scene_%s' % new_name )
-
-        for resource_element in new_res_tree.root.findall( './/Image' ):
-            resid = resource_element.get( 'id' )
-            resource_element.set( 'id', resid.replace( '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_', 1 ) )
-
-        for resource_element in new_res_tree.root.findall( './/Sound' ):
-            resid = resource_element.get( 'id' )
-            resource_element.set( 'id', resid.replace( '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_', 1 ) )
-
-        for resource_element in new_text_tree.root.findall( './/string' ):
-            resid = resource_element.get( 'id' )
-            resource_element.set( 'id', resid.replace( '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_', 1 ) )
-
-        #also rewrite important things in the addin xml
-        dir_element = new_addin_tree.root.find( './/dir' )
-        #print ".dir element",dir_element
-        dir_element.set( 'value', new_name )
-
-        name_element = new_addin_tree.root.find( 'name' )
-        #print "addin.name element",name_element
-        name_element.set( 'value', new_name )
-
-        name_element = new_addin_tree.root.find( 'levels/level/name' )
-        #print "addin.levels.level.name element",name_element
-        name_element.set( 'text', new_name )
-
-        id_element = new_addin_tree.root.find( './/id' )
-        id_element.set( 'value', "" )
-
         self._res_swap( new_level_tree.root, '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_' )
         self._res_swap( new_scene_tree.root, '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_' )
 
         #save out new trees
-        self._saveUnPackedData( dir, new_name + '.addin.xml', new_addin_tree )
-        self._saveUnPackedData( dir, new_name + '.text.xml', new_text_tree )
         self._savePackedData( dir, new_name + '.level.bin', new_level_tree )
         self._savePackedData( dir, new_name + '.scene.bin', new_scene_tree )
-        self._savePackedData( dir, new_name + '.resrc.bin', new_res_tree )
 
         self._levels.append( unicode( new_name ) )
         self._levels.sort( key = unicode.lower )
@@ -874,6 +557,8 @@ class GameModel( QtCore.QObject ):
 
     def _isOriginalFile( self, filename, extension ):
 
+        return False
+
         path_bits = filename.replace( '\\', '/' ).split( "/" )
         if len( path_bits ) == 1:
             print filename, path_bits
@@ -898,14 +583,18 @@ class GameModel( QtCore.QObject ):
                     return self._seekFile( folder, path, file, ext )
             return False
 
-    def _addNewLevel( self, name, level_tree, scene_tree, resource_tree, addin_tree = None, text_tree = None, dependancy_tree = None ):
+    def _addNewLevel( self, name, level_tree, scene_tree, resource_tree, text_tree = None ):
         """Adds a new level using the specified level, scene and resource tree.
            The level directory is created, but the level xml files will not be saved immediately.
         """
         dir_path = os.path.join( self._res_dir, STR_DIR_STUB, name )
         if not os.path.isdir( dir_path ):
             os.mkdir( dir_path )
-
+            os.mkdir( os.path.join( dir_path, 'animations' ) )
+            os.mkdir( os.path.join( dir_path, 'fx' ) )
+            os.mkdir( os.path.join( dir_path, 'scripts' ) )
+            os.mkdir( os.path.join( dir_path, 'shaders' ) )
+            os.mkdir( os.path.join( dir_path, 'sounds' ) )
 
         # Fix the hard-coded level name in resource tree: <Resources id="scene_NewTemplate" >
         for resource_element in resource_tree.root.findall( './/Resources' ):
@@ -914,12 +603,8 @@ class GameModel( QtCore.QObject ):
         world = self.global_world.make_world( metawog.WORLD_LEVEL, name,
                                                     LevelWorld, self, is_dirty = True )
         treestoadd = [level_tree, scene_tree, resource_tree]
-        if addin_tree is not None:
-            treestoadd.append( addin_tree )
         if text_tree is not None:
             treestoadd.append( text_tree )
-        if dependancy_tree is not None:
-            treestoadd.append( dependancy_tree )
 
         world.add_tree( treestoadd )
 
@@ -956,8 +641,6 @@ class LevelWorld( ThingWorld ):
         self._level_issue_level = ISSUE_LEVEL_NONE
         self._resrc_issue_level = ISSUE_LEVEL_NONE
         self._global_issue_level = ISSUE_LEVEL_NONE
-        self._dependancyissues = ''
-        self._dependancy_issue_level = ISSUE_LEVEL_NONE
         self._view = None
 
     @property
@@ -969,22 +652,6 @@ class LevelWorld( ThingWorld ):
         return self.find_tree( metawog.TREE_LEVEL_SCENE ).root
 
     @property
-    def resource_root( self ):
-        return self.find_tree( metawog.TREE_LEVEL_RESOURCE ).root
-
-    @property
-    def addin_root( self ):
-        return self.find_tree( metawog.TREE_LEVEL_ADDIN ).root
-
-    @property
-    def text_root( self ):
-        return self.find_tree( metawog.TREE_LEVEL_TEXT ).root
-
-    @property
-    def dependancy_root( self ):
-        return self.find_tree( metawog.TREE_LEVEL_DEPENDANCY ).root
-
-    @property
     def is_dirty( self ):
         return self.__dirty_tracker.is_dirty
 
@@ -993,17 +660,13 @@ class LevelWorld( ThingWorld ):
         return self.name.lower() in metawog.LEVELS_ORIGINAL_LOWER
 
     @property
-    def hasText( self ):
-        return self.find_tree( metawog.TREE_LEVEL_TEXT ).root.find( 'string' ) is not None
-
-    @property
     def view( self ):
         return self._view
 
     def setView ( self, newview ):
         self._view = newview
 
-    #@DaB - Issue checking used when saving the level, or making a goomod
+    #@DaB - Issue checking used when saving the level
     def hasIssues ( self ):
         #Checks all 3 element trees for outstanding issues
         # Returns True if there are any.
@@ -1012,8 +675,6 @@ class LevelWorld( ThingWorld ):
         if self.element_issue_level( self.scene_root ):
             tIssue |= ISSUE_LEVEL_CRITICAL
         if self.element_issue_level( self.level_root ):
-            tIssue |= ISSUE_LEVEL_CRITICAL
-        if self.element_issue_level( self.resource_root ):
             tIssue |= ISSUE_LEVEL_CRITICAL
         if self.element_issue_level( self.text_root ):
             tIssue |= ISSUE_LEVEL_CRITICAL
@@ -1035,8 +696,6 @@ class LevelWorld( ThingWorld ):
             tIssue |= self._resrc_issue_level
         if self.hasglobal_issue():
             tIssue |= self._global_issue_level
-        if self.hasdependancy_issue():
-            tIssue |= ( self._dependancy_issue_level & 6 )
 
         return tIssue
 
@@ -1052,16 +711,12 @@ class LevelWorld( ThingWorld ):
             txtIssue = txtIssue + '<p>Level Tree:<br>' + self.element_issue_report( self.level_root ) + '</p>'
         if self.level_issue_report != '':
             txtIssue += '<p>Level Checks:<br>' + self.level_issue_report + '</p>'
-        if self.element_issue_level( self.resource_root ):
-            txtIssue = txtIssue + '<p>Resource Tree:<br>' + self.element_issue_report( self.resource_root ) + '</p>'
         if self.resrc_issue_report != '':
             txtIssue += '<p>Resource Checks:<br>' + self.resrc_issue_report + '</p>'
         if self.global_issue_report != '':
             txtIssue += '<p>Global Checks:<br>' + self.global_issue_report + '</p>'
         if self.element_issue_level( self.text_root ):
             txtIssue = txtIssue + '<p>Text Tree:<br>' + self.element_issue_report( self.text_root ) + '</p>'
-        if self.dependancy_issue_report != '':
-            txtIssue += '<p>Dependancy Checks:<br>' + self.dependancy_issue_report + '</p>'
 
         return txtIssue
 
@@ -1115,12 +770,6 @@ class LevelWorld( ThingWorld ):
         if len( end_conditions ) > 1:
             self.addLevelError( 111, ','.join( end_conditions ) )
 
-        #Ambient Particles on "Local Effect Only" object
-        ambient_effects = []
-        fx_tree = self.game_model._effects_tree
-        for effect in fx_tree.root.findall( 'ambientparticleeffect' ):
-            ambient_effects.append( effect.get( 'name' ) )
-
         return self._level_issue_level != ISSUE_LEVEL_NONE
 
     def addSceneError( self, error_num, subst ):
@@ -1138,11 +787,6 @@ class LevelWorld( ThingWorld ):
     def addGlobalError( self, error_num, subst ):
         error = errors.ERROR_INFO[error_num]
         self._global_issue_level, self._globalissues = self.addError( self._global_issue_level, self._globalissues, error, error_num, subst )
-
-    def addDependancyError( self, error_num, subst ):
-        error = errors.ERROR_INFO[error_num]
-        self._dependancy_issue_level, self._dependancyissues = self.addError( self._dependancy_issue_level, self._dependancyissues, error, error_num, subst )
-
 
     def addError( self, err_level, err_message, error, error_num, err_subst ):
         err_level |= error[0]
@@ -1261,8 +905,6 @@ class LevelWorld( ThingWorld ):
     def _get_unused_resources( self ):
         used = self._get_used_resources()
         resources = {}
-        resources['image'] = self._get_all_resource_ids( self.resource_root, "Image" )
-        resources['sound'] = self._get_all_resource_ids( self.resource_root, "Sound" )
         resources['TEXT_LEVELNAME_STR'] = self._get_all_resource_ids( self.text_root, "string" )
         unused = {'image':set(), 'sound':set(), 'TEXT_LEVELNAME_STR':set()}
         for restype in unused.keys():
@@ -1295,67 +937,22 @@ class LevelWorld( ThingWorld ):
                                 used[attribute_meta.reference_family].add( element.get( attribute_meta.name ) )
 
         for element in self.level_root:
-          for attribute_meta in element.meta.attributes:
-            if attribute_meta.type == metaworld.REFERENCE_TYPE:
-                if attribute_meta.reference_family in oftype:
-                    if element.get( attribute_meta.name ):
-                        if attribute_meta.is_list:
-                            for res in element.get( attribute_meta.name ).split( ',' ):
-                                used[attribute_meta.reference_family].add( res )
-                        else:
-                            used[attribute_meta.reference_family].add( element.get( attribute_meta.name ) )
+            for attribute_meta in element.meta.attributes:
+                if attribute_meta.type == metaworld.REFERENCE_TYPE:
+                    if attribute_meta.reference_family in oftype:
+                        if element.get( attribute_meta.name ):
+                            if attribute_meta.is_list:
+                                for res in element.get( attribute_meta.name ).split( ',' ):
+                                    used[attribute_meta.reference_family].add( res )
+                            else:
+                                used[attribute_meta.reference_family].add( element.get( attribute_meta.name ) )
 
         return used
 
     def hasresrc_issue( self ):
-        root = self.resource_root
+        # confirm every file referenced exists
         self._resrcissues = ''
         self._resrc_issue_level = ISSUE_LEVEL_NONE
-        # confirm every file referenced exists
-        used_resources = self._get_used_resources()
-        image_resources = set()
-        for resource in root.findall( './/Image' ):
-            image_resources.add( resource.get( 'id' ) )
-            full_filename = os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + ".png" )
-            if ON_PLATFORM == PLATFORM_WIN:
-                #confirm extension on drive is lower case
-                real_filename = getRealFilename( full_filename )
-                real_ext = os.path.splitext( real_filename )[1]
-                if real_ext != ".png":
-                  self.addResourceError( 201, resource.get( 'path' ) + real_ext )
-
-        unused_images = image_resources.difference( used_resources['image'] )
-        if len( unused_images ) != 0:
-            for unused in unused_images:
-               self.addResourceError( 202, unused )
-
-        sound_resources = set()
-        for resource in root.findall( './/Sound' ):
-            sound_resources.add( resource.get( 'id' ) )
-            full_filename = os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + ".ogg" )
-
-            if ON_PLATFORM == PLATFORM_WIN:
-                #confirm extension on drive is lower case
-                real_filename = getRealFilename( full_filename )
-                real_ext = os.path.splitext( real_filename )[1]
-                if real_ext != ".ogg":
-                    self.addResourceError( 203, resource.get( 'path' ) + real_ext )
-
-
-        unused_sounds = sound_resources.difference( used_resources['sound'] )
-        if len( unused_sounds ) != 0:
-            for unused in unused_sounds:
-               self.addResourceError( 204, unused )
-
-        text_resources = set()
-        for resource in self.text_root.findall( './/string' ):
-            text_resources.add( resource.get( 'id' ) )
-
-        unused_texts = text_resources.difference( used_resources['TEXT_LEVELNAME_STR'] )
-        if len( unused_texts ) != 0:
-            for unused in unused_texts:
-               self.addResourceError( 205, unused )
-
         return self._resrc_issue_level != ISSUE_LEVEL_NONE
 
     @property
@@ -1371,233 +968,12 @@ class LevelWorld( ThingWorld ):
     def global_issue_report( self ):
         return self._globalissues
 
-    #@DaB Additional Issue checking when trying to produce a goomod
-    def hasAddinIssues ( self ):
-        if self.element_issue_level( self.addin_root ):
-            return True
-        return False
-
-    def getAddinIssues ( self ):
-        txtIssue = ''
-        if self.element_issue_level( self.addin_root ):
-            txtIssue = txtIssue + 'Addin : ' + self.element_issue_report( self.addin_root ) + '<br>'
-        return txtIssue
-
-    def _buildDependancyTree( self ):
-        self.suspend_undo()
-        dependancy_tree = self.find_tree( metawog.TREE_LEVEL_DEPENDANCY )
-        if dependancy_tree is not None:
-            self.remove_tree( dependancy_tree )
-        dependancy_tree = self.make_tree_from_xml( metawog.TREE_LEVEL_DEPENDANCY, metawog.LEVEL_DEPENDANCY_TEMPLATE )
-        current = {'imagedep':set(), 'sounddep':set(), 'effectdep':set(), 'materialdep':set(), 'animdep':set()}
-        self._recursion = []
-
-        self.game_model.global_world.refreshFromFiles()
-
-        self._addDependancies( self.level_root, dependancy_tree.root, current )
-        self._addDependancies( self.scene_root, dependancy_tree.root, current )
-
-        #additional non-recursive stuff
-        for element in self.scene_root.findall( './/SceneLayer' ):
-            anim = element.get( 'anim', '' )
-            if anim != '':
-                if anim not in metawog.ANIMATIONS_ORIGINAL and \
-                   anim not in current['animdep']:
-                    child_attrib = {'id':anim}
-                    if anim in metawog.ANIMATIONS_GLOBAL:
-                        child_attrib['found'] = "true"
-                    child_element = metaworld.Element( metawog.DEP_ANIM, child_attrib )
-                    dependancy_tree.root._children.append( child_element )
-                    child_element._parent = dependancy_tree.root
-                    current['animdep'].add( child_attrib['id'] )
-
-        for element in self.resource_root.findall( './/Image' ):
-            child_attrib = {'found':"true"}
-            for attribute in element.meta.attributes:
-                child_attrib[attribute.name] = element.get( attribute.name )
-            if child_attrib['path'] not in current['imagedep']:
-                child_element = metaworld.Element( metawog.DEP_IMAGE, child_attrib )
-                dependancy_tree.root._children.append( child_element )
-                child_element._parent = dependancy_tree.root
-                current['imagedep'].add( child_attrib['path'] )
-
-        for element in self.resource_root.findall( './/Sound' ):
-            child_attrib = {'found':"true"}
-            for attribute in element.meta.attributes:
-               child_attrib[attribute.name] = element.get( attribute.name )
-            if child_attrib['path'] not in current['sounddep']:
-                child_element = metaworld.Element( metawog.DEP_SOUND, child_attrib )
-                dependancy_tree.root._children.append( child_element )
-                child_element._parent = dependancy_tree.root
-                current['sounddep'].add( child_attrib['path'] )
-
-        self._removeOriginalDependancies( dependancy_tree.root )
-        self.activate_undo()
-        self.__dirty_tracker.clean_tree( metawog.TREE_LEVEL_DEPENDANCY )
-        return dependancy_tree
-
     def _isNumber( self, input ):
         try:
             f = float( input )
             return True
         except ValueError:
             return False
-
-    def _removeOriginalDependancies( self, element ):
-        children = []
-        children.extend( element.getchildren() )
-        for child in children:
-            self._removeOriginalDependancies( child )
-
-        remove = False
-        if ( element.tag == 'image' ) or ( element.tag == 'sound' ):
-          extensions = {'image':'png', 'sound':'ogg'}
-          #print "checking : ",element.tag,element.get('path')
-          if self.game_model._isOriginalFile( element.get( 'path' ), extensions[element.tag] ):
-             remove = True
-          if not remove:
-             if element.get( 'id', '' ) == '':
-                # path but no id, swap em
-                element.set( 'found', '* resource id not found *' )
-             elif element.get_native( 'found', False ):
-                fullfilename = os.path.normpath( os.path.join( self.game_model._amy_dir, element.get( 'path' ) + '.' + extensions[element.tag] ) )
-                if not os.path.exists( fullfilename ):
-                     element.set( 'found', '* file not found *' )
-             #print "remove",element.tag, element.get('path')
-        elif element.tag == 'material':
-            if element.get( 'id' ) in metawog.MATERIALS_ORIGINAL:
-                 remove = True
-            if not remove:
-              if not element.get_native( 'found', False ):
-                  element.set( 'found', '* custom material not found *' )
-             #    print "remove",element.tag, element.get('id')
-        elif element.tag == 'effect':
-            if ( element.get( 'name' ) in metawog.PARTICLEEFFECTS_ORIGINAL ) or ( element.get( 'name' ) in metawog.AMBIENTEFFECTS_ORIGINAL ):
-                 remove = True
-            if not remove:
-              if not element.get_native( 'found', False ):
-                  element.set( 'found', '* particle effect not found *' )
-        elif element.tag == 'anim':
-            if not element.get_native( 'found', False ):
-                 element.set( 'found', '* anim file not found *' )
-            remove = False
-        elif element.tag in ['dependancy']:
-                remove = False
-        else:
-            print "Unknown Dependancy Tag", element.tag
-
-        if remove and len( element.getchildren() ) == 0 and element.get_native( 'found', False ):
-#            print "Actually Removing",element.tag
-            index = element.parent._children.index( element )
-            del element.parent._children[index]
-            element._parent = None
-            del element
-
-    def _addDependancies( self, element, dep_element, current ):
-        #run through the attributes of the element
-        # add nodes at this level for any direct deps
-        for attribute_meta in element.meta.attributes:
-            if attribute_meta.type == metaworld.REFERENCE_TYPE and \
-              attribute_meta.reference_family in ['image', 'sound', 'effect', 'material'] and \
-              attribute_meta.name != 'filter':
-                attribute_value = attribute_meta.get( element )
-                if attribute_value is not None:
-                    if attribute_meta.is_list:
-                        references = attribute_value.split( ',' )
-                    else:
-                        references = [attribute_value]
-                    for reference in references:
-                        if reference.strip() != '' and not self._isNumber( reference ):
-                            try:
-                                res_element = self.resolve_reference( attribute_meta.reference_world, attribute_meta.reference_family, reference )
-                            except ValueError:
-                                res_element = None
-
-                            new_dep_meta = dep_element.meta.find_immediate_child_by_tag( attribute_meta.reference_family )
-                            child_attrib = {}
-                            id_attribute = None
-                            if res_element is None:
-                                #print "Empty res_element",element.tag, attribute_meta.name, attribute_meta.reference_world,attribute_meta.reference_family, reference
-                                for dep_attribute in new_dep_meta.attributes:
-                                    if dep_attribute.type == metaworld.IDENTIFIER_TYPE:
-                                        child_attrib[dep_attribute.name] = reference
-                                        id_attribute = dep_attribute
-                            else:
-                                child_attrib['found'] = "true"
-                                for dep_attribute in new_dep_meta.attributes:
-                                    if dep_attribute.name != 'found':
-                                        child_attrib[dep_attribute.name] = res_element.get( dep_attribute.name )
-                                        if dep_attribute.type == metaworld.IDENTIFIER_TYPE:
-                                            id_attribute = dep_attribute
-
-                            if id_attribute is None or res_element is None:
-                                if reference not in current[id_attribute.reference_family]:
-                                    child_element = metaworld.Element( new_dep_meta, child_attrib )
-                                    dep_element._children.append( child_element )
-                                    child_element._parent = dep_element
-                                    current[id_attribute.reference_family].add( reference )
-                            elif res_element.get( id_attribute.name ) not in current[id_attribute.reference_family]:
-                                child_element = metaworld.Element( new_dep_meta, child_attrib )
-                                dep_element._children.append( child_element )
-                                child_element._parent = dep_element
-                                current[id_attribute.reference_family].add( res_element.get( id_attribute.name ) )
-                                self._addDependancies( res_element, child_element, current )
-
-
-        #now run through child elements
-        for child_element in element.getchildren():
-            self._addDependancies( child_element, dep_element, current )
-
-    def hasDependancies( self ):
-        return len( self.dependancy_root.getchildren() ) > 0
-
-    def hasdependancy_issue( self ):
-        # things to check
-        self._dependancyissues = ''
-        self._dependancy_issue_level = ISSUE_LEVEL_NONE
-
-        if len( self._recursion ) > 0:
-            for recurse in self._recursion:
-                self.addDependancyError( 301, recurse.replace( ',', ' --> ' ) )
-
-        # Custom Materials
-        material_dep = {}
-        for material in self.dependancy_root.findall( ".//material" ):
-            material_dep[material.get( 'id' )] = ( material.get_native( 'found', False ) == True )
-
-        if len( material_dep ) != 0:
-            self.addDependancyError( 304, ','.join( material_dep.keys() ) )
-            for material, found in material_dep.items():
-                if not found:
-                    self.addDependancyError( 305, material )
-
-        # Custom Animations
-        anim_dep = {}
-        for animation in self.dependancy_root.findall( ".//anim" ):
-            anim_dep[animation.get( 'id' )] = animation.get_native( 'found', False )
-
-        if len( anim_dep ) != 0:
-            self.addDependancyError( 308, ','.join( anim_dep.keys() ) )
-            for anim, found in anim_dep.items():
-                if not found:
-                    self.addDependancyError( 309, anim )
-
-        # Custom Particles
-        particles_dep = {}
-        for effect in self.dependancy_root.findall( ".//effect" ):
-            particles_dep[effect.get( 'name' )] = effect.get_native( 'found', False )
-
-        if len( particles_dep ) != 0:
-            self.addDependancyError( 306, ','.join( particles_dep.keys() ) )
-            for effect, found in particles_dep.items():
-                if not found:
-                    self.addDependancyError( 307, effect )
-
-        return self._dependancy_issue_level != ISSUE_LEVEL_NONE
-
-    @property
-    def dependancy_issue_report( self ):
-        return self._dependancyissues
 
     def _cleanleveltree( self ):
         pass
@@ -1612,41 +988,6 @@ class LevelWorld( ThingWorld ):
             self.scene_root.append( motor )
         self.activate_undo()
 
-    def _cleanresourcetree( self ):
-        #removes any unused resources from the resource and text resource trees
-        self.suspend_undo()
-        root = self.resource_root
-
-        #ensure cAsE sensitive path is stored in resource file
-        #Only required on windows...
-        #If path was not CaSe SenSitivE match on Linux / Mac would be File not found earlier
-        if ON_PLATFORM == PLATFORM_WIN:
-            for resource in root.findall( './/Image' ):
-                full_filename = os.path.normpath( os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + ".png" ) )
-                if os.path.exists( full_filename ):
-                    #confirm extension on drive is lower case
-                    len_wogdir = len( os.path.normpath( self.game_model._amy_dir ) ) + 1
-                    real_filename = os.path.normpath( getRealFilename( full_filename ) )
-                    real_file = os.path.splitext( real_filename )[0][len_wogdir:]
-                    full_file = os.path.splitext( full_filename )[0][len_wogdir:]
-                    if real_file != full_file:
-                        print "Correcting Path", resource.get( 'id' ), full_file, "-->", real_file
-                        resource.attribute_meta( 'path' ).set( resource, real_file )
-
-            for resource in root.findall( './/Sound' ):
-                full_filename = os.path.normpath( os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + ".ogg" ) )
-                if os.path.exists( full_filename ):
-                    #confirm extension on drive is lower case
-                    len_wogdir = len( os.path.normpath( self.game_model._amy_dir ) )
-                    real_filename = os.path.normpath( getRealFilename( full_filename ) )
-                    real_file = os.path.splitext( real_filename )[0][len_wogdir:]
-                    full_file = os.path.splitext( full_filename )[0][len_wogdir:]
-                    if real_file != full_file:
-                        print "Correcting Path", resource.get( 'id' ), full_file, "-->", real_file
-                        resource.attribute_meta( 'path' ).set( resource, real_file )
-
-        self.activate_undo()
-
     def saveModifiedElements( self ):
         """Save the modified scene, level, resource tree."""
         if not self.isReadOnly:  # Discards change made on read-only level
@@ -1654,13 +995,11 @@ class LevelWorld( ThingWorld ):
             dir = os.path.join( self.game_model._res_dir, STR_DIR_STUB, name )
             if not os.path.isdir( dir ):
                 os.mkdir( dir )
-            if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_ADDIN ):
-                self.game_model._saveUnPackedData( dir, name + '.addin.xml',
-                                                 self.addin_root.tree )
-
-            if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_TEXT ):
-                self.game_model._saveUnPackedData( dir, name + '.text.xml',
-                                                 self.text_root.tree )
+                os.mkdir( os.path.join( dir, 'animations' ) )
+                os.mkdir( os.path.join( dir, 'fx' ) )
+                os.mkdir( os.path.join( dir, 'scripts' ) )
+                os.mkdir( os.path.join( dir, 'shaders' ) )
+                os.mkdir( os.path.join( dir, 'sounds' ) )
 
             if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_GAME ):
                 if not self.element_issue_level( self.level_root ):
@@ -1670,20 +1009,18 @@ class LevelWorld( ThingWorld ):
 
                 self.game_model._savePackedData( dir, name + '.level.bin',
                                                  self.level_root.tree )
-            if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_RESOURCE ):
-                self.game_model._savePackedData( dir, name + '.resrc.bin',
-                                                 self.resource_root.tree )
 
             # ON Mac
             # Convert all "custom" png to .png.binltl
             # Only works with REAL PNG
             if ON_PLATFORM == PLATFORM_MAC:
-                for image in self.resource_root.findall( './/Image' ):
-                  if not self.game_model._isOriginalFile( image.get( 'path' ), 'png' ):
-                    in_path = os.path.join( self.game_model._amy_dir, image.get( 'path' ) )
-                    out_path = in_path + '.png.binltl'
-                    in_path += '.png'
-                    wogfile.png2pngbinltl( in_path, out_path )
+                pass
+#                for image in self.resource_root.findall( './/Image' ):
+#                    if not self.game_model._isOriginalFile( image.get( 'path' ), 'png' ):
+#                        in_path = os.path.join( self.game_model._amy_dir, image.get( 'path' ) )
+#                        out_path = in_path + '.png.binltl'
+#                        in_path += '.png'
+#                        wogfile.png2pngbinltl( in_path, out_path )
 
 
             if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_SCENE ):
@@ -1707,136 +1044,9 @@ class LevelWorld( ThingWorld ):
             print 'Warning: invalid image reference:|', image_id, '|'
         return pixmap
 
-    def updateResources( self ):
-        """Ensures all image/sound resource present in the level directory 
-           are in the resource tree.
-           Adds new resource to the resource tree if required.
-        """
-
-        game_dir = os.path.normpath( self.game_model._amy_dir )
-        dir = os.path.join( game_dir, 'res', STR_DIR_STUB, self.name )
-        if not os.path.isdir( dir ):
-            print 'Warning: level directory does not exist'
-            return []
-
-        resource_element = self.resource_root.find( './/Resources' )
-        if resource_element is None:
-            print 'Warning: root element not found in resource tree'
-            return []
-        added_elements = []
-        for tag, extension, id_prefix in ( ( 'Image', 'png', 'LEVEL_IMAGE_' ), ( 'Sound', 'ogg', 'LEVEL_SOUND_' ) ):
-            known_paths = set()
-            for element in self.resource_root.findall( './/' + tag ):
-                path = os.path.normpath( os.path.splitext( element.get( 'path', '' ).lower() )[0] )
-                # known path are related to wog top dir in unix format & lower case without the file extension
-                known_paths.add( path )
-            existing_paths = glob.glob( os.path.join( dir, '*.' + extension ) )
-            for existing_path in existing_paths:
-                existing_path = existing_path[len( game_dir ) + 1:] # makes path relative to wog top dir
-                existing_path = os.path.splitext( existing_path )[0] # strip file extension
-                path = os.path.normpath( existing_path ).lower()
-                if path not in known_paths:
-                    existing_path = os.path.split( existing_path )[1]
-                    ALLOWED_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789'
-                    resource_id = id_prefix + ''.join( c for c in existing_path
-                                                       if c.upper() in ALLOWED_CHARS )
-                    resource_path = 'res/levels/%s/%s' % ( self.name, existing_path )
-                    meta_element = metawog.TREE_LEVEL_RESOURCE.find_element_meta_by_tag( tag )
-                    new_resource = metaworld.Element( meta_element, {'id':resource_id.upper(),
-                                                                     'path':resource_path} )
-                    resource_element.append( new_resource )
-                    added_elements.append( new_resource )
-        return added_elements
-
     #@DaB New Functionality - Import resources direct from files
     def importError( self ):
         return self._importError
-
-    def importResources( self, importedfiles, res_dir ):
-        """Import Resources direct from files into the Resource Tree
-           If files are located outside the Wog/res folder it copies them
-           png -> res/levels/{name}
-           ogg -> res/music/{name}  for compatability with Soultaker's Volume control add-in
-        """
-        self._importError = None
-        res_dir = os.path.normpath( res_dir )
-        game_dir = os.path.split( res_dir )[0]
-        resource_element = self.resource_root.find( './/Resources' )
-        if resource_element is None:
-            print 'Warning: root element not found in resource tree'
-            return []
-        all_local = True
-        includesogg = False
-        for file in importedfiles:
-            file = os.path.normpath( file )
-            # "Are you Local?"
-            # Check if the files were imported from outside the Wog/Res folder
-            fileext = os.path.splitext( file )[1][1:4]
-            if fileext.lower() == "ogg":
-                includesogg = True
-            if file[:len( res_dir )] != res_dir:
-                all_local = False
-
-        if not all_local and self.isReadOnly:
-            self._importError = ["Cannot import external files...!", "You cannot import external files into levels that come with World Of Goo.\nIf you really want to do this... Clone the level first!"]
-            return []
-
-        if not all_local:
-            level_path = os.path.join( res_dir, STR_DIR_STUB, self.name )
-            if not os.path.isdir( level_path ):
-                os.mkdir( level_path )
-
-            if includesogg:
-                #' confirm / create import folder'
-                music_path = os.path.join( res_dir, 'music', self.name )
-                if not os.path.isdir( music_path ):
-                    os.mkdir( music_path )
-
-        localfiles = []
-        resmap = {'png':( 'Image', 'IMAGE_', STR_DIR_STUB ), 'ogg':( 'Sound', 'SOUND_', 'music' )}
-        for file in importedfiles:
-            # "Are you Local?"
-            fileext = os.path.splitext( file )[1][1:4]
-            if file[:len( res_dir )] != res_dir:
-                #@DaB - Ensure if the file is copied that it's new extension is always lower case
-                fname = os.path.splitext( os.path.split( file )[1] )[0]
-                fileext = fileext.lower()
-                newfile = os.path.join( res_dir, resmap[fileext][2], self.name, fname + "." + fileext )
-                copy2( file, newfile )
-                localfiles.append( newfile )
-            else:
-                #@DaB - File Extension Capitalization Check
-                if fileext != fileext.lower():
-                    #Must be png or ogg to be compatible with LINUX and MAC
-                    self._importError = ["File Extension CAPITALIZATION Warning!", "To be compatible with Linux and Mac - All file extensions must be lower case.\nYou should rename the file below, and then import it again.\n\n" + file + " skipped!"]
-                else:
-                    localfiles.append( file )
-
-        added_elements = []
-
-        known_paths = {'Image':set(), 'Sound':set()}
-        for ext in resmap:
-          for element in self.resource_root.findall( './/' + resmap[ext][0] ):
-            path = os.path.normpath( os.path.splitext( element.get( 'path', '' ).lower() )[0] )
-            # known path are related to wog top dir in unix format & lower case without the file extension
-            known_paths[resmap[ext][0]].add( path )
-        for file in localfiles:
-            file = file[len( game_dir ) + 1:] # makes path relative to wog top dir            print file
-            filei = os.path.splitext( file )
-            path = os.path.normpath( filei[0] ).lower()
-            ext = filei[1][1:4]
-            if path not in known_paths[resmap[ext][0]]:
-                ALLOWED_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789'
-                pathbits = os.path.split( path )
-                nextdir = os.path.split( pathbits[0] )[1]
-                resource_id = resmap[ext][1] + ''.join( c for c in nextdir.upper() if c in ALLOWED_CHARS ) + '_' + ''.join( c for c in pathbits[1].upper() if c in ALLOWED_CHARS )
-                resource_path = filei[0].replace( "\\", "/" )
-                meta_element = metawog.TREE_LEVEL_RESOURCE.find_element_meta_by_tag( resmap[ext][0] )
-                new_resource = metaworld.Element( meta_element, {'id':resource_id.upper(),
-                                                                 'path':resource_path} )
-                resource_element.append( new_resource )
-                added_elements.append( new_resource )
-        return added_elements
 
 class MainWindow( QtGui.QMainWindow ):
     def __init__( self, parent = None ):
@@ -1845,7 +1055,7 @@ class MainWindow( QtGui.QMainWindow ):
         self.setAttribute( Qt.WA_DeleteOnClose )
         self.actionTimer = None
         self.statusTimer = None
-        self._amy_path = None # Path to worl of goo executable
+        self._amy_path = None # Path to 'amy' executable
         self.recentfiles = None
         self.createMDIArea()
         self.createActions()
@@ -1861,7 +1071,7 @@ class MainWindow( QtGui.QMainWindow ):
         if self._amy_path:
             #Check that the stored path is still valid
             if not os.path.exists( self._amy_path ):
-                self.changeWOGDir()
+                self.changeAmyDir()
             else:
                 self._reloadGameModel()
         else:
@@ -2066,7 +1276,7 @@ class MainWindow( QtGui.QMainWindow ):
             dialog = QtGui.QDialog()
             ui = newleveldialog_ui.Ui_NewLevelDialog()
             ui.setupUi( dialog )
-            reg_ex = QtCore.QRegExp( '[A-Za-z][0-9A-Za-z][0-9A-Za-z]+' )
+            reg_ex = QtCore.QRegExp( '[A-Za-z][0-9A-Za-z_][0-9A-Za-z_]+' )
             validator = QtGui.QRegExpValidator( reg_ex, dialog )
             ui.levelName.setValidator( validator )
             if is_cloning:
@@ -2153,12 +1363,13 @@ class MainWindow( QtGui.QMainWindow ):
 
     def about( self ):
         QtGui.QMessageBox.about( self, self.tr( "About Amy In Da Farm! Level Editor " + CURRENT_VERSION ),
-            self.tr( """<p>World of Goo Level Editor <b>(WooGLE)</b> helps you create new levels for World of Goo.<p>
-            <p>Download Page:<br>
+            self.tr( """<p>Amy In Da Farm! Level Editor helps you create new levels for Amy In Da Farm!.<p>
+            <p>Developer Page, Sources and Reference Guide:<br>
+            <a href="http://github.com/reven86/dfg-amy-editor">http://github.com/reven86/dfg-amy-editor</a></p>
+            <p>Copyright 2010, Andrew Karpushin &lt;andrew.karpushin at dreamfarmgames.com&gt;</p>
+            <p>&nbsp;<br>Original based on World Of Goo Level Editor (WooGLE) by DaftasBrush: (v0.77)</p>
+            <p>Copyright 2010, DaftasBrush<br>
             <a href="http://goofans.com/download/utility/world-of-goo-level-editor">http://goofans.com/download/utility/world-of-goo-level-editor</a></p>
-            <p>FAQ, Tutorial and Reference Guide:<br>
-            <a href="http://goofans.com/developers/world-of-goo-level-editor">http://goofans.com/developers/world-of-goo-level-editor</a></p>
-            <p>Copyright 2010-, DaftasBrush</p>
             <p>&nbsp;<br>Original Sourceforge project: (v0.5)
             <a href="http://www.sourceforge.net/projects/wogedit">http://www.sourceforge.net/projects/wogedit</a><br>
             Copyright 2008-2009, NitroZark &lt;nitrozark at users.sourceforget.net&gt;</p>""" ) )
@@ -2808,20 +2019,6 @@ class MainWindow( QtGui.QMainWindow ):
         self.tree_view_by_element_world = {} # map of all tree views
         scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', metawog.TREE_LEVEL_SCENE )
         level_dock, self.levelTree = self.createElementTreeView( 'Level', metawog.TREE_LEVEL_GAME, scene_dock )
-        resource_dock, self.levelResourceTree = self.createElementTreeView( 'Resource',
-                                                                            metawog.TREE_LEVEL_RESOURCE,
-                                                                            level_dock )
-        addin_dock, self.addinTree = self.createElementTreeView( 'Addin',
-                                                                            metawog.TREE_LEVEL_ADDIN,
-                                                                            resource_dock )
-
-        text_dock, self.textTree = self.createElementTreeView( 'Text',
-                                                                            metawog.TREE_LEVEL_TEXT,
-                                                                            addin_dock )
-
-        dep_dock, self.depTree = self.createElementTreeView( 'Depends', #@UnusedVariable
-                                                                            metawog.TREE_LEVEL_DEPENDANCY,
-                                                                            text_dock )
 
         scene_dock.raise_() # Makes the scene the default active tab
 

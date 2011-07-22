@@ -8,19 +8,19 @@ Louie does not require you to use a subclass of Signal for signals.
 """
 
 
-class _SIGNAL(type):
+class _SIGNAL( type ):
     """Base metaclass for signal classes."""
 
-    def __str__(cls):
-        return '<Signal: %s>' % (cls.__name__, )
+    def __str__( self ):
+        return '<Signal: %s>' % ( self.__name__, )
 
 
-class Signal(object):
+class Signal( object ):
 
     __metaclass__ = _SIGNAL
 
 
-class All(Signal):
+class All( Signal ):
     """Used to represent 'all signals'.
 
     The All class can be used with connect, disconnect, send, or
