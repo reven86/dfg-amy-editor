@@ -30,6 +30,9 @@ from utils import * #@UnusedWildImport
 from PyQt4 import QtCore
 import yaml
 
+# get rid of !!python/unicode tags if string is ASCII-convertible
+yaml.add_representer( unicode, lambda dumper, value: dumper.represent_scalar( u'tag:yaml.org,2002:str', value ) )
+
 AMY_PATH = ''
 # Different type of attributes
 
@@ -101,7 +104,7 @@ class AttributeMeta( object ):
         else:
             value = element.get( self.map_to )
         if value is not None:
-            attributes_by_name[self.name] = ','.join( map( str, value ) ) if isinstance( value, list ) else str( value )
+            attributes_by_name[self.name] = ','.join( map( unicode, value ) ) if isinstance( value, list ) else unicode( value )
 
     def to_xml( self, element, attributes_by_name ):
         if self.name == 'value':
@@ -253,7 +256,7 @@ class ComponentsAttributeMeta( AttributeMeta ):
             defined = False
             for name in self.map_to:
                 value = element.get( name )
-                values.append( str( value ) if value else '' )
+                values.append( unicode( value ) if value else '' )
                 defined = defined or value is not None
             if defined:
                 attributes_by_name[self.name] = ','.join( values )
@@ -1784,7 +1787,7 @@ class Element( _ElementBase ):
            The YAML is encoded using the specified encoding, or UTF-8 if none is specified.
         """
         encoding = encoding or 'utf-8'
-        return yaml.dump( { self.meta.tag : self._to_yaml_element() }, encoding = encoding )
+        return yaml.dump( { self.meta.tag : self._to_yaml_element() }, encoding = encoding, allow_unicode = True )
 
     def _to_yaml_element( self ):
         props = {}
