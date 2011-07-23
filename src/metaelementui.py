@@ -193,9 +193,6 @@ def complete_global_reference_property( world, attribute_meta ):
 def complete_world_reference_property( world, attribute_meta ):
     return world.list_world_identifiers( attribute_meta.reference_family )
 
-def complete_suckable_balls( world, sttribute_meta ):
-    return tuple()
-
 # For later
 ##def editor_rgb_property( parent, option, index, element, attribute_meta, default_editor_factory ):
 ##    widget = QtGui.QWidget( parent )
@@ -288,8 +285,6 @@ ATTRIBUTE_TYPE_EDITOR_HANDLERS = {
     }
 
 ATTRIBUTE_NAME_EDITOR_HANDLERS = {
-    'filter': { 'listdialog': complete_suckable_balls,
-                'editor': complete_list },
     'tag': { 'editor': complete_list,
              'listdialog': complete_enumerated_property  },
     'image': { 'completer': complete_world_reference_property }  ,
@@ -356,17 +351,17 @@ class PropertyListItemDelegate( QtGui.QStyledItemDelegate ):
         editor.setReadOnly( attribute_meta.read_only )
 
         if handler_data:
-          if handler_data.get( 'completer' ):
-            word_list = QtCore.QStringList()
-            completer = handler_data['completer']
-            sorted_word_list = list( completer( world, attribute_meta ) )
-            sorted_word_list.sort( lambda x, y: cmp( x.lower(), y.lower() ) )
-            for word in sorted_word_list:
-                word_list.append( word )
-            completer = QtGui.QCompleter( word_list, editor )
-            completer.setCaseSensitivity( Qt.CaseInsensitive )
-            completer.setCompletionMode( QtGui.QCompleter.UnfilteredPopupCompletion )
-            editor.setCompleter( completer )
+            if handler_data.get( 'completer' ):
+                word_list = QtCore.QStringList()
+                completer = handler_data['completer']
+                sorted_word_list = list( completer( world, attribute_meta ) )
+                sorted_word_list.sort( lambda x, y: cmp( x.lower(), y.lower() ) )
+                for word in sorted_word_list:
+                    word_list.append( word )
+                completer = QtGui.QCompleter( word_list, editor )
+                completer.setCaseSensitivity( Qt.CaseInsensitive )
+                completer.setCompletionMode( QtGui.QCompleter.UnfilteredPopupCompletion )
+                editor.setCompleter( completer )
         self.editor = editor
         return editor
 
@@ -390,11 +385,11 @@ class PropertyListItemDelegate( QtGui.QStyledItemDelegate ):
         if element_meta is None:
             handler_data = None
             attribute_meta = None
-            print 'Warning: metawog is incomplet, no attribute description for', tree_meta, element.tag, property_name
+            print 'Warning: metawog is incomplete, no attribute description for', tree_meta, element.tag, property_name
         else:
             attribute_meta = element_meta.attributes_by_name.get( property_name )
             if attribute_meta is None:
-                print 'Warning: metawog is incomplet, no attribute description for', tree_meta, element.tag, property_name
+                print 'Warning: metawog is incomplete, no attribute description for', tree_meta, element.tag, property_name
                 handler_data = None
             else:
                 handler_data = ATTRIBUTE_NAME_EDITOR_HANDLERS.get( property_name )

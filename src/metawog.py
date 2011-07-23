@@ -22,40 +22,6 @@ WORLD_GLOBAL = describe_world( 'game',
 LEVELS_ORIGINAL = set( ['level_name_1'] )
 LEVELS_ORIGINAL_LOWER = [level_name.lower() for level_name in LEVELS_ORIGINAL]
 
-MATERIALS_ORIGINAL = ["ice", "rock", "grass", "fruit",
-                      "sticky", "verysticky", "kindasticky" , "slightlysticky",
-                      "slosh", "swamp", "throat", "machine", "IvyTower",
-                      "volcanicPercolatorSides", "ServerPlatform",
-                      ]
-
-PARTICLEEFFECTS_ORIGINAL = ['unlockfuse', 'unlockburst', 'snowStormFromPoint', 'splash', 'gooFallWide2', 'gooSplatter',
-                          'gooSplatterSubtle', 'mistUp',
-                          'thruster',
-                          'poisonBallBurn', 'poisonArmBurn', 'blackSmokeRising', 'bubblesRisingFromPoint',
-                          'bubblesRisingFromPointSlow', 'wogcSmoke', 'wogcSmokeIsh', 'whiteSmokeRising', 'sleepyZzz',
-                          'ish_sleepyZzz', 'ishr_sleepyZzz', 'whistle',
-                          'worldMap_FactorySmoke', 'BurningManSmoke', 'RobotHeadSmoke', 'distantSmokestack',
-                          'worldMap_FactorySmokeWhite', 'cigSmoke', 'gentleFactorySmoke', 'puffyFactorySmoke',
-                          'gentleFactorySmokeSepia', 'matchSmoke', 'gooTankStream', 'gooDrips', 'polFountain1', 'polFountain2',
-                          'gooMist', 'timebugFizz', 'flashes', 'tubeAirFlowUp', 'tubeAirFlowLeft', 'geomExplosionDust',
-                          'ish_FlingTrail', 'ishr_FlingTrail', 'ish_gpu_bitspew', 'ish_bitPop', 'beautypop',
-                          'flowerDust', 'OOS_gooDrips', 'OOS_gooGlobs', 'BallExplode_Fuse', 'BallExplode_Bomb', 'BallExplode_ISH',
-                          'ISH_undeleteFizz', 'ish_bubbles']
-
-AMBIENTEFFECTS_ORIGINAL = ['bigleaves1', 'smallleaves1', 'rainingleaves', 'rainingleavesRight', 'leavesRight',
-                         'snowSparse', 'snowDense', 'snowStorm', 'snowStormC3',
-                         'blackBallsRising', 'blackBallsRight', 'blackLeaves', 'blackLeavesHeavy',
-                         'rainStreaksHeavy', 'rainStreaksHeavyDistant', 'rainStreaksDown',
-                         'mistRight', 'breezeRight', 'breezeUpSlow', 'breezeDownSlow', 'breezeUp', 'mistUpSepia',
-                         'ish_BigLeaves', 'ish_SmallLeaves', 'ish_RainLeavesLeft', 'ish_RainLeavesUp', 'ish_RainLeavesUpRed',
-                         'ish_BreezeRight', 'ish_HeavyBreezeLeft', 'ish_HeavyBreezeUp', 'OOS_breezeRight']
-
-ANIMATIONS_ORIGINAL = ['blink', 'closer', 'discovery', 'hairblow',
-                     'happyTreeDance', 'islandhairblow', 'island_name_in', 'island_name_loop',
-                     'island_name_out', 'level_name_popup', 'ocdFlagWave', 'rot_1rps', 'treeBlow_leaf1',
-                     'treeBlow_leaf2', 'treeBlow_leaf3', 'treeBlow_trunk']
-ANIMATIONS_GLOBAL = []
-
 #@DaB
 FILE_ELEMENT = describe_element( 'file', attributes = [
                         string_attribute( 'name', mandatory = True ),
@@ -64,10 +30,6 @@ FOLDER_ELEMENT = describe_element( 'folder', attributes = [
         string_attribute( 'name', mandatory = True )], elements = [
         FILE_ELEMENT] )
 FOLDER_ELEMENT.add_elements( [FOLDER_ELEMENT] )
-
-LANGUAGE_ATTRIBUTES = []
-for lang in ['de', 'es', 'fr', 'it', 'nl', 'pl']:
-    LANGUAGE_ATTRIBUTES.append( string_attribute( lang, allow_empty = True, remove_empty = True ) )
 
 TREE_LEVEL_GAME.add_elements( [
     describe_element( 'level', exact_occurrence = 1, groups = 'game', attributes = [],
@@ -84,14 +46,14 @@ TREE_LEVEL_GAME.add_elements( [
                 real_attribute( 'traveltime', min_value = 0, default = 0, init = 3 , mandatory = True, tooltip = 'Time taken to travel TO this position\nIgnored on first POI' )
                 ] )
             ] ),
-        describe_element( 'music', groups = 'resource', max_occurrence = 1, attributes = [
-            reference_attribute( 'sound', map_to = 'id', display_id = True, mandatory = True,
-                reference_family = 'sound', reference_world = WORLD_LEVEL )
-            ] ),
-        describe_element( 'loopsound', groups = 'resource', max_occurrence = 1, attributes = [
-            reference_attribute( 'sound', map_to = 'id', display_id = True, mandatory = True,
-                reference_family = 'sound', reference_world = WORLD_LEVEL )
-            ] ),
+#        describe_element( 'music', groups = 'resource', max_occurrence = 1, attributes = [
+#            reference_attribute( 'sound', map_to = 'id', display_id = True, mandatory = True,
+#                reference_family = 'sound', reference_world = WORLD_LEVEL )
+#            ] ),
+#        describe_element( 'loopsound', groups = 'resource', max_occurrence = 1, attributes = [
+#            reference_attribute( 'sound', map_to = 'id', display_id = True, mandatory = True,
+#                reference_family = 'sound', reference_world = WORLD_LEVEL )
+#            ] ),
         describe_element( 'levelexit', groups = 'game', attributes = [
             string_attribute( 'id', display_id = True, allow_empty = True, remove_empty = True ),
             xy_attribute( 'pos', mandatory = True, init = '0,0' , position = True ),
@@ -212,9 +174,6 @@ TREE_LEVEL_SCENE.add_elements( [
             int_attribute ( 'tilecounty', allow_empty = True, remove_empty = True ),
             real_attribute( 'alpha', min_value = 0, max_value = 1, default = '1' , allow_empty = True, remove_empty = True ),
             rgb_attribute( 'colorize', init = '255,255,255', allow_empty = True, remove_empty = True ),
-            enum_attribute( 'anim', ANIMATIONS_GLOBAL, allow_empty = True, remove_empty = True ), # @todo Animation are filename in res/anim/*.bintl
-            real_attribute( 'animspeed', allow_empty = True, remove_empty = True ),
-            real_attribute( 'animdelay', min_value = 0.0001, default = '1', allow_empty = True, remove_empty = True ),
             identifier_attribute( 'id', allow_empty = True, remove_empty = True,
                 reference_family = 'image', reference_world = WORLD_LEVEL ),
             enum_attribute( 'context', ( 'screen' ), allow_empty = True, remove_empty = True ),
@@ -232,7 +191,7 @@ TREE_LEVEL_SCENE.add_elements( [
             xy_attribute( 'position', mandatory = True, init = '0,0', map_to = ( 'x', 'y' ) , position = True ),
             angle_degrees_attribute( 'rotation', mandatory = True, init = '0' ),
             real_attribute( 'scale', mandatory = True, init = '1' ),
-            reference_attribute( 'text', reference_family = 'TEXT_LEVELNAME_STR', reference_world = WORLD_LEVEL, mandatory = True ),
+            string_attribute( 'text', display_id = True, mandatory = True, init = '', allow_empty = False ),
             reference_attribute( 'font', reference_family = 'font', reference_world = WORLD_GLOBAL,
                                  mandatory = True ),
             enum_attribute( 'align', ( 'right', 'center', 'left' ), mandatory = True, init = 'center' ),
@@ -334,33 +293,6 @@ TREE_LEVEL_SCENE.add_elements( [
     ] )
 
 
-ELEMENT_PARTICLE = describe_element( 'particle', groups = 'image',
-                                     min_occurrence = 1, attributes = [
-    dxdy_attribute( 'acceleration', mandatory = True, init = '0,0.1' ),
-    bool_attribute( 'directed', mandatory = True, init = 'false' ),
-    reference_attribute( 'image', is_list = True, reference_family = 'image', reference_world = WORLD_GLOBAL,
-                         mandatory = True ),
-    angle_degrees_attribute( 'movedir', mandatory = True, init = '0' ),
-    angle_degrees_attribute( 'movedirvar', mandatory = True, init = '0' ), # ?
-    scale_attribute( 'scale', mandatory = True, init = '1,1' ),
-    dxdy_attribute( 'speed', mandatory = True, init = '1,1' ),
-    bool_attribute( 'additive' ),
-    real_attribute( 'dampening', min_value = 0, max_value = '1' ),
-    bool_attribute( 'fade' ),
-    real_attribute( 'finalscale', min_value = 0 ),
-    xy_attribute( 'lifespan' ), # @todo TYPE OPTIONAL INTERVAL (e.g. 1 or 1,2 are ok)?
-    xy_attribute( 'rotation' ), # @todo TYPE OPTIONAL INTERVAL (e.g. 1 or 1,2 are ok)?
-    xy_attribute( 'rotspeed' ) # @todo TYPE OPTIONAL INTERVAL (e.g. 1 or 1,2 are ok)?
-    ],
-    elements = [
-        describe_element( 'axialsinoffset', min_occurrence = 1, max_occurrence = 2, attributes = [
-            xy_attribute( 'amp', mandatory = True, init = '5,10' ), # @todo just 2 reals (interval)
-            enum_attribute( 'axis', ( 'x', 'y' ), mandatory = True, init = 'x' ),
-            xy_attribute( 'freq', mandatory = True, init = '5,10' ), # @todo just 2 reals (interval)
-            xy_attribute( 'phaseshift', mandatory = True, init = '0.2,0.4' ), # @todo just 2 reals (interval)
-        ] )
-    ] )
-
 TREE_CAMPAIGN.add_elements( [
         describe_element( 'campaign', exact_occurrence = 1, attributes = [
             reference_attribute( 'icon', reference_family = 'image', reference_world = WORLD_GLOBAL, mandatory = True ),
@@ -408,26 +340,6 @@ LEVEL_SCENE_TEMPLATE = """\
 	<line id="left" tag="" anchor="-500,300" normal="1,0" />
 	<line id="ground" anchor="0,20" normal="0,1" />
 </scene>"""
-
-XSL_ADD_TEMPLATE = """\
-<xsl:transform version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
-  <!-- Copy everything not matched by another rule -->
-  <xsl:template match="* | comment()">
-    <xsl:copy>
-      <xsl:copy-of select="@*"/>
-      <xsl:apply-templates/>
-    </xsl:copy>
-  </xsl:template>
-
-  <!-- Append -->
-  <xsl:template match="%(path)s">
-    <xsl:copy>
-      <xsl:copy-of select="@*"/>
-      <xsl:apply-templates/>
-      %(xml_data)s
-    </xsl:copy>
-  </xsl:template>
-</xsl:transform>"""
 
 if __name__ == "__main__":
     print_world_meta( WORLD_GLOBAL )

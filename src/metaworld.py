@@ -353,27 +353,6 @@ class NumericAttributeMeta( AttributeMeta ):
                 return self.value_type_error, ()
         return status
 
-class OCDAttributeMeta( AttributeMeta ):
-    def  is_valid_value( self, text, world ): #IGNORE:W0613
-        status = AttributeMeta.is_valid_value( self, text, world )
-        if status is None and text:
-            values = text.split( ',' )
-            nb_components = len( values )
-            if nb_components != 2:
-                message = 'Value must have %(nb)s components separated by a comma '
-                return message, {'nb': '2'}
-            valid_ocd = ['moves', 'time']
-            if values[0] not in valid_ocd:
-                message = 'First Value must be moves or time'
-                return message, {}
-            try:
-                value = int( str( values[1] ) )
-                if value <= 0:
-                    return 'Second Value must be >= %(v)s', {'v':'0'}
-            except ValueError:
-                return 'Second Value must be a number', ()
-        return status
-
 class ColorAttributeMeta( ComponentsAttributeMeta ):
     def __init__( self, name, attribute_type, components, **kwargs ):
         message = 'RGB color must be of the form "Red,Green,Blue" range [0-255].'
@@ -603,9 +582,6 @@ def string_attribute( name, **kwargs ):
 
 def text_attribute( name, **kwargs ):
     return AttributeMeta( name, TEXT_TYPE, **kwargs )
-
-def ocd_attribute( name, **kwargs ):
-    return OCDAttributeMeta( name, STRING_TYPE, **kwargs )
 
 def angle_degrees_attribute( name, min_value = None, max_value = None, **kwargs ):
     return NumericAttributeMeta( name, ANGLE_DEGREES_TYPE, float,

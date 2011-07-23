@@ -130,6 +130,7 @@ class AddItemFactory( object ):
                     offsetx, offsety = root.get_native( 'center' )
                 else:
                     print "Unknown Parent in AddItemFactory", self.parent
+                    return
                 rootmbt = root.meta.find_immediate_child_by_tag( self.itemtag )
                 if rootmbt is not None:
                     for attribute_meta in rootmbt.attributes:
@@ -265,7 +266,6 @@ class GameModel( QtCore.QObject ):
             self._amy_dir = os.path.split( amy_path )[0]
 
         metaworld.AMY_PATH = self._amy_dir
-        self._properties_dir = os.path.join( self._amy_dir, u'properties' )
         self._res_dir = os.path.join( self._amy_dir, u'Data' )
 
         # On MAC
@@ -1285,16 +1285,6 @@ class MainWindow( QtGui.QMainWindow ):
                 except ( IOError, OSError ), e:
                     QtGui.QMessageBox.warning( self, self.tr( "Failed to create the new cloned level! (" + APP_NAME_PROPER + " " + CURRENT_VERSION + ")" ), unicode( e ) )
 
-    def updateResources( self ):
-        """Adds the required resource in the level based on existing file."""
-        model = self.getCurrentModel()
-        if model:
-            model.game_model.pixmap_cache.refresh()
-            added_resource_elements = model.updateResources()
-            if added_resource_elements:
-                model.set_selection( added_resource_elements )
-            model._view.refreshFromModel()
-
     def cleanResources( self ):
         model = self.getCurrentModel()
         if model:
@@ -1605,8 +1595,6 @@ class MainWindow( QtGui.QMainWindow ):
         #Resources
         self.importResourcesAction.setEnabled ( can_import )
         self.cleanResourcesAction.setEnabled ( can_import )
-        self.updateResourcesAction.setEnabled( can_import )
-        self.additem_actions['text'].setEnabled ( can_import )
 
         self.addItemToolBar.setEnabled( can_select )
         self.showhideToolBar.setEnabled( is_selected )
@@ -1673,13 +1661,6 @@ class MainWindow( QtGui.QMainWindow ):
             text = "&Save and play Level...",
             shortcut = "Ctrl+P",
             status_tip = "Save and play the selected level" )
-
-        self.updateResourcesAction = qthelper.action( self,
-            handler = self.updateResources,
-            icon = ":/images/update-level-resources.png",
-            text = "&Update level resources...",
-            shortcut = "Ctrl+U",
-            status_tip = "Adds automatically all .png & .ogg files in the level directory to the level resources" )
 
         self.cleanResourcesAction = qthelper.action( self,
             handler = self.cleanResources,
@@ -1846,11 +1827,6 @@ class MainWindow( QtGui.QMainWindow ):
                     icon = ":/images/particles.png",
                     text = "&Add Particles" ),
 
-        'text':     qthelper.action( self,
-                    handler = AddItemFactory( self, 'text', 'string', {} ),
-                    icon = ":/images/text.png",
-                    text = "&Add Text Resource" ),
-
         'label':    qthelper.action( self,
                     handler = AddItemFactory( self, 'scene', 'label', {} ),
                     icon = ":/images/label.png",
@@ -1895,9 +1871,7 @@ class MainWindow( QtGui.QMainWindow ):
 
         self.menuBar().addSeparator()
         self.resourceMenu = self.menuBar().addMenu( self.tr( "&Resources" ) )
-        self.resourceMenu.addAction( self.updateResourcesAction )
         self.resourceMenu.addAction( self.importResourcesAction )
-        self.resourceMenu.addAction( self.additem_actions['text'] )
         self.resourceMenu.addSeparator()
         self.resourceMenu.addAction( self.cleanResourcesAction )
         self.resourceMenu.addSeparator()
@@ -1934,9 +1908,7 @@ class MainWindow( QtGui.QMainWindow ):
 
         self.resourceToolBar = self.addToolBar( self.tr( "Resources" ) )
         self.resourceToolBar.setObjectName( "resourceToolbar" )
-        self.resourceToolBar.addAction( self.updateResourcesAction )
         self.resourceToolBar.addAction( self.importResourcesAction )
-        self.resourceToolBar.addAction( self.additem_actions['text'] )
         self.resourceToolBar.addSeparator()
         self.resourceToolBar.addAction( self.cleanResourcesAction )
         self.resourceToolBar.addSeparator()
