@@ -506,6 +506,7 @@ class PathAttributeMeta( AttributeMeta ):
     def __init__( self, name, strip_extension = None, **kwargs ):
         AttributeMeta.__init__( self, name, PATH_TYPE, **kwargs )
         self.strip_extension = strip_extension
+
     #@DaB - Converts \ to /  and // into /
     def set( self, element, value ):
         if ON_PLATFORM == PLATFORM_WIN:
@@ -518,6 +519,10 @@ class PathAttributeMeta( AttributeMeta ):
 
         return element.set( self.name, self._clean_path( value ) )
 
+    def full_path( self, value ):
+        filename = os.path.normpath( os.path.join( AMY_PATH, self._clean_path( value ) + self.strip_extension ) )
+        return filename if os.path.isfile( filename ) else ''
+
     def _clean_path( self, path ):
         path = path.replace( '\\', '/' ).replace( '//', '/' )
         basename, extension = os.path.splitext( path )
@@ -526,7 +531,7 @@ class PathAttributeMeta( AttributeMeta ):
         else:
             return path
 
-    def  is_valid_value( self, text, world ): #IGNORE:W0613
+    def is_valid_value( self, text, world ): #IGNORE:W0613
         status = AttributeMeta.is_valid_value( self, text, world )
         if status is None and text:
             filename = os.path.normpath( os.path.join( AMY_PATH, self._clean_path( text ) + self.strip_extension ) )
@@ -1382,35 +1387,12 @@ class World( WorldsOwner ):
 
         xml_data = file( tree_filename, 'rb' ).read()
         new_tree = self.universe.make_unattached_tree_from_xml( tree_meta, xml_data )
-        if new_tree.root.tag == 'ResourceManifest':
-            self._processSetDefaults( new_tree )
 
         old_tree = self.find_tree( tree_meta )
         old_tree.set_root( new_tree.root )
         old_tree.setFilename( tree_filename )
         #bit hacky using the tag but...
         #trying to use meta type cause nasty recursive python import problems with metawog
-
-    def _processSetDefaults( self, resource_tree ):
-        #Unwraps the SetDefaults "processing instruction"
-        #updates all paths and ids to full
-
-        for resource_element in resource_tree.root.findall( './/Resources' ):
-          idprefix = ''
-          pathprefix = ''
-          for element in resource_element:
-            if element.tag == 'SetDefaults':
-                idprefix = element.get( 'idprefix', '' )
-                pathprefix = element.get( 'path' ).strip().replace( "\\", "/" )
-                if not pathprefix.endswith( '/' ):
-                      pathprefix += '/'
-                pathprefix = pathprefix.replace( "./", "" )
-
-                element.set( 'idprefix', "" )
-                element.set( 'path', "./" )
-            else:
-                element.set( 'path', pathprefix + element.get( 'path' ).replace( '\\', '/' ) )
-                element.set( 'id', idprefix + element.get( 'id' ) )
 
     def list_identifiers( self, family ):
         """Returns a list all identifiers for the specified family in the specified world and its parent worlds."""

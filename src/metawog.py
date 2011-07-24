@@ -3,7 +3,6 @@ from metaworld import * #@UnusedWildImport
 
 # Declares all file types
 TREE_CAMPAIGN = describe_tree( 'campaign' )
-TREE_GLOBAL_RESOURCE = describe_tree( 'game.resources' )
 
 TREE_LEVEL_GAME = describe_tree( 'level.game' )
 TREE_LEVEL_SCENE = describe_tree( 'level.scene' )
@@ -20,9 +19,7 @@ WORLD_CAMPAIGN = describe_world( 'campaign', trees_meta = [
     ] )
 WORLD_GLOBAL = describe_world( 'game',
                                child_worlds = [ WORLD_CAMPAIGN, WORLD_LEVEL ],
-                               trees_meta = [
-    TREE_GLOBAL_RESOURCE,
-    ] )
+                               trees_meta = [] )
 
 LEVELS_ORIGINAL = set( ['level_name_1'] )
 LEVELS_ORIGINAL_LOWER = [level_name.lower() for level_name in LEVELS_ORIGINAL]
@@ -67,42 +64,16 @@ TREE_LEVEL_GAME.add_elements( [
         ] )
     ] )
 
-def _describe_resource_file( tree_meta, resource_world, is_global = False ):
-    if is_global:
-        resources_element = describe_element( 'Resources', min_occurrence = 1 )
-    else:
-        resources_element = describe_element( 'Resources', exact_occurrence = 1, read_only = True )
-    resources_element.add_attributes( [
-        identifier_attribute( 'id', mandatory = True, read_only = True, tooltip = "Resource Id for this level\nMust be scene_{Levelname} (read only)",
-                              reference_family = 'resources',
-                              reference_world = resource_world ),
-        ] )
+def _describe_resource_file( tree_meta, resource_world ):
+    resources_element = describe_element( 'Resources', exact_occurrence = 1, read_only = True )
     resources_element.add_elements( [
         describe_element( 'Image', groups = 'image', attributes = [
-            identifier_attribute( 'id', mandatory = True, reference_family = 'image',
-                display_id = True, reference_world = resource_world ),
-            path_attribute( 'path', strip_extension = '.png', mandatory = True )
+            path_attribute( 'path', strip_extension = '.png', mandatory = True, display_id = True )
             ] ),
         describe_element( 'Sound', groups = 'resource', attributes = [
-            identifier_attribute( 'id', mandatory = True, reference_family = 'sound',
-                display_id = True, reference_world = resource_world ),
-            path_attribute( 'path', strip_extension = '.ogg', mandatory = True )
+            path_attribute( 'path', strip_extension = '.ogg', mandatory = True, display_id = True )
             ] ),
-        describe_element( 'SetDefaults', read_only = True, groups = 'resource',
-                          attributes = [
-            string_attribute( 'path', mandatory = True, read_only = True ),
-            string_attribute( 'idprefix', mandatory = True, allow_empty = True, read_only = True )
-            ] )
         ] )
-    if is_global:
-        resources_element.add_elements( [
-            describe_element( 'font', groups = 'resource', attributes = [
-                identifier_attribute( 'id', mandatory = True, reference_family = 'font',
-                    display_id = True, reference_world = resource_world ),
-                path_attribute( 'path', strip_extension = '.png', mandatory = True ) # @todo also check existence of .txt
-                ] )
-        ] )
-
     tree_meta.add_elements( [
         # DUPLICATED FROM GLOBAL SCOPE => makes FACTORY function ?
         describe_element( 'ResourceManifest', exact_occurrence = 1, groups = 'resource',
@@ -126,22 +97,20 @@ ELEMENT_BUTTON = describe_element( 'button', groups = 'image', attributes = [
         scale_attribute( 'scale', init = '1,1', min_value = 0.0000001, mandatory = True,
                          map_to = ( 'scalex', 'scaley' ) ),
         rgb_attribute( 'colorize', mandatory = True, init = '255,255,255' ),
-        reference_attribute( 'up', reference_family = 'image', reference_world = WORLD_LEVEL,
-                             init = '', mandatory = True ),
-        reference_attribute( 'over', reference_family = 'image', reference_world = WORLD_LEVEL,
-                             init = '', mandatory = True ),
+        path_attribute( 'up_image', strip_extension = '.png', mandatory = True ),
+        path_attribute( 'over_image', strip_extension = '.png', mandatory = True ),
         enum_attribute( 'context', ( 'screen' ) ),
-        reference_attribute( 'disabled', reference_family = 'image', reference_world = WORLD_LEVEL ),
+        path_attribute( 'disabled_image', strip_extension = '.png', mandatory = True ),
         reference_attribute( 'font', reference_family = 'font', reference_world = WORLD_GLOBAL ),
         string_attribute( 'onclick' ),
         string_attribute( 'onmouseenter' ),
         string_attribute( 'onmouseexit' ),
         bool_attribute( 'overlay' ),
         bool_attribute( 'screenspace' ),
-        reference_attribute( 'text', reference_family = 'text', reference_world = WORLD_GLOBAL ),
+        string_attribute( 'text', display_id = True ),
         argb_attribute( 'textcolorup' ),
         argb_attribute( 'textcolorupover' ),
-        reference_attribute( 'tooltip', reference_family = 'text', reference_world = WORLD_GLOBAL )
+        text_attribute( 'tooltip', display_id = True )
         ] )
 
 ELEMENT_RECTANGLE = describe_element( 'rectangle', groups = 'rect', attributes = [
@@ -155,8 +124,7 @@ ELEMENT_RECTANGLE = describe_element( 'rectangle', groups = 'rect', attributes =
     reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
                           init = '' , allow_empty = True, remove_empty = True ),
     enum_attribute( 'tag', _TAG_VALUES, is_list = True, allow_empty = True, remove_empty = True ),
-    reference_attribute( 'image', reference_family = 'image', reference_world = WORLD_LEVEL,
-                         init = '', allow_empty = True, remove_empty = True ),
+    path_attribute( 'image', strip_extension = '.png', allow_empty = True, remove_empty = True ),
     xy_attribute( 'imagepos', allow_empty = True, remove_empty = True ),
     angle_degrees_attribute( 'imagerot', allow_empty = True, remove_empty = True ),
     scale_attribute( 'imagescale', allow_empty = True, remove_empty = True ),
@@ -186,8 +154,7 @@ ELEMENT_CIRCLE = describe_element( 'circle', groups = 'circle', attributes = [
     reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
                           init = '' , allow_empty = True, remove_empty = True ),
     enum_attribute( 'tag', _TAG_VALUES, is_list = True, allow_empty = True, remove_empty = True ),
-    reference_attribute( 'image', reference_family = 'image', reference_world = WORLD_LEVEL,
-                         init = '', allow_empty = True, remove_empty = True ),
+    path_attribute( 'image', strip_extension = '.png', allow_empty = True, remove_empty = True ),
     xy_attribute( 'imagepos', allow_empty = True, remove_empty = True ),
     angle_degrees_attribute( 'imagerot', allow_empty = True, remove_empty = True ),
     scale_attribute( 'imagescale', allow_empty = True, remove_empty = True ),
@@ -212,9 +179,9 @@ TREE_LEVEL_SCENE.add_elements( [
         ],
         elements = [
         describe_element( 'SceneLayer', groups = 'image', attributes = [
-            string_attribute( 'name', display_id = True ),
-            reference_attribute( 'image', reference_family = 'image', reference_world = WORLD_LEVEL,
-                                 init = '', mandatory = True ),
+            identifier_attribute( 'id', allow_empty = True, display_id = True, remove_empty = True,
+                reference_family = 'image', reference_world = WORLD_LEVEL ),
+            path_attribute( 'image', strip_extension = '.png', mandatory = True ),
             xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ( 'x', 'y' ) , position = True ),
             scale_attribute( 'scale', default = '1,1', min_value = 0.000001, map_to = ( 'scalex', 'scaley' ), allow_empty = True, remove_empty = True ),
             angle_degrees_attribute( 'rotation', default = '0', allow_empty = True, remove_empty = True ),
@@ -225,9 +192,6 @@ TREE_LEVEL_SCENE.add_elements( [
             int_attribute ( 'tilecounty', allow_empty = True, remove_empty = True ),
             real_attribute( 'alpha', min_value = 0, max_value = 1, default = '1' , allow_empty = True, remove_empty = True ),
             rgb_attribute( 'colorize', init = '255,255,255', allow_empty = True, remove_empty = True ),
-            identifier_attribute( 'id', allow_empty = True, remove_empty = True,
-                reference_family = 'image', reference_world = WORLD_LEVEL ),
-            enum_attribute( 'context', ( 'screen' ), allow_empty = True, remove_empty = True ),
             ] ),
         ELEMENT_BUTTON,
         describe_element( 'buttongroup', groups = 'image', attributes = [
@@ -262,7 +226,7 @@ TREE_LEVEL_SCENE.add_elements( [
             reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
                                  init = '' , allow_empty = True, remove_empty = True ),
             enum_attribute( 'tag', _TAG_VALUES, is_list = True, allow_empty = True, remove_empty = True ),
-            reference_attribute( 'image', reference_family = 'image', reference_world = WORLD_LEVEL, allow_empty = True, remove_empty = True ),
+            path_attribute( 'image', strip_extension = '.png', allow_empty = True, remove_empty = True ),
             xy_attribute( 'imagepos', allow_empty = True, remove_empty = True ),
             angle_degrees_attribute( 'imagerot', allow_empty = True, remove_empty = True ),
             scale_attribute( 'imagescale', allow_empty = True, remove_empty = True ),
@@ -346,7 +310,7 @@ TREE_LEVEL_SCENE.add_elements( [
 
 TREE_CAMPAIGN.add_elements( [
         describe_element( 'campaign', exact_occurrence = 1, attributes = [
-            reference_attribute( 'icon', reference_family = 'image', reference_world = WORLD_GLOBAL, mandatory = True ),
+            path_attribute( 'icon', strip_extension = '.png', mandatory = True ),
             string_attribute( 'map', mandatory = True, init = 'campaign1' ),
             string_attribute( 'name', display_id = True, mandatory = True,
                 init = 'Tutorial' )
@@ -394,8 +358,7 @@ LEVEL_SCENE_TEMPLATE = """\
 
 LEVEL_RESOURCE_TEMPLATE = """\
 <ResourceManifest>
-	<Resources id="scene_NewTemplate" >
-		<SetDefaults path="./" idprefix="" />
+	<Resources>
 	</Resources>
 </ResourceManifest>
 """

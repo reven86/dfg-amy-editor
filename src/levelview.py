@@ -2331,7 +2331,7 @@ class LevelGraphicView( QtGui.QGraphicsView ):
             alpha = 0.5
 
         if parent.get( 'aspect' ) == 'widescreen':
-            sizex = 1060 / zoom
+            sizex = 1066 / zoom
             sizey = 600 / zoom
             pen = QtGui.QPen( QtGui.QColor( 32, 255, 128 ) )
             scalex = 10

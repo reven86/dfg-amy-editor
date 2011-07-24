@@ -183,27 +183,25 @@ class PixmapCache( object ):
             self._on_element_updated,
             self._on_element_about_to_be_removed )
 
-    def get_pixmap( self, image_element ):
-        """Returns a pixmap corresponding to the image_element.
+    def get_pixmap( self, image_id ):
+        """Returns a pixmap corresponding to the image id (actually image path).
            The pixmap is loaded if not present in the cache.
            None is returned on failure to load the pixmap.
         """
-        assert image_element.tag == 'Image'
-        image_path = image_element.get( 'path', '' )
+        image_path = image_id
         pixmap = self._pixmaps_by_path.get( image_path )
         if pixmap:
             return pixmap
         path = os.path.join( self._amy_dir, image_path + '.png' )
         if not os.path.isfile( path ):
-            print 'Warning: invalid image path for "%(id)s": "%(path)s"' % \
-                image_element.attributes
+            print 'Warning: invalid image path "%(path)s"' % { 'path': image_path }
         else:
-            return self._addToCache( path, image_element.attributes )
+            return self._addToCache( path, image_id )
         return None
 
-    def _addToCache( self, path, image_attrib ):
+    def _addToCache( self, path, image_id ):
             pixmap = QtGui.QPixmap()
-            image_path = image_attrib['path']
+            image_path = image_id
             if pixmap.load( path ):
                 #print "plain loaded:",path
                 self._pixmaps_by_path[image_path] = pixmap
@@ -220,7 +218,7 @@ class PixmapCache( object ):
                     if image_path in self._pixmaps_by_path.keys():
                         del self._pixmaps_by_path[image_path]
                         del self._filedate_by_path[image_path]
-                    print 'Warning: failed to load image "%(id)s": "%(path)s"' % image_attrib
+                    print 'Warning: failed to load image "%(path)s"' % { 'path' : image_path }
             return None
 
     def refresh( self ):
@@ -325,10 +323,6 @@ class GameModel( QtCore.QObject ):
         window.statusBar().showMessage( self.tr( "Game Model : Complete" ) )
 
     @property
-    def _resources_tree( self ):
-        return self.global_world.find_tree( metawog.TREE_GLOBAL_RESOURCE )
-
-    @property
     def is_dirty( self ):
         worlds = self.modified_worlds_to_check
         self.modified_worlds_to_check = set()
@@ -426,52 +420,6 @@ class GameModel( QtCore.QObject ):
         files.sort( key = unicode.lower )
         return files
 
-    def _processSetDefaults( self, resource_tree ):
-        #Unwraps the SetDefaults "processing instruction"
-        #updates all paths and ids to full
-        resource_element = resource_tree.root.find( 'Resources' )
-        idprefix = ''
-        pathprefix = ''
-        for element in resource_element:
-            if element.tag == 'SetDefaults':
-                idprefix = element.get( 'idprefix', '' )
-                pathprefix = element.get( 'path' ).strip().replace( "\\", "/" )
-                if not pathprefix.endswith( '/' ):
-                    pathprefix += '/'
-                pathprefix = pathprefix.replace( "./", "" )
-
-                element.set( 'idprefix', "" )
-                element.set( 'path', "./" )
-            else:
-                element.set( 'path', pathprefix + element.get( 'path' ).replace( '\\', '/' ) )
-                element.set( 'id', idprefix + element.get( 'id' ) )
-
-    def _initializeGlobalReferences( self ):
-        """Initialize global effects, materials, resources and texts references."""
-        self._expandResourceDefaultsIdPrefixAndPath()
-
-    def _expandResourceDefaultsIdPrefixAndPath( self ):
-        """Expands the default idprefix and path that are used as short-cut in the XML file."""
-        # Notes: there is an invalid global resource:
-        # IMAGE_GLOBAL_ISLAND_6_ICON res/images/islandicon_6
-        resource_manifest = self._resources_tree.root
-        default_idprefix = ''
-        default_path = ''
-        for resources in resource_manifest:
-            for element in resources:
-                if element.tag == 'SetDefaults':
-                    default_path = element.get( 'path', '' ).strip()
-                    if not default_path.endswith( '/' ):
-                        default_path += '/'
-                    default_path = default_path.replace( "./", "" )
-                    default_idprefix = element.get( 'idprefix', '' )
-                elif element.tag in ( 'Image', 'Sound', 'font' ):
-                    new_id = default_idprefix + element.get( 'id' )
-                    new_path = default_path + element.get( 'path' )
-                    element.set( 'id', new_id )
-                    element.set( 'path', new_path )
-                self._readonly_resources.add( element )
-
     @property
     def names( self ):
         return self._levels
@@ -489,10 +437,9 @@ class GameModel( QtCore.QObject ):
                             dir, name + '.level' )
             self._loadUnPackedTree( world, metawog.TREE_LEVEL_SCENE,
                             dir, name + '.scene' )
-
             self._loadUnPackedTree( world, metawog.TREE_LEVEL_RESOURCE,
                             dir, name + '.resrc' )
-            self._processSetDefaults( world.find_tree( metawog.TREE_LEVEL_RESOURCE ) )
+
             if world.isReadOnly:
                 world.clean_dirty_tracker()
             world.clear_undo_queue()
@@ -578,19 +525,9 @@ class GameModel( QtCore.QObject ):
         new_res_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_RESOURCE,
                                                                         model.resource_root.tree.to_xml() )
         #change stuff
-        for resource_element in new_res_tree.root.findall( './/Resources' ):
-            resource_element.set( 'id', 'scene_%s' % new_name )
-
-        for resource_element in new_res_tree.root.findall( './/Image' ):
-            resid = resource_element.get( 'id' )
-            resource_element.set( 'id', resid.replace( '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_', 1 ) )
-
-        for resource_element in new_res_tree.root.findall( './/Sound' ):
-            resid = resource_element.get( 'id' )
-            resource_element.set( 'id', resid.replace( '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_', 1 ) )
-
-        self._res_swap( new_level_tree.root, '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_' )
-        self._res_swap( new_scene_tree.root, '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_' )
+        #TODO: copy level related resources to new folder and change their paths in scene
+#        self._res_swap( new_level_tree.root, '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_' )
+#        self._res_swap( new_scene_tree.root, '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_' )
 
         #save out new trees
         self._saveUnPackedTree( dir, new_name + '.level', new_level_tree )
@@ -601,24 +538,16 @@ class GameModel( QtCore.QObject ):
         self._levels.sort( key = unicode.lower )
         self.__is_dirty = True
 
-    def _res_swap( self, element, find, replace ):
-        for attribute in element.meta.attributes:
-            if attribute.type == metaworld.REFERENCE_TYPE:
-                if attribute.reference_family in ['image', 'sound', 'TEXT_LEVELNAME_STR']:
-                    value = element.get( attribute.name, None )
-                    if value is not None:
-                        rv = ','.join( [v.replace( find, replace, 1 ) for v in value.split( ',' )] )
-                        element.set( attribute.name, rv )
-        for child in element.getchildren():
-            self._res_swap( child, find, replace )
-
-    def _output_xsl( self, template, params, directory, filename ):
-        if not os.path.isdir( directory ):
-            os.makedirs( directory )
-        output_path = os.path.join( directory, filename )
-        xsl = template % params
-        output_data = '<!-- ' + CREATED_BY + ' -->\n' + xsl.replace( '><', '>\n<' )
-        file( output_path, 'wb' ).write( output_data )
+#    def _res_swap( self, element, find, replace ):
+#        for attribute in element.meta.attributes:
+#            if attribute.type == metaworld.REFERENCE_TYPE:
+#                if attribute.reference_family in ['image', 'sound', 'TEXT_LEVELNAME_STR']:
+#                    value = element.get( attribute.name, None )
+#                    if value is not None:
+#                        rv = ','.join( [v.replace( find, replace, 1 ) for v in value.split( ',' )] )
+#                        element.set( attribute.name, rv )
+#        for child in element.getchildren():
+#            self._res_swap( child, find, replace )
 
     def _isOriginalFile( self, filename, extension ):
 
@@ -1171,11 +1100,8 @@ class LevelWorld( ThingWorld ):
         self.__dirty_tracker.clean()
 
     def getImagePixmap( self, image_id ):
-        image_element = self.resolve_reference( metawog.WORLD_LEVEL, 'image', image_id )
-        pixmap = None
-        if image_element is not None:
-            pixmap = self.game_model.pixmap_cache.get_pixmap( image_element )
-        else:
+        pixmap = self.game_model.pixmap_cache.get_pixmap( image_id )
+        if pixmap is None:
             print 'Warning: invalid image reference:|', image_id, '|'
         return pixmap
 
@@ -1228,7 +1154,7 @@ class LevelWorld( ThingWorld ):
         """Import Resources direct from files into the level
            If files are located outside the Wog/res folder it copies them
            png -> Data/levels/{name}/shaders
-           ogg -> Data/levels/{name}/sounds  for compatability with Soultaker's Volume control add-in
+           ogg -> Data/levels/{name}/sounds
         """
         self._importError = None
         res_dir = os.path.normpath( res_dir )

@@ -7,6 +7,7 @@ import metaworld
 import metaworldui
 import textedit_ui
 import newlistdialog_ui
+import os.path
 
 class MetaWorldPropertyListModel( QtGui.QStandardItemModel ):
     def __init__( self, *args ):
@@ -209,6 +210,10 @@ class complete_list( QtGui.QDialog ):
         self.ui.setupUi( self, word_list )
         self.setWindowTitle( dialogtitle )
 
+    def setData( self, data ):
+        world, tree_meta, element, property_name, attribute_meta, handler_data = data
+        self.setText( QtCore.QString( element.get( property_name, u'' ) ) )
+
     def setText( self, text ):
         if text != '':
             tags = str( text ).split( "," )
@@ -244,6 +249,10 @@ class textEditorDialog( QtGui.QDialog ):
         self.ui = textedit_ui.Ui_TextEditDialog()
         self.ui.setupUi( self )
 
+    def setData( self, data ):
+        world, tree_meta, element, property_name, attribute_meta, handler_data = data
+        self.setText( QtCore.QString( element.get( property_name, u'' ) ) )
+
     def setText( self, text ):
         self.ui.textEdit.setText( text.replace( '|', '\n' ) )
         self.ui.textEdit.setFocus()
@@ -274,21 +283,62 @@ class textEditorDialog( QtGui.QDialog ):
         tc.movePosition( 11 )
         self.ui.textEdit.setTextCursor( tc )
 
-# A dictionnary of specific handler for metawog attribute types.
+class pathEditorDialog( QtGui.QWidget ):
+    def __init__( self ):
+        QtGui.QWidget.__init__( self )
+        self._file = ''
+
+    def setData( self, data ):
+        self._data = data
+
+    def text( self ):
+        return self._file
+
+    def hideEvent( self, event ):
+        pass
+
+    def showEvent( self, event ):
+        world, tree_meta, element, property_name, attribute_meta, handler_data = self._data
+
+        dir = metaworld.AMY_PATH
+
+        settings = QtCore.QSettings()
+        sg = settings.value( "PathEditDialog/dir" )
+        if sg.isValid():
+            dir = sg.toString()
+
+        self._file = attribute_meta.full_path( element.get( property_name ) )
+        _file = unicode( QtGui.QFileDialog.getOpenFileName( self.parent(),
+                    self.tr( 'Select the ' + element.meta.tag + ' to import...' ),
+                    dir,
+                    self.tr( element.meta.tag + ' (*' + attribute_meta.strip_extension + ')' ) ) )
+
+        if os.path.isfile( _file ):
+            settings = QtCore.QSettings()
+            settings.beginGroup( "PathEditDialog" )
+            settings.setValue( "dir", os.path.dirname( _file ) )
+
+            if len( _file ) > 0:
+                self._file = _file
+
+        #TODO: this is hack, much better way is to now show widget at all
+        self.setVisible( False )
+
+
+# A dictionary of specific handler for metawog attribute types.
 # completer: called when the user starts editing the property
 #           a callable ( world, attribute_meta ) returning a list of valid text value.
 ATTRIBUTE_TYPE_EDITOR_HANDLERS = {
     metaworld.BOOLEAN_TYPE: { 'completer': complete_enumerated_property },
     metaworld.ENUMERATED_TYPE: { 'completer': complete_enumerated_property },
     metaworld.REFERENCE_TYPE: { 'completer': complete_global_reference_property },
-    metaworld.TEXT_TYPE: {'editor': textEditorDialog }
+    metaworld.TEXT_TYPE: {'editor': textEditorDialog },
+    metaworld.PATH_TYPE: {'editor': pathEditorDialog }
     }
 
 ATTRIBUTE_NAME_EDITOR_HANDLERS = {
     'tag': { 'editor': complete_list,
              'listdialog': complete_enumerated_property  },
-    'image': { 'completer': complete_world_reference_property }  ,
-    'sound': { 'completer': complete_world_reference_property }
     }
 
 
@@ -400,13 +450,14 @@ class PropertyListItemDelegate( QtGui.QStyledItemDelegate ):
 
     def setEditorData( self, editor, index ):
         """Sets the data to be displayed and edited by the editor from the data model item specified by the model index."""
-       # print "in seteditordata editor=",editor
-        world, tree_meta, element, property_name, attribute_meta, handler_data = self._getHandlerData( index )
-        editor.setText( QtCore.QString( element.get( property_name, u'' ) ) )
-#        QtGui.QStyledItemDelegate.setEditorData( self, editor, index )
+        # print "in seteditordata editor=",editor
+        if hasattr( editor, 'setData' ):
+            editor.setData( self._getHandlerData( index ) )
+        else:
+            QtGui.QStyledItemDelegate.setEditorData( self, editor, index )
 
     def setModelData( self, editor, model, index ):
-        """Gets data drom the editor widget and stores it in the specified model at the item index.
+        """Gets data from the editor widget and stores it in the specified model at the item index.
            setModelData() is called by either.
            - QAbstractItemView::commitData, which itself may be called by the signal QAbstractItemDelegate::commitData
              which can be emitted by:
@@ -417,25 +468,23 @@ class PropertyListItemDelegate( QtGui.QStyledItemDelegate ):
            Conclusion: we set the data into the model, only if they are valid as QLineEdit validation may have
            been by-passed on focus change or current item change.
         """
-       # print "in setmodeldata editor=",editor
+        # print "in setmodeldata editor=",editor
         world, tree_meta, element, property_name, attribute_meta, handler_data = self._getHandlerData( index )
         if isinstance( editor, QtGui.QLineEdit ):
             if not editor.hasAcceptableInput(): # text is invalid, discard it
                 return
-            new_value = unicode( editor.text() )
-        else:
-            new_value = unicode( editor.text() )
+        new_value = unicode( editor.text() )
 
         # Update the element attribute. The model will be updated
         # by the element update event.
         if len( new_value ) == 0 and ( ( attribute_meta.mandatory and not attribute_meta.allow_empty ) or attribute_meta.remove_empty ):
             element.unset( property_name )
         else:
-			#@DaB - Route input through Atrribute_Meta rather than direct to element
+            #@DaB - Route input through Atrribute_Meta rather than direct to element
             # this allows the attributes to massage / process the input as they need
-			# rather than just dumping a valid input straight into the level data
+            # rather than just dumping a valid input straight into the level data
 
-			#element.set( property_name, new_value )
+            #element.set( property_name, new_value )
 
             attribute_meta.set( element, new_value )
 
