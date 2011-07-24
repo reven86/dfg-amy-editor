@@ -507,7 +507,7 @@ class GameModel( QtCore.QObject ):
             os.mkdir( os.path.join( dir, 'animations' ) )
             os.mkdir( os.path.join( dir, 'fx' ) )
             os.mkdir( os.path.join( dir, 'scripts' ) )
-            os.mkdir( os.path.join( dir, 'shaders' ) )
+            os.mkdir( os.path.join( dir, 'textures' ) )
             os.mkdir( os.path.join( dir, 'sounds' ) )
 
         #new cloning method... #2
@@ -587,7 +587,7 @@ class GameModel( QtCore.QObject ):
             os.mkdir( os.path.join( dir_path, 'animations' ) )
             os.mkdir( os.path.join( dir_path, 'fx' ) )
             os.mkdir( os.path.join( dir_path, 'scripts' ) )
-            os.mkdir( os.path.join( dir_path, 'shaders' ) )
+            os.mkdir( os.path.join( dir_path, 'textures' ) )
             os.mkdir( os.path.join( dir_path, 'sounds' ) )
 
 
@@ -894,55 +894,43 @@ class LevelWorld( ThingWorld ):
     def _get_all_resource_ids( self, root, tag ):
         resource_ids = set()
         for resource in root.findall( './/' + tag ):
-            resource_ids.add( resource.get( 'id' ) )
+            resource_ids.add( resource.get( 'path' ) + resource.attribute_meta( 'path' ).strip_extension )
         return resource_ids
 
     def _get_unused_resources( self ):
         used = self._get_used_resources()
-        resources = {}
-        resources['image'] = self._get_all_resource_ids( self.resource_root, "Image" )
-        resources['sound'] = self._get_all_resource_ids( self.resource_root, "Sound" )
-        unused = {'image':set(), 'sound':set(), 'TEXT_LEVELNAME_STR':set()}
-        for restype in unused.keys():
-            unused[restype] = resources[restype] - used[restype]
+        resources = self._get_all_resource_ids( self.resource_root, "Image" ) | self._get_all_resource_ids( self.resource_root, "Sound" )
+        unused = resources - used
         return unused
 
-    def _remove_unused_resources( self, unused ):
+    def _remove_unused_resources( self, element, unused ):
         self.suspend_undo()
-        for family, unusedset in unused.items():
-            for unusedid in unusedset:
-                element = self.resolve_reference( metawog.WORLD_LEVEL, family, unusedid )
-                if element is not None:
-                    element.parent.remove( element )
+        to_remove = []
+
+        def _recursive_remove( element ):
+            for attribute_meta in element.meta.attributes:
+                if attribute_meta.type == metaworld.PATH_TYPE:
+                    if element.get( attribute_meta.name ) + attribute_meta.strip_extension in unused:
+                        to_remove.append( element )
+            for child in element:
+                _recursive_remove( child )
+
+        _recursive_remove( element )
+        for element in to_remove:
+            element.parent.remove( element )
         self.activate_undo()
 
     def _get_used_resources( self ):
-        used = {'image':set(), 'sound':set(), 'TEXT_LEVELNAME_STR':set()}
-        oftype = ['image', 'sound', 'TEXT_LEVELNAME_STR']
+        used = set()
+
         #go through scene and level root
         #store the resource id of any that do
-        for element in self.scene_root:
-            for attribute_meta in element.meta.attributes:
-                if attribute_meta.type == metaworld.REFERENCE_TYPE:
-                    if attribute_meta.reference_family in oftype:
+        for root in ( self.scene_root, self.level_root ):
+            for element in root:
+                for attribute_meta in element.meta.attributes:
+                    if attribute_meta.type == metaworld.PATH_TYPE:
                         if element.get( attribute_meta.name ):
-                            if attribute_meta.is_list:
-                                for res in element.get( attribute_meta.name ).split( ',' ):
-                                    used[attribute_meta.reference_family].add( res )
-                            else:
-                                used[attribute_meta.reference_family].add( element.get( attribute_meta.name ) )
-
-        for element in self.level_root:
-            for attribute_meta in element.meta.attributes:
-                if attribute_meta.type == metaworld.REFERENCE_TYPE:
-                    if attribute_meta.reference_family in oftype:
-                        if element.get( attribute_meta.name ):
-                            if attribute_meta.is_list:
-                                for res in element.get( attribute_meta.name ).split( ',' ):
-                                    used[attribute_meta.reference_family].add( res )
-                            else:
-                                used[attribute_meta.reference_family].add( element.get( attribute_meta.name ) )
-
+                            used.add( element.get( attribute_meta.name ) + attribute_meta.strip_extension )
         return used
 
     def hasresrc_issue( self ):
@@ -953,23 +941,23 @@ class LevelWorld( ThingWorld ):
         used_resources = self._get_used_resources()
         image_resources = set()
         for resource in root.findall( './/Image' ):
-            image_resources.add( resource.get( 'id' ) )
-            full_filename = os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + ".png" )
+            image_resources.add( resource.get( 'path' ) )
+            full_filename = os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + resource.attribute_meta( 'path' ).strip_extension )
             if ON_PLATFORM == PLATFORM_WIN:
                 #confirm extension on drive is lower case
                 real_filename = getRealFilename( full_filename )
                 real_ext = os.path.splitext( real_filename )[1]
                 if real_ext != ".png":
-                  self.addResourceError( 201, resource.get( 'path' ) + real_ext )
+                    self.addResourceError( 201, resource.get( 'path' ) + real_ext )
 
-        unused_images = image_resources.difference( used_resources['image'] )
+        unused_images = image_resources.difference( used_resources )
         if len( unused_images ) != 0:
             for unused in unused_images:
-               self.addResourceError( 202, unused )
+                self.addResourceError( 202, unused )
 
         sound_resources = set()
         for resource in root.findall( './/Sound' ):
-            sound_resources.add( resource.get( 'id' ) )
+            sound_resources.add( resource.get( 'path' ) )
             full_filename = os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + ".ogg" )
 
             if ON_PLATFORM == PLATFORM_WIN:
@@ -979,11 +967,11 @@ class LevelWorld( ThingWorld ):
                 if real_ext != ".ogg":
                     self.addResourceError( 203, resource.get( 'path' ) + real_ext )
 
-
-        unused_sounds = sound_resources.difference( used_resources['sound'] )
+        unused_sounds = sound_resources.difference( used_resources )
         if len( unused_sounds ) != 0:
             for unused in unused_sounds:
-               self.addResourceError( 204, unused )
+                self.addResourceError( 204, unused )
+
         return self._resrc_issue_level != ISSUE_LEVEL_NONE
 
     @property
@@ -1063,7 +1051,7 @@ class LevelWorld( ThingWorld ):
                 os.mkdir( os.path.join( dir, 'animations' ) )
                 os.mkdir( os.path.join( dir, 'fx' ) )
                 os.mkdir( os.path.join( dir, 'scripts' ) )
-                os.mkdir( os.path.join( dir, 'shaders' ) )
+                os.mkdir( os.path.join( dir, 'textures' ) )
                 os.mkdir( os.path.join( dir, 'sounds' ) )
 
             if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_GAME ):
@@ -1071,11 +1059,10 @@ class LevelWorld( ThingWorld ):
                     #clean tree caused an infinite loop when there was a missing ball
                     # so only clean trees with no issues
                     self._cleanleveltree()
-
                 self.game_model._saveUnPackedTree( dir, name + '.level', self.level_root.tree )
+
             if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_RESOURCE ):
-                self.game_model._saveUnPackedTree( dir, name + '.resrc',
-                                                 self.resource_root.tree )
+                self.game_model._saveUnPackedTree( dir, name + '.resrc', self.resource_root.tree )
 
             # ON Mac
             # Convert all "custom" png to .png.binltl
@@ -1110,7 +1097,6 @@ class LevelWorld( ThingWorld ):
            are in the resource tree.
            Adds new resource to the resource tree if required.
         """
-
         game_dir = os.path.normpath( self.game_model._amy_dir )
         dir = os.path.join( game_dir, 'Data', STR_DIR_STUB, self.name )
         if not os.path.isdir( dir ):
@@ -1122,26 +1108,21 @@ class LevelWorld( ThingWorld ):
             print 'Warning: root element not found in resource tree'
             return []
         added_elements = []
-        for tag, extension, id_prefix in ( ( 'Image', 'png', 'LEVEL_IMAGE_' ), ( 'Sound', 'ogg', 'LEVEL_SOUND_' ) ):
+        for tag, extension, subfolder in ( ( 'Image', 'png', 'textures' ), ( 'Sound', 'ogg', 'sounds' ) ):
             known_paths = set()
             for element in self.resource_root.findall( './/' + tag ):
                 path = os.path.normpath( os.path.splitext( element.get( 'path', '' ).lower() )[0] )
                 # known path are related to wog top dir in unix format & lower case without the file extension
                 known_paths.add( path )
-            existing_paths = glob.glob( os.path.join( dir, '*.' + extension ) )
+            existing_paths = glob.glob( os.path.join( dir, subfolder, '*.' + extension ) )
             for existing_path in existing_paths:
-                existing_path = existing_path[len( game_dir ) + 1:] # makes path relative to wog top dir
+                existing_path = existing_path[len( game_dir ) + 1:] # makes path relative to top dir
                 existing_path = os.path.splitext( existing_path )[0] # strip file extension
                 path = os.path.normpath( existing_path ).lower()
                 if path not in known_paths:
-                    existing_path = os.path.split( existing_path )[1]
-                    ALLOWED_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789'
-                    resource_id = id_prefix + ''.join( c for c in existing_path
-                                                       if c.upper() in ALLOWED_CHARS )
-                    resource_path = 'res/levels/%s/%s' % ( self.name, existing_path )
+                    resource_path = existing_path.replace( "\\", "/" )
                     meta_element = metawog.TREE_LEVEL_RESOURCE.find_element_meta_by_tag( tag )
-                    new_resource = metaworld.Element( meta_element, {'id':resource_id.upper(),
-                                                                     'path':resource_path} )
+                    new_resource = metaworld.Element( meta_element, {'path':resource_path} )
                     resource_element.append( new_resource )
                     added_elements.append( new_resource )
         return added_elements
@@ -1153,7 +1134,7 @@ class LevelWorld( ThingWorld ):
     def importResources( self, importedfiles, res_dir ):
         """Import Resources direct from files into the level
            If files are located outside the Wog/res folder it copies them
-           png -> Data/levels/{name}/shaders
+           png -> Data/levels/{name}/textures
            ogg -> Data/levels/{name}/sounds
         """
         self._importError = None
@@ -1188,7 +1169,7 @@ class LevelWorld( ThingWorld ):
                 os.mkdir( os.path.join( level_path, 'animations' ) )
                 os.mkdir( os.path.join( level_path, 'fx' ) )
                 os.mkdir( os.path.join( level_path, 'scripts' ) )
-                os.mkdir( os.path.join( level_path, 'shaders' ) )
+                os.mkdir( os.path.join( level_path, 'textures' ) )
                 os.mkdir( os.path.join( level_path, 'sounds' ) )
 
             if includesogg:
@@ -1198,7 +1179,7 @@ class LevelWorld( ThingWorld ):
                     os.mkdir( music_path )
 
         localfiles = []
-        resmap = {'png':( 'Image', 'IMAGE_', STR_DIR_STUB ), 'ogg':( 'Sound', 'SOUND_', 'music' )}
+        resmap = {'png':( 'Image', 'textures' ), 'ogg':( 'Sound', 'sounds' )}
         for file in importedfiles:
             # "Are you Local?"
             fileext = os.path.splitext( file )[1][1:4]
@@ -1206,7 +1187,7 @@ class LevelWorld( ThingWorld ):
                 #@DaB - Ensure if the file is copied that it's new extension is always lower case
                 fname = os.path.splitext( os.path.split( file )[1] )[0]
                 fileext = fileext.lower()
-                newfile = os.path.join( res_dir, resmap[fileext][2], self.name, 'shaders', fname + "." + fileext )
+                newfile = os.path.join( res_dir, STR_DIR_STUB, self.name, resmap[fileext][1], fname + "." + fileext )
                 copy2( file, newfile )
                 localfiles.append( newfile )
             else:
@@ -1231,14 +1212,9 @@ class LevelWorld( ThingWorld ):
             path = os.path.normpath( filei[0] ).lower()
             ext = filei[1][1:4]
             if path not in known_paths[resmap[ext][0]]:
-                ALLOWED_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789'
-                pathbits = os.path.split( path )
-                nextdir = os.path.split( pathbits[0] )[1]
-                resource_id = resmap[ext][1] + ''.join( c for c in nextdir.upper() if c in ALLOWED_CHARS ) + '_' + ''.join( c for c in pathbits[1].upper() if c in ALLOWED_CHARS )
                 resource_path = filei[0].replace( "\\", "/" )
                 meta_element = metawog.TREE_LEVEL_RESOURCE.find_element_meta_by_tag( resmap[ext][0] )
-                new_resource = metaworld.Element( meta_element, {'id':resource_id.upper(),
-                                                                 'path':resource_path} )
+                new_resource = metaworld.Element( meta_element, {'path':resource_path} )
                 resource_element.append( new_resource )
                 added_elements.append( new_resource )
         return added_elements
@@ -1516,16 +1492,14 @@ class MainWindow( QtGui.QMainWindow ):
         if model:
             unused = model._get_unused_resources()
             unusedlist = ''
-            for family, unusedset in unused.items():
-                for id in unusedset:
-                    unusedlist += id + '\n'
+            for id in unused:
+                unusedlist += id + '\n'
             if unusedlist != '':
                 unusedlist = "The following resources are unused\n" + unusedlist + "\nAre you sure you want to remove them?"
                 ret = QtGui.QMessageBox.warning( self, self.tr( "Remove unused resources" ),
                         unusedlist, QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel )
                 if ret == QtGui.QMessageBox.Ok:
-                    model._remove_unused_resources( unused )
-
+                    model._remove_unused_resources( model.resource_root, unused )
             else:
                 QtGui.QMessageBox.warning( self, self.tr( "Remove unused resources" ),
                         self.tr( "There are no unused resources\n" ) )
