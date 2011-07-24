@@ -3,21 +3,26 @@ from metaworld import * #@UnusedWildImport
 
 # Declares all file types
 TREE_CAMPAIGN = describe_tree( 'campaign' )
+TREE_GLOBAL_RESOURCE = describe_tree( 'game.resources' )
 
 TREE_LEVEL_GAME = describe_tree( 'level.game' )
 TREE_LEVEL_SCENE = describe_tree( 'level.scene' )
+TREE_LEVEL_RESOURCE = describe_tree( 'level.resource' )
 
 # Declares the world hierarchy
 WORLD_LEVEL = describe_world( 'level', trees_meta = [
     TREE_LEVEL_GAME,
     TREE_LEVEL_SCENE,
+    TREE_LEVEL_RESOURCE,
     ] )
 WORLD_CAMPAIGN = describe_world( 'campaign', trees_meta = [
     TREE_CAMPAIGN
     ] )
 WORLD_GLOBAL = describe_world( 'game',
                                child_worlds = [ WORLD_CAMPAIGN, WORLD_LEVEL ],
-                               trees_meta = [ ] )
+                               trees_meta = [
+    TREE_GLOBAL_RESOURCE,
+    ] )
 
 LEVELS_ORIGINAL = set( ['level_name_1'] )
 LEVELS_ORIGINAL_LOWER = [level_name.lower() for level_name in LEVELS_ORIGINAL]
@@ -61,6 +66,52 @@ TREE_LEVEL_GAME.add_elements( [
             ] ),
         ] )
     ] )
+
+def _describe_resource_file( tree_meta, resource_world, is_global = False ):
+    if is_global:
+        resources_element = describe_element( 'Resources', min_occurrence = 1 )
+    else:
+        resources_element = describe_element( 'Resources', exact_occurrence = 1, read_only = True )
+    resources_element.add_attributes( [
+        identifier_attribute( 'id', mandatory = True, read_only = True, tooltip = "Resource Id for this level\nMust be scene_{Levelname} (read only)",
+                              reference_family = 'resources',
+                              reference_world = resource_world ),
+        ] )
+    resources_element.add_elements( [
+        describe_element( 'Image', groups = 'image', attributes = [
+            identifier_attribute( 'id', mandatory = True, reference_family = 'image',
+                display_id = True, reference_world = resource_world ),
+            path_attribute( 'path', strip_extension = '.png', mandatory = True )
+            ] ),
+        describe_element( 'Sound', groups = 'resource', attributes = [
+            identifier_attribute( 'id', mandatory = True, reference_family = 'sound',
+                display_id = True, reference_world = resource_world ),
+            path_attribute( 'path', strip_extension = '.ogg', mandatory = True )
+            ] ),
+        describe_element( 'SetDefaults', read_only = True, groups = 'resource',
+                          attributes = [
+            string_attribute( 'path', mandatory = True, read_only = True ),
+            string_attribute( 'idprefix', mandatory = True, allow_empty = True, read_only = True )
+            ] )
+        ] )
+    if is_global:
+        resources_element.add_elements( [
+            describe_element( 'font', groups = 'resource', attributes = [
+                identifier_attribute( 'id', mandatory = True, reference_family = 'font',
+                    display_id = True, reference_world = resource_world ),
+                path_attribute( 'path', strip_extension = '.png', mandatory = True ) # @todo also check existence of .txt
+                ] )
+        ] )
+
+    tree_meta.add_elements( [
+        # DUPLICATED FROM GLOBAL SCOPE => makes FACTORY function ?
+        describe_element( 'ResourceManifest', exact_occurrence = 1, groups = 'resource',
+                          attributes = [], elements = [
+            resources_element
+            ] )
+        ] )
+
+_describe_resource_file( TREE_LEVEL_RESOURCE, WORLD_LEVEL )
 
 
 # Values for Tag attribute (Physic items)
@@ -340,6 +391,14 @@ LEVEL_SCENE_TEMPLATE = """\
 	<line id="left" tag="" anchor="-500,300" normal="1,0" />
 	<line id="ground" anchor="0,20" normal="0,1" />
 </scene>"""
+
+LEVEL_RESOURCE_TEMPLATE = """\
+<ResourceManifest>
+	<Resources id="scene_NewTemplate" >
+		<SetDefaults path="./" idprefix="" />
+	</Resources>
+</ResourceManifest>
+"""
 
 if __name__ == "__main__":
     print_world_meta( WORLD_GLOBAL )

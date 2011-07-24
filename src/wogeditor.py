@@ -108,6 +108,8 @@ class AddItemFactory( object ):
                     root = model.level_root
                 elif self.parent == 'scene':
                     root = model.scene_root
+                elif self.parent == 'resource':
+                    root = model.resource_root
                 elif self.parent == 'compositegeom':
                     thisworld = cview.world
                     selected_elements = thisworld.selected_elements
@@ -323,6 +325,10 @@ class GameModel( QtCore.QObject ):
         window.statusBar().showMessage( self.tr( "Game Model : Complete" ) )
 
     @property
+    def _resources_tree( self ):
+        return self.global_world.find_tree( metawog.TREE_GLOBAL_RESOURCE )
+
+    @property
     def is_dirty( self ):
         worlds = self.modified_worlds_to_check
         self.modified_worlds_to_check = set()
@@ -420,6 +426,52 @@ class GameModel( QtCore.QObject ):
         files.sort( key = unicode.lower )
         return files
 
+    def _processSetDefaults( self, resource_tree ):
+        #Unwraps the SetDefaults "processing instruction"
+        #updates all paths and ids to full
+        resource_element = resource_tree.root.find( 'Resources' )
+        idprefix = ''
+        pathprefix = ''
+        for element in resource_element:
+            if element.tag == 'SetDefaults':
+                idprefix = element.get( 'idprefix', '' )
+                pathprefix = element.get( 'path' ).strip().replace( "\\", "/" )
+                if not pathprefix.endswith( '/' ):
+                    pathprefix += '/'
+                pathprefix = pathprefix.replace( "./", "" )
+
+                element.set( 'idprefix', "" )
+                element.set( 'path', "./" )
+            else:
+                element.set( 'path', pathprefix + element.get( 'path' ).replace( '\\', '/' ) )
+                element.set( 'id', idprefix + element.get( 'id' ) )
+
+    def _initializeGlobalReferences( self ):
+        """Initialize global effects, materials, resources and texts references."""
+        self._expandResourceDefaultsIdPrefixAndPath()
+
+    def _expandResourceDefaultsIdPrefixAndPath( self ):
+        """Expands the default idprefix and path that are used as short-cut in the XML file."""
+        # Notes: there is an invalid global resource:
+        # IMAGE_GLOBAL_ISLAND_6_ICON res/images/islandicon_6
+        resource_manifest = self._resources_tree.root
+        default_idprefix = ''
+        default_path = ''
+        for resources in resource_manifest:
+            for element in resources:
+                if element.tag == 'SetDefaults':
+                    default_path = element.get( 'path', '' ).strip()
+                    if not default_path.endswith( '/' ):
+                        default_path += '/'
+                    default_path = default_path.replace( "./", "" )
+                    default_idprefix = element.get( 'idprefix', '' )
+                elif element.tag in ( 'Image', 'Sound', 'font' ):
+                    new_id = default_idprefix + element.get( 'id' )
+                    new_path = default_path + element.get( 'path' )
+                    element.set( 'id', new_id )
+                    element.set( 'path', new_path )
+                self._readonly_resources.add( element )
+
     @property
     def names( self ):
         return self._levels
@@ -438,6 +490,9 @@ class GameModel( QtCore.QObject ):
             self._loadUnPackedTree( world, metawog.TREE_LEVEL_SCENE,
                             dir, name + '.scene' )
 
+            self._loadUnPackedTree( world, metawog.TREE_LEVEL_RESOURCE,
+                            dir, name + '.resrc' )
+            self._processSetDefaults( world.find_tree( metawog.TREE_LEVEL_RESOURCE ) )
             if world.isReadOnly:
                 world.clean_dirty_tracker()
             world.clear_undo_queue()
@@ -491,7 +546,9 @@ class GameModel( QtCore.QObject ):
             self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_GAME,
                                                           metawog.LEVEL_GAME_TEMPLATE ),
             self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_SCENE,
-                                                          metawog.LEVEL_SCENE_TEMPLATE ) )
+                                                          metawog.LEVEL_SCENE_TEMPLATE ),
+            self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_RESOURCE,
+                                                          metawog.LEVEL_RESOURCE_TEMPLATE ) )
 
 
     def cloneLevel( self, cloned_name, new_name ):
@@ -518,13 +575,27 @@ class GameModel( QtCore.QObject ):
         new_scene_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_SCENE,
                                                                     model.scene_root.tree.to_xml() )
 
+        new_res_tree = self._universe.make_unattached_tree_from_xml( metawog.TREE_LEVEL_RESOURCE,
+                                                                        model.resource_root.tree.to_xml() )
         #change stuff
+        for resource_element in new_res_tree.root.findall( './/Resources' ):
+            resource_element.set( 'id', 'scene_%s' % new_name )
+
+        for resource_element in new_res_tree.root.findall( './/Image' ):
+            resid = resource_element.get( 'id' )
+            resource_element.set( 'id', resid.replace( '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_', 1 ) )
+
+        for resource_element in new_res_tree.root.findall( './/Sound' ):
+            resid = resource_element.get( 'id' )
+            resource_element.set( 'id', resid.replace( '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_', 1 ) )
+
         self._res_swap( new_level_tree.root, '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_' )
         self._res_swap( new_scene_tree.root, '_' + cloned_name.upper() + '_', '_' + new_name.upper() + '_' )
 
         #save out new trees
         self._saveUnPackedTree( dir, new_name + '.level', new_level_tree )
         self._saveUnPackedTree( dir, new_name + '.scene', new_scene_tree )
+        self._saveUnPackedTree( dir, new_name + '.resrc', new_res_tree )
 
         self._levels.append( unicode( new_name ) )
         self._levels.sort( key = unicode.lower )
@@ -577,7 +648,7 @@ class GameModel( QtCore.QObject ):
                     return self._seekFile( folder, path, file, ext )
             return False
 
-    def _addNewLevel( self, name, level_tree, scene_tree ):
+    def _addNewLevel( self, name, level_tree, scene_tree, resource_tree ):
         """Adds a new level using the specified level, scene and resource tree.
            The level directory is created, but the level xml files will not be saved immediately.
         """
@@ -590,10 +661,14 @@ class GameModel( QtCore.QObject ):
             os.mkdir( os.path.join( dir_path, 'shaders' ) )
             os.mkdir( os.path.join( dir_path, 'sounds' ) )
 
+
+        # Fix the hard-coded level name in resource tree: <Resources id="scene_NewTemplate" >
+        for resource_element in resource_tree.root.findall( './/Resources' ):
+            resource_element.set( 'id', 'scene_%s' % name )
         # Creates and register the new level
         world = self.global_world.make_world( metawog.WORLD_LEVEL, name,
                                                     LevelWorld, self, is_dirty = True )
-        treestoadd = [level_tree, scene_tree]
+        treestoadd = [level_tree, scene_tree, resource_tree]
 
         world.add_tree( treestoadd )
 
@@ -641,6 +716,9 @@ class LevelWorld( ThingWorld ):
         return self.find_tree( metawog.TREE_LEVEL_SCENE ).root
 
     @property
+    def resource_root( self ):
+        return self.find_tree( metawog.TREE_LEVEL_RESOURCE ).root
+    @property
     def is_dirty( self ):
         return self.__dirty_tracker.is_dirty
 
@@ -663,6 +741,8 @@ class LevelWorld( ThingWorld ):
         if self.element_issue_level( self.scene_root ):
             tIssue |= ISSUE_LEVEL_CRITICAL
         if self.element_issue_level( self.level_root ):
+            tIssue |= ISSUE_LEVEL_CRITICAL
+        if self.element_issue_level( self.resource_root ):
             tIssue |= ISSUE_LEVEL_CRITICAL
         #If we have a tree Issue.. don't perform the extra checks
         #because that can cause rt errors (because of the tree issues)
@@ -697,6 +777,8 @@ class LevelWorld( ThingWorld ):
             txtIssue = txtIssue + '<p>Level Tree:<br>' + self.element_issue_report( self.level_root ) + '</p>'
         if self.level_issue_report != '':
             txtIssue += '<p>Level Checks:<br>' + self.level_issue_report + '</p>'
+        if self.element_issue_level( self.resource_root ):
+            txtIssue = txtIssue + '<p>Resource Tree:<br>' + self.element_issue_report( self.resource_root ) + '</p>'
         if self.resrc_issue_report != '':
             txtIssue += '<p>Resource Checks:<br>' + self.resrc_issue_report + '</p>'
         if self.global_issue_report != '':
@@ -889,6 +971,8 @@ class LevelWorld( ThingWorld ):
     def _get_unused_resources( self ):
         used = self._get_used_resources()
         resources = {}
+        resources['image'] = self._get_all_resource_ids( self.resource_root, "Image" )
+        resources['sound'] = self._get_all_resource_ids( self.resource_root, "Sound" )
         unused = {'image':set(), 'sound':set(), 'TEXT_LEVELNAME_STR':set()}
         for restype in unused.keys():
             unused[restype] = resources[restype] - used[restype]
@@ -933,9 +1017,44 @@ class LevelWorld( ThingWorld ):
         return used
 
     def hasresrc_issue( self ):
-        # confirm every file referenced exists
+        root = self.resource_root
         self._resrcissues = ''
         self._resrc_issue_level = ISSUE_LEVEL_NONE
+        # confirm every file referenced exists
+        used_resources = self._get_used_resources()
+        image_resources = set()
+        for resource in root.findall( './/Image' ):
+            image_resources.add( resource.get( 'id' ) )
+            full_filename = os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + ".png" )
+            if ON_PLATFORM == PLATFORM_WIN:
+                #confirm extension on drive is lower case
+                real_filename = getRealFilename( full_filename )
+                real_ext = os.path.splitext( real_filename )[1]
+                if real_ext != ".png":
+                  self.addResourceError( 201, resource.get( 'path' ) + real_ext )
+
+        unused_images = image_resources.difference( used_resources['image'] )
+        if len( unused_images ) != 0:
+            for unused in unused_images:
+               self.addResourceError( 202, unused )
+
+        sound_resources = set()
+        for resource in root.findall( './/Sound' ):
+            sound_resources.add( resource.get( 'id' ) )
+            full_filename = os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + ".ogg" )
+
+            if ON_PLATFORM == PLATFORM_WIN:
+                #confirm extension on drive is lower case
+                real_filename = getRealFilename( full_filename )
+                real_ext = os.path.splitext( real_filename )[1]
+                if real_ext != ".ogg":
+                    self.addResourceError( 203, resource.get( 'path' ) + real_ext )
+
+
+        unused_sounds = sound_resources.difference( used_resources['sound'] )
+        if len( unused_sounds ) != 0:
+            for unused in unused_sounds:
+               self.addResourceError( 204, unused )
         return self._resrc_issue_level != ISSUE_LEVEL_NONE
 
     @property
@@ -971,6 +1090,40 @@ class LevelWorld( ThingWorld ):
             self.scene_root.append( motor )
         self.activate_undo()
 
+    def _cleanresourcetree( self ):
+        #removes any unused resources from the resource and text resource trees
+        self.suspend_undo()
+        root = self.resource_root
+
+        #ensure cAsE sensitive path is stored in resource file
+        #Only required on windows...
+        #If path was not CaSe SenSitivE match on Linux / Mac would be File not found earlier
+        if ON_PLATFORM == PLATFORM_WIN:
+            for resource in root.findall( './/Image' ):
+                full_filename = os.path.normpath( os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + ".png" ) )
+                if os.path.exists( full_filename ):
+                    #confirm extension on drive is lower case
+                    len_wogdir = len( os.path.normpath( self.game_model._amy_dir ) ) + 1
+                    real_filename = os.path.normpath( getRealFilename( full_filename ) )
+                    real_file = os.path.splitext( real_filename )[0][len_wogdir:]
+                    full_file = os.path.splitext( full_filename )[0][len_wogdir:]
+                    if real_file != full_file:
+                        print "Correcting Path", resource.get( 'id' ), full_file, "-->", real_file
+                        resource.attribute_meta( 'path' ).set( resource, real_file )
+
+            for resource in root.findall( './/Sound' ):
+                full_filename = os.path.normpath( os.path.join( self.game_model._amy_dir, resource.get( 'path' ) + ".ogg" ) )
+                if os.path.exists( full_filename ):
+                    #confirm extension on drive is lower case
+                    len_wogdir = len( os.path.normpath( self.game_model._amy_dir ) )
+                    real_filename = os.path.normpath( getRealFilename( full_filename ) )
+                    real_file = os.path.splitext( real_filename )[0][len_wogdir:]
+                    full_file = os.path.splitext( full_filename )[0][len_wogdir:]
+                    if real_file != full_file:
+                        print "Correcting Path", resource.get( 'id' ), full_file, "-->", real_file
+                        resource.attribute_meta( 'path' ).set( resource, real_file )
+
+        self.activate_undo()
     def saveModifiedElements( self ):
         """Save the modified scene, level, resource tree."""
         if not self.isReadOnly:  # Discards change made on read-only level
@@ -991,18 +1144,20 @@ class LevelWorld( ThingWorld ):
                     self._cleanleveltree()
 
                 self.game_model._saveUnPackedTree( dir, name + '.level', self.level_root.tree )
+            if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_RESOURCE ):
+                self.game_model._saveUnPackedTree( dir, name + '.resrc',
+                                                 self.resource_root.tree )
 
             # ON Mac
             # Convert all "custom" png to .png.binltl
             # Only works with REAL PNG
             if ON_PLATFORM == PLATFORM_MAC:
-                pass
-#                for image in self.resource_root.findall( './/Image' ):
-#                    if not self.game_model._isOriginalFile( image.get( 'path' ), 'png' ):
-#                        in_path = os.path.join( self.game_model._amy_dir, image.get( 'path' ) )
-#                        out_path = in_path + '.png.binltl'
-#                        in_path += '.png'
-#                        wogfile.png2pngbinltl( in_path, out_path )
+                for image in self.resource_root.findall( './/Image' ):
+                    if not self.game_model._isOriginalFile( image.get( 'path' ), 'png' ):
+                        in_path = os.path.join( self.game_model._amy_dir, image.get( 'path' ) )
+                        out_path = in_path + '.png.binltl'
+                        in_path += '.png'
+                        wogfile.png2pngbinltl( in_path, out_path )
 
             if self.__dirty_tracker.is_dirty_tree( metawog.TREE_LEVEL_SCENE ):
                 if not self.element_issue_level( self.scene_root ):
@@ -1024,9 +1179,144 @@ class LevelWorld( ThingWorld ):
             print 'Warning: invalid image reference:|', image_id, '|'
         return pixmap
 
+    def updateResources( self ):
+        """Ensures all image/sound resource present in the level directory 
+           are in the resource tree.
+           Adds new resource to the resource tree if required.
+        """
+
+        game_dir = os.path.normpath( self.game_model._amy_dir )
+        dir = os.path.join( game_dir, 'Data', STR_DIR_STUB, self.name )
+        if not os.path.isdir( dir ):
+            print 'Warning: level directory does not exist'
+            return []
+
+        resource_element = self.resource_root.find( './/Resources' )
+        if resource_element is None:
+            print 'Warning: root element not found in resource tree'
+            return []
+        added_elements = []
+        for tag, extension, id_prefix in ( ( 'Image', 'png', 'LEVEL_IMAGE_' ), ( 'Sound', 'ogg', 'LEVEL_SOUND_' ) ):
+            known_paths = set()
+            for element in self.resource_root.findall( './/' + tag ):
+                path = os.path.normpath( os.path.splitext( element.get( 'path', '' ).lower() )[0] )
+                # known path are related to wog top dir in unix format & lower case without the file extension
+                known_paths.add( path )
+            existing_paths = glob.glob( os.path.join( dir, '*.' + extension ) )
+            for existing_path in existing_paths:
+                existing_path = existing_path[len( game_dir ) + 1:] # makes path relative to wog top dir
+                existing_path = os.path.splitext( existing_path )[0] # strip file extension
+                path = os.path.normpath( existing_path ).lower()
+                if path not in known_paths:
+                    existing_path = os.path.split( existing_path )[1]
+                    ALLOWED_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789'
+                    resource_id = id_prefix + ''.join( c for c in existing_path
+                                                       if c.upper() in ALLOWED_CHARS )
+                    resource_path = 'res/levels/%s/%s' % ( self.name, existing_path )
+                    meta_element = metawog.TREE_LEVEL_RESOURCE.find_element_meta_by_tag( tag )
+                    new_resource = metaworld.Element( meta_element, {'id':resource_id.upper(),
+                                                                     'path':resource_path} )
+                    resource_element.append( new_resource )
+                    added_elements.append( new_resource )
+        return added_elements
+
     #@DaB New Functionality - Import resources direct from files
     def importError( self ):
         return self._importError
+
+    def importResources( self, importedfiles, res_dir ):
+        """Import Resources direct from files into the level
+           If files are located outside the Wog/res folder it copies them
+           png -> Data/levels/{name}/shaders
+           ogg -> Data/levels/{name}/sounds  for compatability with Soultaker's Volume control add-in
+        """
+        self._importError = None
+        res_dir = os.path.normpath( res_dir )
+        game_dir = os.path.split( res_dir )[0]
+
+        resource_element = self.resource_root.find( './/Resources' )
+        if resource_element is None:
+            print 'Warning: root element not found in resource tree'
+            return []
+
+        all_local = True
+        includesogg = False
+        for file in importedfiles:
+            file = os.path.normpath( file )
+            # "Are you Local?"
+            # Check if the files were imported from outside the Res folder
+            fileext = os.path.splitext( file )[1][1:4]
+            if fileext.lower() == "ogg":
+                includesogg = True
+            if file[:len( res_dir )] != res_dir:
+                all_local = False
+
+        if not all_local and self.isReadOnly:
+            self._importError = ["Cannot import external files...!", "You cannot import external files into the original levels.\nIf you really want to do this... Clone the level first!"]
+            return []
+
+        if not all_local:
+            level_path = os.path.join( res_dir, STR_DIR_STUB, self.name )
+            if not os.path.isdir( level_path ):
+                os.mkdir( level_path )
+                os.mkdir( os.path.join( level_path, 'animations' ) )
+                os.mkdir( os.path.join( level_path, 'fx' ) )
+                os.mkdir( os.path.join( level_path, 'scripts' ) )
+                os.mkdir( os.path.join( level_path, 'shaders' ) )
+                os.mkdir( os.path.join( level_path, 'sounds' ) )
+
+            if includesogg:
+                #' confirm / create import folder'
+                music_path = os.path.join( res_dir, STR_DIR_STUB, 'sounds', self.name )
+                if not os.path.isdir( music_path ):
+                    os.mkdir( music_path )
+
+        localfiles = []
+        resmap = {'png':( 'Image', 'IMAGE_', STR_DIR_STUB ), 'ogg':( 'Sound', 'SOUND_', 'music' )}
+        for file in importedfiles:
+            # "Are you Local?"
+            fileext = os.path.splitext( file )[1][1:4]
+            if file[:len( res_dir )] != res_dir:
+                #@DaB - Ensure if the file is copied that it's new extension is always lower case
+                fname = os.path.splitext( os.path.split( file )[1] )[0]
+                fileext = fileext.lower()
+                newfile = os.path.join( res_dir, resmap[fileext][2], self.name, 'shaders', fname + "." + fileext )
+                copy2( file, newfile )
+                localfiles.append( newfile )
+            else:
+                #@DaB - File Extension Capitalization Check
+                if fileext != fileext.lower():
+                    #Must be png or ogg to be compatible with LINUX and MAC
+                    self._importError = ["File Extension CAPITALIZATION Warning!", "To be compatible with Linux and Mac - All file extensions must be lower case.\nYou should rename the file below, and then import it again.\n\n" + file + " skipped!"]
+                else:
+                    localfiles.append( file )
+
+        added_elements = []
+
+        known_paths = {'Image':set(), 'Sound':set()}
+        for ext in resmap:
+            for element in self.resource_root.findall( './/' + resmap[ext][0] ):
+                path = os.path.normpath( os.path.splitext( element.get( 'path', '' ).lower() )[0] )
+                # known path are related to wog top dir in unix format & lower case without the file extension
+                known_paths[resmap[ext][0]].add( path )
+        for file in localfiles:
+            file = file[len( game_dir ) + 1:] # makes path relative to top dir
+            filei = os.path.splitext( file )
+            path = os.path.normpath( filei[0] ).lower()
+            ext = filei[1][1:4]
+            if path not in known_paths[resmap[ext][0]]:
+                ALLOWED_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789'
+                pathbits = os.path.split( path )
+                nextdir = os.path.split( pathbits[0] )[1]
+                resource_id = resmap[ext][1] + ''.join( c for c in nextdir.upper() if c in ALLOWED_CHARS ) + '_' + ''.join( c for c in pathbits[1].upper() if c in ALLOWED_CHARS )
+                resource_path = filei[0].replace( "\\", "/" )
+                meta_element = metawog.TREE_LEVEL_RESOURCE.find_element_meta_by_tag( resmap[ext][0] )
+                new_resource = metaworld.Element( meta_element, {'id':resource_id.upper(),
+                                                                 'path':resource_path} )
+                resource_element.append( new_resource )
+                added_elements.append( new_resource )
+        return added_elements
+
 
 class MainWindow( QtGui.QMainWindow ):
     def __init__( self, parent = None ):
@@ -1284,6 +1574,16 @@ class MainWindow( QtGui.QMainWindow ):
                     self._setRecentFile( new_name )
                 except ( IOError, OSError ), e:
                     QtGui.QMessageBox.warning( self, self.tr( "Failed to create the new cloned level! (" + APP_NAME_PROPER + " " + CURRENT_VERSION + ")" ), unicode( e ) )
+
+    def updateResources( self ):
+        """Adds the required resource in the level based on existing file."""
+        model = self.getCurrentModel()
+        if model:
+            model.game_model.pixmap_cache.refresh()
+            added_resource_elements = model.updateResources()
+            if added_resource_elements:
+                model.set_selection( added_resource_elements )
+            model._view.refreshFromModel()
 
     def cleanResources( self ):
         model = self.getCurrentModel()
@@ -1595,6 +1895,7 @@ class MainWindow( QtGui.QMainWindow ):
         #Resources
         self.importResourcesAction.setEnabled ( can_import )
         self.cleanResourcesAction.setEnabled ( can_import )
+        self.updateResourcesAction.setEnabled( can_import )
 
         self.addItemToolBar.setEnabled( can_select )
         self.showhideToolBar.setEnabled( is_selected )
@@ -1661,6 +1962,13 @@ class MainWindow( QtGui.QMainWindow ):
             text = "&Save and play Level...",
             shortcut = "Ctrl+P",
             status_tip = "Save and play the selected level" )
+
+        self.updateResourcesAction = qthelper.action( self,
+            handler = self.updateResources,
+            icon = ":/images/update-level-resources.png",
+            text = "&Update level resources...",
+            shortcut = "Ctrl+U",
+            status_tip = "Adds automatically all .png & .ogg files in the level directory to the level resources" )
 
         self.cleanResourcesAction = qthelper.action( self,
             handler = self.cleanResources,
@@ -1871,6 +2179,7 @@ class MainWindow( QtGui.QMainWindow ):
 
         self.menuBar().addSeparator()
         self.resourceMenu = self.menuBar().addMenu( self.tr( "&Resources" ) )
+        self.resourceMenu.addAction( self.updateResourcesAction )
         self.resourceMenu.addAction( self.importResourcesAction )
         self.resourceMenu.addSeparator()
         self.resourceMenu.addAction( self.cleanResourcesAction )
@@ -1908,6 +2217,7 @@ class MainWindow( QtGui.QMainWindow ):
 
         self.resourceToolBar = self.addToolBar( self.tr( "Resources" ) )
         self.resourceToolBar.setObjectName( "resourceToolbar" )
+        self.resourceToolBar.addAction( self.updateResourcesAction )
         self.resourceToolBar.addAction( self.importResourcesAction )
         self.resourceToolBar.addSeparator()
         self.resourceToolBar.addAction( self.cleanResourcesAction )
@@ -1971,6 +2281,9 @@ class MainWindow( QtGui.QMainWindow ):
         self.tree_view_by_element_world = {} # map of all tree views
         scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', metawog.TREE_LEVEL_SCENE )
         level_dock, self.levelTree = self.createElementTreeView( 'Level', metawog.TREE_LEVEL_GAME, scene_dock )
+        resource_dock, self.levelResourceTree = self.createElementTreeView( 'Resource',
+                                                                            metawog.TREE_LEVEL_RESOURCE,
+                                                                            level_dock )
 
         scene_dock.raise_() # Makes the scene the default active tab
 
