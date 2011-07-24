@@ -2214,7 +2214,6 @@ class LevelGraphicView( QtGui.QGraphicsView ):
             'line': self._addSceneLine,
             'linearforcefield': self._sceneLinearForceFieldBuidler,
             'motor': self._sceneMotorBuilder,
-            'particles': self._sceneParticlesBuilder,
             'radialforcefield': self._sceneRadialForceFieldBuilder
             }
         builder = builders.get( element.tag )
@@ -2752,22 +2751,6 @@ class LevelGraphicView( QtGui.QGraphicsView ):
         self._applyTransform( item, size / 2.0, size / 2.0, x, y, rotation,
                               1.0, 1.0, Z_LEVEL_ITEMS + 10 )
         return item
-
-    def _sceneParticlesBuilder( self, scene, element ):
-        x, y = self._elementV2Pos( element, 'pos', ( 150, 30 ) )
-        font = QtGui.QFont()
-        font.setPointSize( 24.0 )
-        font.setBold( True )
-        text = element.get( 'effect' )
-        if text is None or text == '':
-            text = "!Set_effect!"
-        item = scene.addText( text, font )
-        item.setDefaultTextColor( QtGui.QColor( 168, 28, 255 ) )
-        item.setData( KEY_AREA , QtCore.QVariant( item.boundingRect().width() * item.boundingRect().height() ) )
-        item.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
-        self._setSceneItemXYZ( item, x, y )
-        return item
-
 
 if __name__ == "__main__":
     import unittest #@UnresolvedImport

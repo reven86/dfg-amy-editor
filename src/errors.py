@@ -42,8 +42,6 @@ ERROR_INFO = {0:[ISSUE_LEVEL_NONE, ''],
 #Dependancy Errors and Notifications
     304:[ISSUE_LEVEL_ADVICE, 'Custom Materials used <tt>%s</tt>'],
     305:[ISSUE_LEVEL_CRITICAL, 'Material <tt>%s</tt> is missing'],
-    306:[ISSUE_LEVEL_ADVICE, 'Custom Particles used <tt>%s</tt>'],
-    307:[ISSUE_LEVEL_CRITICAL, 'Particle Effect <tt>%s</tt> is missing'],
     308:[ISSUE_LEVEL_ADVICE, 'Custom Animtaions used <tt>%s</tt>'],
     309:[ISSUE_LEVEL_CRITICAL, 'Animation file <tt>%s.anim.binltl</tt> is missing'],
 

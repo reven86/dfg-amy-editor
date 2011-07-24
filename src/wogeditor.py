@@ -1951,12 +1951,8 @@ class MainWindow( QtGui.QMainWindow ):
                     text = "Show/Hide Geometry" , icon = ":/images/show-geom.png" ),
             'gfx': qthelper.action( self, handler = ShowHideFactory( self , ['SceneLayer', 'pixmap'] ),
                     text = "Show/Hide Graphics" , icon = ":/images/show-gfx.png" ),
-            'particles': qthelper.action( self, handler = ShowHideFactory( self , ['particles'] ),
-                    text = "Show/Hide Particles" , icon = ":/images/show-particles.png" ),
             'labels': qthelper.action( self, handler = ShowHideFactory( self , ['label'] ),
                     text = "Show/Hide Labels" , icon = ":/images/show-label.png" )
-
-
         }
 
         self.view_action_group = QtGui.QActionGroup( self )
@@ -2029,11 +2025,6 @@ class MainWindow( QtGui.QMainWindow ):
                     handler = AddItemFactory( self, 'scene', 'radialforcefield', {} ),
                     icon = ":/images/rff.png",
                     text = "&Add Radial force Field" ),
-
-        'particles':qthelper.action( self,
-                    handler = AddItemFactory( self, 'scene', 'particles', {} ),
-                    icon = ":/images/particles.png",
-                    text = "&Add Particles" ),
 
         'label':    qthelper.action( self,
                     handler = AddItemFactory( self, 'scene', 'label', {} ),
@@ -2136,9 +2127,9 @@ class MainWindow( QtGui.QMainWindow ):
 
         additem_action_list = ['line', 'rectangle', 'circle', 'image', 'compgeom', 'childrect', 'childcircle', 'hinge',
                             'sep1',
-                            'lff', 'rff', 'particles',
+                            'lff', 'rff',
                             'sep2',
-                            'sign', 'label'
+                            'label'
                             ]
 
         for name in additem_action_list:
@@ -2150,7 +2141,7 @@ class MainWindow( QtGui.QMainWindow ):
         self.showhideToolBar = self.addToolBar( self.tr( "Show/Hide" ) )
         self.showhideToolBar.setObjectName( "showhideToolbar" )
 
-        for elementtype in ( 'camera', 'fields', 'geom', 'gfx', 'particles', 'labels' ):
+        for elementtype in ( 'camera', 'fields', 'geom', 'gfx', 'labels' ):
             self.showhideToolBar.addAction( self.showhide_actions[elementtype] )
 
     def createStatusBar( self ):
@@ -2176,7 +2167,7 @@ class MainWindow( QtGui.QMainWindow ):
 
     def createDockWindows( self ):
         self.group_icons = {}
-        for group in 'camera game image physic resource shape text info particles material rect circle compgeom line anim'.split():
+        for group in 'camera game image physic resource shape text info material rect circle compgeom line anim'.split():
             self.group_icons[group] = QtGui.QIcon( ":/images/group-%s.png" % group )
         self.tree_view_by_element_world = {} # map of all tree views
         scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', metawog.TREE_LEVEL_SCENE )
