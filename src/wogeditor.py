@@ -479,10 +479,10 @@ class GameModel( QtCore.QObject ):
             #print "ON MAC - Save and Play"
             #Then run the program file itself with no command-line parameters
             #print "launch ",os.path.join(self._amy_path,u'Contents',u'MacOS',u'Amy In Da Farm')
-            pid = subprocess.Popen( os.path.join( self._amy_path, u'Contents', u'MacOS', u'Amy In Da Farm' ), cwd = self._amy_dir ).pid
+            subprocess.Popen( os.path.join( self._amy_path, u'Contents', u'MacOS', u'Amy In Da Farm' ), cwd = self._amy_dir ).pid
         else:
             #pid = subprocess.Popen( self._amy_path, cwd = self._amy_dir ).pid
-            pid = subprocess.Popen( [self._amy_path, level_model.name], cwd = self._amy_dir ).pid
+            subprocess.Popen( [self._amy_path, level_model.name], cwd = self._amy_dir ).pid
             # Don't wait for process end...
             # @Todo ? Monitor process so that only one can be launched ???
 
@@ -590,10 +590,6 @@ class GameModel( QtCore.QObject ):
             os.mkdir( os.path.join( dir_path, 'textures' ) )
             os.mkdir( os.path.join( dir_path, 'sounds' ) )
 
-
-        # Fix the hard-coded level name in resource tree: <Resources id="scene_NewTemplate" >
-        for resource_element in resource_tree.root.findall( './/Resources' ):
-            resource_element.set( 'id', 'scene_%s' % name )
         # Creates and register the new level
         world = self.global_world.make_world( metawog.WORLD_LEVEL, name,
                                                     LevelWorld, self, is_dirty = True )

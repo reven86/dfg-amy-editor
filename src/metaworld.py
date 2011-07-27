@@ -766,20 +766,24 @@ class ElementMeta( ObjectsMetaOwner ):
         """
         # Map element attributes
         known_attributes = {}
+        processed_keys = []
         for attribute_meta in self.attributes_by_name.itervalues():
             attribute_meta.from_yaml( element, known_attributes )
+            if isinstance( attribute_meta.map_to, ( tuple, list ) ):
+                processed_keys.extend( attribute_meta.map_to )
+            else:
+                processed_keys.append( attribute_meta.map_to )
 
         # Map element children
         children = []
-        for tag, el_list in element.get( '#children', {} ).iteritems():
+        for tag, el_list in element.iteritems():
             child_meta = self.find_immediate_child_by_tag( tag )
             if child_meta:
                 for element_child in el_list:
                     children.append( child_meta.make_element_from_yaml_element( element_child, warning ) )
-            elif warning is not None:
-                warning( u'Element %(tag)s, the following child tag missing in the element description: %(child)s.',
-                         tag = element.keys()[0],
-                         child = element_child.keys()[0] )
+            elif tag not in processed_keys and warning is not None:
+                warning( u'Tag %(tag)s have no corresponding child Element in %(element)s',
+                         tag = tag, element = self )
         return Element( self, attributes = known_attributes, children = children, text = '' )
 
     def __repr__( self ):
@@ -1762,11 +1766,10 @@ class Element( _ElementBase ):
             # since child order have no matter, create a list of
             # children with duplicated tags
             taglist = set( [ x.meta.tag for x in self ] )
-            props[ '#children' ] = {}
             for tag in taglist:
-                props[ '#children' ][ tag ] = []
+                props[ tag ] = []
             for child in children:
-                props[ '#children' ][ child[0] ].append( child[1] )
+                props[ child[0] ].append( child[1] )
 
         return props
 
