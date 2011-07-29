@@ -22,12 +22,8 @@ Attribute description can indicate if the attribute is mandatory, its value doma
 import xml.etree.ElementTree
 # Publish/subscribe framework
 # See http://louie.berlios.de/ and http://pydispatcher.sf.net/
-import os
 import louie
-import math
-import wogfile
 from utils import * #@UnusedWildImport
-from PyQt4 import QtCore
 import yaml
 
 # get rid of !!python/unicode tags if string is ASCII-convertible
@@ -1376,13 +1372,13 @@ class World( WorldsOwner ):
 
     def refreshFromFiles( self ):
         refreshed = self.key + ' refreshing\n'
-        for treemeta, tree in self._trees.items():
+        for treemeta, tree in self._trees.items(): #@UnusedVariable
             if tree.filename != '':
-              if os.path.isfile( tree.filename ):
-                current_filetime = os.path.getmtime( tree.filename )
-                if current_filetime > tree.filetime:
-                    self._refreshTree( tree )
-                    refreshed += 'refreshed : ' + tree.filename + '  ' + `tree.filetime` + '  ' + `current_filetime` + "\n"
+                if os.path.isfile( tree.filename ):
+                    current_filetime = os.path.getmtime( tree.filename )
+                    if current_filetime > tree.filetime:
+                        self._refreshTree( tree )
+                        refreshed += 'refreshed : ' + tree.filename + '  ' + `tree.filetime` + '  ' + `current_filetime` + "\n"
         return refreshed
 
     def _refreshTree( self, tree ):
@@ -2032,7 +2028,7 @@ class Element( _ElementBase ):
             stop = start
         stop = min( len( self ), stop )
         tree = self.tree
-        for index in xrange( start, stop ):
+        for index in xrange( start, stop ): #@UnusedVariable
             element = self._children[start]
             if tree:
                 louie.send( ElementAboutToBeRemoved, tree, element, start )
@@ -2067,7 +2063,7 @@ class Element( _ElementBase ):
            all attributes, and sets the text and tail attributes to None.
         """
         tree = self.tree
-        for index in xrange( 0, len( self ) ):
+        for index in xrange( 0, len( self ) ): #@UnusedVariable
             element = self._children[0]
             if tree:
                 louie.send( ElementAboutToBeRemoved, tree, element, 0 )
@@ -2261,7 +2257,7 @@ if __name__ == "__main__":
             check_text_ids( self.world_level1, 'TEXT_HI', 'TEXT_HO' )
             check_text_ids( self.world_level2, 'TEXT_HI' )
             # add identifier specified to level2 world
-            l2_ho = l2root.make_child( LEVEL_TEXT, {'id':'TEXT_HO', 'fr':'Oooh'} )
+            l2root.make_child( LEVEL_TEXT, {'id':'TEXT_HO', 'fr':'Oooh'} )
             check_valid_sign_reference( self.world_level2, 'TEXT_HO' )
             check_text_ids( self.world_level1, 'TEXT_HI', 'TEXT_HO' )
             check_text_ids( self.world_level2, 'TEXT_HI', 'TEXT_HO' )

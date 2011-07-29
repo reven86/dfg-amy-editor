@@ -829,22 +829,22 @@ class LevelWorld( ThingWorld ):
             geomitems.append( geomitem )
             geomstatic = geomitem.get_native( 'static', False )
             if not geomstatic:
-             if geomitem.get_native( 'rotation', 0 ) != 0:
-                   self.addSceneError( 2, geomitem.get( 'id', '' ) )
+                if geomitem.get_native( 'rotation', 0 ) != 0:
+                    self.addSceneError( 2, geomitem.get( 'id', '' ) )
             nchildren = 0
             for geomchild in geomitem.getchildren():
                 nchildren += 1
                 geomchildren.add( geomchild.get( 'id', '' ) )
                 if not geomstatic:
-                   if geomchild.get_native( 'mass', 0.0 ) <= 0:
-                       self.addSceneError( 3, ( geomitem.get( 'id', '' ), geomchild.get( 'id', '' ) ) )
+                    if geomchild.get_native( 'mass', 0.0 ) <= 0:
+                        self.addSceneError( 3, ( geomitem.get( 'id', '' ), geomchild.get( 'id', '' ) ) )
                 if geomchild.get( 'image' ):
-                   self.addSceneError( 4, geomchild.get( 'id', '' ) )
+                    self.addSceneError( 4, geomchild.get( 'id', '' ) )
             if nchildren == 0:
-                   if not geomstatic:
-                        self.addSceneError( 5, geomitem.get( 'id', '' ) )
-                   else:
-                        self.addSceneError( 6, geomitem.get( 'id', '' ) )
+                if not geomstatic:
+                    self.addSceneError( 5, geomitem.get( 'id', '' ) )
+                else:
+                    self.addSceneError( 6, geomitem.get( 'id', '' ) )
 
         # Get any radial forcefields.. ready for next check
         rfflist = {}
@@ -860,30 +860,30 @@ class LevelWorld( ThingWorld ):
             geomstatic = geomitem.get_native( 'static', False )
             #static vs motor check
             if geomstatic and id in motorbodys:
-               self.addSceneError( 7, id )
+                self.addSceneError( 7, id )
 
             if not geomstatic:
-              gx, gy = geomitem.get_native( 'center', ( 0, 0 ) )
-              for rffid, rffpos in rfflist.items():
-                  if abs( gx - rffpos[0] + gy - rffpos[1] ) < 0.001:
-                      self.addSceneError( 8, ( id, rffid ) )
+                gx, gy = geomitem.get_native( 'center', ( 0, 0 ) )
+                for rffid, rffpos in rfflist.items():
+                    if abs( gx - rffpos[0] + gy - rffpos[1] ) < 0.001:
+                        self.addSceneError( 8, ( id, rffid ) )
 
         # finally some checks on unfixed spinning things
         spinning = motorbodys | rotspeedbodys
         spinningnohinge = spinning - hingebodys
         for body in spinningnohinge:
-           self.addSceneError( 9, body )
+            self.addSceneError( 9, body )
 
         hingedchildren = hingebodys & geomchildren
         for hingedchild in hingedchildren:
-           self.addSceneError( 10, hingedchild )
+            self.addSceneError( 10, hingedchild )
 
         #linearforcefield can have center but no size
         #but CANNOT have size, but no center
         for lff in root.findall( 'linearforcefield' ):
             if lff.get( 'size' ) is not None:
-               if lff.get( 'center', '' ) == '':
-                   self.addSceneError( 11, lff.get( 'id', '' ) )
+                if lff.get( 'center', '' ) == '':
+                    self.addSceneError( 11, lff.get( 'id', '' ) )
 
         return self._scene_issue_level != ISSUE_LEVEL_NONE
 
@@ -985,7 +985,7 @@ class LevelWorld( ThingWorld ):
 
     def _isNumber( self, input ):
         try:
-            f = float( input )
+            f = float( input ) #@UnusedVariable
             return True
         except ValueError:
             return False
@@ -2168,7 +2168,7 @@ class MainWindow( QtGui.QMainWindow ):
         self.tree_view_by_element_world = {} # map of all tree views
         scene_dock, self.sceneTree = self.createElementTreeView( 'Scene', metawog.TREE_LEVEL_SCENE )
         level_dock, self.levelTree = self.createElementTreeView( 'Level', metawog.TREE_LEVEL_GAME, scene_dock )
-        resource_dock, self.levelResourceTree = self.createElementTreeView( 'Resource',
+        resource_dock, self.levelResourceTree = self.createElementTreeView( 'Resource', #@UnusedVariable
                                                                             metawog.TREE_LEVEL_RESOURCE,
                                                                             level_dock )
 

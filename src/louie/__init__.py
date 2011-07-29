@@ -7,7 +7,7 @@ __all__ = [
     'sender',
     'signal',
     'version',
-    
+
     'connect',
     'disconnect',
     'get_all_receivers',
@@ -30,8 +30,8 @@ __all__ = [
     'Signal',
     ]
 
-import louie.dispatcher, louie.error, louie.plugin, louie.robustapply, \
-       louie.saferef, louie.sender, louie.signal, louie.version
+import louie.dispatcher, louie.error, louie.plugin, louie.robustapply #@UnresolvedImport
+import louie.saferef, louie.sender, louie.signal, louie.version #@UnresolvedImport
 
 from louie.dispatcher import \
      connect, disconnect, get_all_receivers, reset, \

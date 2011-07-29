@@ -6,14 +6,14 @@
 """
 
 import sys
-if sys.platform=='win32':
+if sys.platform == 'win32':
     from distutils.core import setup
-    import py2exe
-    setup( console=[{ "script": "wogeditor.py" ,
-                      "icon_resources": [(1,'images/wogedit.ico')]}] ,
-           options={ "py2exe":{"includes":["sip"]} } )
-elif sys.platform=='darwin':
-    from setuptools import setup
+    import py2exe #@UnusedImport
+    setup( console = [{ "script": "wogeditor.py" ,
+                      "icon_resources": [( 1, 'images/wogedit.ico' )]}] ,
+           options = { "py2exe":{"includes":["sip"]} } )
+elif sys.platform == 'darwin':
+    from setuptools import setup #@Reimport
     APP = ['wogeditor.py']
     DATA_FILES = []
     OPTIONS = {'argv_emulation': True,
@@ -23,9 +23,9 @@ elif sys.platform=='darwin':
            'resources': 'files.xml.xml',
            'plist': {'CFBundleDisplayName': 'WooGLE'}
            }
-    setup(  app=APP,
-            data_files=DATA_FILES,
-            options={'py2app': OPTIONS},
-            setup_requires=['py2app'])
+    setup( app = APP,
+            data_files = DATA_FILES,
+            options = {'py2app': OPTIONS},
+            setup_requires = ['py2app'] )
 else:
-    print "setup.py not configured for this platform ",sys.platform
+    print "setup.py not configured for this platform ", sys.platform

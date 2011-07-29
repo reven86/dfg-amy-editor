@@ -1,7 +1,6 @@
 """Some helpers to work around some ackward aspect of the pyqt API.
 """
 from PyQt4 import QtCore, QtGui
-from PyQt4.QtCore import Qt
 import xml
 
 def implicit( type, value ):
@@ -9,26 +8,26 @@ def implicit( type, value ):
        If value is an instance of type, then returns value, otherwise call type constructor
        with value as parameter.
     """
-    if isinstance(value, type):
+    if isinstance( value, type ):
         return value
-    return type(value)
+    return type( value )
 
 def key_sequence( value, translate_context ):
     """Constructs a QtGui.QKeySequence simulating the implicit C++ constructor.
        value: may be a QtGui.QKeySequence, QtGui.QKeySequence.StandardKey or a string.
        If a string is provided, it will be translated. 
     """
-    if isinstance(value, QtGui.QKeySequence):
+    if isinstance( value, QtGui.QKeySequence ):
         return value
-    if isinstance(value, QtGui.QKeySequence.StandardKey):
-        return QtGui.QKeySequence(value)
-    assert isinstance(translate_context,QtCore.QObject), translate_context
+    if isinstance( value, QtGui.QKeySequence.StandardKey ):
+        return QtGui.QKeySequence( value )
+    assert isinstance( translate_context, QtCore.QObject ), translate_context
     return QtGui.QKeySequence( translate_context.tr( value ) )
 
-def action( parent, icon = None, text = None, 
+def action( parent, icon = None, text = None,
             shortcut = None, shortcut_context = None, status_tip = None,
             enabled = None, checkable = None, checked = None,
-            receiver = None, handler = None, translate_context = None, visible=None ):
+            receiver = None, handler = None, translate_context = None, visible = None ):
     """Creates a QtGui.QAction with the specified attributes.
        text, shortcut, status_tip are automatically translated using translate_context,
        or parent if not specified.
@@ -40,13 +39,13 @@ def action( parent, icon = None, text = None,
     if icon:
         action.setIcon( implicit( QtGui.QIcon, icon ) )
     if text:
-        action.setText( tr_context.tr(text) )
+        action.setText( tr_context.tr( text ) )
     if shortcut is not None:
-        action.setShortcut( key_sequence( shortcut, tr_context ) )      
+        action.setShortcut( key_sequence( shortcut, tr_context ) )
     if shortcut_context is not None:
         action.setShortcutContext( shortcut_context )
     if status_tip:
-        action.setStatusTip( tr_context.tr(status_tip) )
+        action.setStatusTip( tr_context.tr( status_tip ) )
     if enabled is not None:
         action.setEnabled( enabled )
     if checked is not None:
@@ -57,14 +56,14 @@ def action( parent, icon = None, text = None,
         action.setVisible ( visible )
     if handler is not None:
         if receiver is None:
-            receiver = parent 
-        receiver.connect( action, QtCore.SIGNAL("triggered()"), handler )
+            receiver = parent
+        receiver.connect( action, QtCore.SIGNAL( "triggered()" ), handler )
     return action
 
 def iterQTreeWidget( tree_or_item, flag = QtGui.QTreeWidgetItemIterator.All ):
-    iterator = QtGui.QTreeWidgetItemIterator(tree_or_item, flag)
+    iterator = QtGui.QTreeWidgetItemIterator( tree_or_item, flag )
     while True:
-        iterator.__iadd__(1)
+        iterator.__iadd__( 1 )
         value = iterator.value()
         if value is None:
             break
@@ -77,21 +76,21 @@ def standardModelTreeItems( model, root_index = None ):
        root_index: a QModelIndex.
     """
     if root_index is None or not root_index.isValid():
-        parent_indexes = [ model.index(row,0) for row in xrange(0,model.rowCount()) ]
+        parent_indexes = [ model.index( row, 0 ) for row in xrange( 0, model.rowCount() ) ]
     else:
         parent_indexes = [ root_index ]
     items = []
     while parent_indexes:
         index = parent_indexes.pop()
-        parent_indexes.extend( [ index.child(row,0) for row in xrange(0,model.rowCount(index)) ] )
-        items.append( model.itemFromIndex(index) )
+        parent_indexes.extend( [ index.child( row, 0 ) for row in xrange( 0, model.rowCount( index ) ) ] )
+        items.append( model.itemFromIndex( index ) )
     return items
 
 def get_row_item_sibling( item, column ):
     """Returns the item corresponding to the column column on the same row as item.
     """
     column_index = item.index().sibling( item.row(), column )
-    return item.model().itemFromIndex(column_index)
+    return item.model().itemFromIndex( column_index )
 
 def index_path( index ):
     """Returns a list of tuple (row,column) corresponding to the index path starting from
@@ -100,18 +99,18 @@ def index_path( index ):
     """
     path = []
     if not index.isValid():
-        return [(-1,-1)]
+        return [( -1, -1 )]
     if index.parent().isValid():
-        path.extend( index_path(index.parent()) )
-    path.append( (index.row(),index.column()) )
+        path.extend( index_path( index.parent() ) )
+    path.append( ( index.row(), index.column() ) )
     return path
 
-def index_path_str(index, separator = None):
+def index_path_str( index, separator = None ):
     """Returns a string representing the index path.
        index: instance of QModelIndex
     """
     separator = separator or ' / '
-    return separator.join( ['%d:%d' % xy for xy in index_path(index) ] )
+    return separator.join( ['%d:%d' % xy for xy in index_path( index ) ] )
 
 
 def make_icon_overlay( source_icon, overlay_icon, size, overlay_size ):
@@ -130,15 +129,15 @@ def clone_mouse_event( event ):
 
 def itemonclipboard():
     clipboard = QtGui.QApplication.clipboard()
-    xml_data = unicode(clipboard.text())
+    xml_data = unicode( clipboard.text() )
     if not xml_data:
-       return None
+        return None
     try:
-        metaworld_element = xml.etree.ElementTree.fromstring( xml_data )
-    except xml.parsers.expat.ExpatError:
-       return None
+        metaworld_element = xml.etree.ElementTree.fromstring( xml_data ) #@UndefinedVariable
+    except xml.parsers.expat.ExpatError: #@UndefinedVariable
+        return None
     if metaworld_element is None:
-       return None
+        return None
     if metaworld_element.tag == 'MetaWorldElement':
         return metaworld_element[0].tag
     return None

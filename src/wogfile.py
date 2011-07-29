@@ -22,7 +22,7 @@ if ON_PLATFORM != PLATFORM_MAC:
 def pngbinltl2png( input_path, output_path ):
     # repack .png.binltl files into png
     text = file( input_path, 'rb' ).read()
-    width, height, size, fullsize = struct.unpack( "<HHII", text[:12] )
+    width, height, size, fullsize = struct.unpack( "<HHII", text[:12] ) #@UnusedVariable
     data = zlib.decompress( text[12:12 + size] )
     side = 1
     while side < width or side < height:
@@ -72,17 +72,17 @@ def pngbinltl2png( input_path, output_path ):
 
 def png2pngbinltl( input_path, output_path ):
     r = png.Reader( filename = input_path )
-    width, height, pixels, meta = r.asRGBA8()
+    width, height, pixels, meta = r.asRGBA8() #@UnusedVariable
     size = 1
     while size < width or size < height:
         size *= 2
     #print "width=",width,"height=",height,"size=",size
-    rowend = ''.join( [chr( 0 ) for i in range( ( size - width ) * 4 )] )
-    fullrow = ''.join( [chr( 0 ) for i in range( size * 4 )] )
+    rowend = ''.join( [chr( 0 ) for i in range( ( size - width ) * 4 )] ) #@UnusedVariable
+    fullrow = ''.join( [chr( 0 ) for i in range( size * 4 )] ) #@UnusedVariable
     imagelist = []
     for row in pixels:
         imagelist.append( ''.join( [chr( v ) for v in row] ) + rowend )
-    for i in range( size - height ):
+    for i in range( size - height ): #@UnusedVariable
         imagelist.append( fullrow )
     imagedata = ''.join( imagelist )
     assert len( imagedata ) == size * size * 4
@@ -135,7 +135,7 @@ def encrypt_file( input_path, output_path ):
     """Encrypt XML file input_path into .bin file output_path using AES algorithm."""
     xml_data = file( input_path, 'rb' ).read()
     if encrypt_file_data( output_path, xml_data ):
-       print 'Encrypted "%s" into "%s"' % ( input_path, output_path )
+        print 'Encrypted "%s" into "%s"' % ( input_path, output_path )
     return True
 
 ## MAC XOR decrypt and encrypt functions taken from goocrypt.py by SoulTaker
@@ -144,8 +144,8 @@ def XORdecrypt( input ):
     size = len( input )
     a = ( ( ( size & 1 ) << 6 ) | ( ( size & 2 ) << 3 ) | ( size & 4 ) ) ^ 0xab
     for c in input:
-      output += chr( a ^ ord( c ) )
-      a = ( ( a & 0x7f ) << 1 | ( a & 0x80 ) >> 7 ) ^ ord( c )
+        output += chr( a ^ ord( c ) )
+        a = ( ( a & 0x7f ) << 1 | ( a & 0x80 ) >> 7 ) ^ ord( c )
     return output
 
 def XORencrypt( input ):
@@ -153,8 +153,8 @@ def XORencrypt( input ):
     size = len( input )
     a = ( ( ( size & 1 ) << 6 ) | ( ( size & 2 ) << 3 ) | ( size & 4 ) ) ^ 0xab
     for c in input:
-      output += chr( a ^ ord( c ) )
-      a = ( ( a & 0x7f ) << 1 | ( a & 0x80 ) >> 7 ) ^ ord( output[-1] )
+        output += chr( a ^ ord( c ) )
+        a = ( ( a & 0x7f ) << 1 | ( a & 0x80 ) >> 7 ) ^ ord( output[-1] )
     return output
 
 def decrypt_file_data( input_path ):
@@ -207,7 +207,7 @@ Path Only  (filename from source-file, extension converted to .xml or .bin)
         if args[0] == args[1]:
             parser.error( 'Input path must be different from output path' )
     elif len( args ) != 1:
-         parser.error( 'You must specify the input path' )
+        parser.error( 'You must specify the input path' )
 
     if options.decrypt:
         if len( args ) == 1:

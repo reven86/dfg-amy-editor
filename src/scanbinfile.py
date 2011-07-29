@@ -1,7 +1,5 @@
 import wogfile
-import os
 import os.path
-import glob #@UnresolvedImport
 import optparse #@UnresolvedImport
 import sys
 

@@ -462,7 +462,7 @@ class Writer:
                 return c
             if greyscale:
                 try:
-                    l = len( c )
+                    l = len( c ) #@UnusedVariable
                 except TypeError:
                     c = ( c, )
                 if len( c ) != 1:
@@ -895,7 +895,7 @@ class Writer:
             def line():
                 scanline = array( 'B', infile.read( row_bytes ) )
                 return scanline
-        for y in range( self.height ):
+        for y in range( self.height ): #@UnusedVariable
             yield line()
 
     def array_scanlines( self, pixels ):
@@ -907,7 +907,7 @@ class Writer:
         # Values per row
         vpr = self.width * self.planes
         stop = 0
-        for y in range( self.height ):
+        for y in range( self.height ): #@UnusedVariable
             start = stop
             stop = start + vpr
             yield pixels[start:stop]
@@ -1841,22 +1841,22 @@ class Reader:
         return width, height, iterscale(), meta
 
     def asRGB8( self ):
-	"""Return the image data as an RGB pixels with 8-bits per
-	sample.  This is like the :meth:`asRGB` method except that
-	this method additionally rescales the values so that they
-	are all between 0 and 255 (8-bit).  In the case where the
-	source image has a bit depth < 8 the transformation preserves
-	all the information; where the source image has bit depth
-	> 8, then rescaling to 8-bit values loses precision.  No
-	dithering is performed.  Like :meth:`asRGB`, an alpha channel
-	in the source image will raise an exception.
-
-        This function returns a 4-tuple:
-        (*width*, *height*, *pixels*, *metadata*).
-        *width*, *height*, *metadata* are as per the :meth:`read` method.
-        
-        *pixels* is the pixel data in boxed row flat pixel format.
-        """
+        """Return the image data as an RGB pixels with 8-bits per
+    	sample.  This is like the :meth:`asRGB` method except that
+    	this method additionally rescales the values so that they
+    	are all between 0 and 255 (8-bit).  In the case where the
+    	source image has a bit depth < 8 the transformation preserves
+    	all the information; where the source image has bit depth
+    	> 8, then rescaling to 8-bit values loses precision.  No
+    	dithering is performed.  Like :meth:`asRGB`, an alpha channel
+    	in the source image will raise an exception.
+    
+            This function returns a 4-tuple:
+            (*width*, *height*, *pixels*, *metadata*).
+            *width*, *height*, *metadata* are as per the :meth:`read` method.
+            
+            *pixels* is the pixel data in boxed row flat pixel format.
+            """
 
         return self._as_rescale( self.asRGB, 8 )
 
@@ -2056,7 +2056,6 @@ except:
 # python -c 'import png;png.test()'
 
 from StringIO import StringIO
-import tempfile
 # http://www.python.org/doc/2.4.4/lib/module-unittest.html
 import unittest
 
@@ -2115,7 +2114,7 @@ class Test( unittest.TestCase ):
         f = StringIO()
         w.write_array( f, array( 'B', map( mask.__and__, range( 1, 256 ) ) ) )
         r = Reader( bytes = f.getvalue() )
-        x, y, pixels, meta = r.read()
+        x, y, pixels, meta = r.read() #@UnusedVariable
         self.assertEqual( x, 15 )
         self.assertEqual( y, 17 )
         self.assertEqual( list( itertools.chain( *pixels ) ),
@@ -2130,7 +2129,7 @@ class Test( unittest.TestCase ):
         f = StringIO()
         w.write_array( f, array( 'B', range( 4 ) ) )
         r = Reader( bytes = f.getvalue() )
-        x, y, pixels, meta = r.asRGB8()
+        x, y, pixels, meta = r.asRGB8() #@UnusedVariable
         self.assertEqual( x, 1 )
         self.assertEqual( y, 4 )
         for i, row in enumerate( pixels ):
@@ -2145,7 +2144,7 @@ class Test( unittest.TestCase ):
         f = StringIO()
         w.write_array( f, array( 'B', ( 0, 1, 1, 2 ) ) )
         r = Reader( bytes = f.getvalue() )
-        x, y, pixels, meta = r.asRGB8()
+        x, y, pixels, meta = r.asRGB8() #@UnusedVariable
         self.assertEqual( x, 1 )
         self.assertEqual( y, 4 )
         self.assertEqual( list( pixels ), map( list, [a, b, b, c] ) )
@@ -2160,7 +2159,7 @@ class Test( unittest.TestCase ):
         f = StringIO()
         w.write_array( f, array( 'B', ( 4, 3, 2, 3, 2, 0, 2, 0, 1 ) ) )
         r = Reader( bytes = f.getvalue() )
-        x, y, pixels, meta = r.asRGBA8()
+        x, y, pixels, meta = r.asRGBA8() #@UnusedVariable
         self.assertEquals( x, 3 )
         self.assertEquals( y, 3 )
         c = c + ( 255, )
@@ -2173,7 +2172,7 @@ class Test( unittest.TestCase ):
         "asRGBA8() on colour type 2 source."""
         # Test for Issue 26
         r = Reader( bytes = _pngsuite['basn2c08'] )
-        x, y, pixels, meta = r.asRGBA8()
+        x, y, pixels, meta = r.asRGBA8() #@UnusedVariable
         # Test the pixels at row 9 columns 0 and 1.
         row9 = list( pixels )[9]
         self.assertEqual( row9[0:8],
@@ -2182,7 +2181,7 @@ class Test( unittest.TestCase ):
         "Test colour type 2 and tRNS chunk."
         # Test for Issue 25
         r = Reader( bytes = _pngsuite['tbrn2c08'] )
-        x, y, pixels, meta = r.asRGBA8()
+        x, y, pixels, meta = r.asRGBA8() #@UnusedVariable
         # I just happen to know that the first pixel is transparent.
         # In particular it should be #7f7f7f00
         row0 = list( pixels )[0]
@@ -2220,21 +2219,21 @@ class Test( unittest.TestCase ):
             if name[3:5] not in ['n0', 'n2', 'n4', 'n6']:
                 continue
             it = Reader( bytes = bytes )
-            x, y, pixels, meta = it.read()
+            x, y, pixels, meta = it.read() #@UnusedVariable
             pngi = topngbytes( 'adam7wn' + name + '.png', pixels,
               x = x, y = y, bitdepth = it.bitdepth,
               greyscale = it.greyscale, alpha = it.alpha,
               transparent = it.transparent,
               interlace = False )
-            x, y, ps, meta = Reader( bytes = pngi ).read()
+            x, y, ps, meta = Reader( bytes = pngi ).read() #@UnusedVariable
             it = Reader( bytes = bytes )
-            x, y, pixels, meta = it.read()
+            x, y, pixels, meta = it.read() #@UnusedVariable
             pngs = topngbytes( 'adam7wi' + name + '.png', pixels,
               x = x, y = y, bitdepth = it.bitdepth,
               greyscale = it.greyscale, alpha = it.alpha,
               transparent = it.transparent,
               interlace = True )
-            x, y, pi, meta = Reader( bytes = pngs ).read()
+            x, y, pi, meta = Reader( bytes = pngs ).read() #@UnusedVariable
             self.assertEqual( map( list, ps ), map( list, pi ) )
     def testPGMin( self ):
         """Test that the command line tool can read PGM files."""
@@ -2248,7 +2247,7 @@ class Test( unittest.TestCase ):
         o = StringIO()
         testWithIO( s, o, do )
         r = Reader( bytes = o.getvalue() )
-        x, y, pixels, meta = r.read()
+        x, y, pixels, meta = r.read() #@UnusedVariable
         self.assert_( r.greyscale )
         self.assertEqual( r.bitdepth, 2 )
     def testPAMin( self ):
@@ -2266,7 +2265,7 @@ class Test( unittest.TestCase ):
         o = StringIO()
         testWithIO( s, o, do )
         r = Reader( bytes = o.getvalue() )
-        x, y, pixels, meta = r.read()
+        x, y, pixels, meta = r.read() #@UnusedVariable
         self.assert_( r.alpha )
         self.assert_( not r.greyscale )
         self.assertEqual( list( itertools.chain( *pixels ) ), flat )
@@ -2304,7 +2303,7 @@ class Test( unittest.TestCase ):
         w = Writer( 8, 8, greyscale = True, bitdepth = 1, transparent = transparent )
         w.write_packed( o, pixels )
         r = Reader( bytes = o.getvalue() )
-        x, y, pixels, meta = r.asDirect()
+        x, y, pixels, meta = r.asDirect() #@UnusedVariable
         self.assert_( meta['alpha'] )
         self.assert_( meta['greyscale'] )
         self.assertEqual( meta['bitdepth'], 1 )
@@ -2314,7 +2313,7 @@ class Test( unittest.TestCase ):
         """
         r = Reader( bytes = _pngsuite['basn2c16'] )
         info = r.read()[3]
-        w = Writer( **info )
+        Writer( **info )
     def testPackedIter( self ):
         """Test iterator for row when using write_packed.
 
@@ -2325,7 +2324,7 @@ class Test( unittest.TestCase ):
         w.write_packed( o, [itertools.chain( [0x0a], [0xaa] ),
                            itertools.chain( [0x0f], [0xff] )] )
         r = Reader( bytes = o.getvalue() )
-        x, y, pixels, info = r.asDirect()
+        x, y, pixels, info = r.asDirect() #@UnusedVariable
         pixels = list( pixels )
         self.assertEqual( len( pixels ), 2 )
         self.assertEqual( len( pixels[0] ), 16 )
@@ -2400,8 +2399,8 @@ class Test( unittest.TestCase ):
         import hashlib
 
         r = Reader( bytes = _pngsuite['basn0g02'] )
-        x, y, pixel, meta = r.read_flat()
-        d = hashlib.md5( ''.join( map( chr, pixel ) ) ).digest()
+        x, y, pixel, meta = r.read_flat() #@UnusedVariable
+        d = hashlib.md5( ''.join( map( chr, pixel ) ) ).digest() #@UndefinedVariable
         self.assertEqual( d.encode( 'hex' ), '255cd971ab8cd9e7275ff906e5041aa0' )
 
     # numpy dependent tests.  These are skipped (with a message to
@@ -2416,7 +2415,7 @@ class Test( unittest.TestCase ):
             return
 
         rows = [map( numpy.uint16, range( 0, 0x10000, 0x5555 ) )]
-        b = topngbytes( 'numpyuint16.png', rows, 4, 1,
+        topngbytes( 'numpyuint16.png', rows, 4, 1,
             greyscale = True, alpha = False, bitdepth = 16 )
     def testNumpyuint8( self ):
         """numpy uint8."""
@@ -2428,7 +2427,7 @@ class Test( unittest.TestCase ):
             return
 
         rows = [map( numpy.uint8, range( 0, 0x100, 0x55 ) )]
-        b = topngbytes( 'numpyuint8.png', rows, 4, 1,
+        topngbytes( 'numpyuint8.png', rows, 4, 1,
             greyscale = True, alpha = False, bitdepth = 8 )
     def testNumpybool( self ):
         """numpy bool."""
@@ -2440,7 +2439,7 @@ class Test( unittest.TestCase ):
             return
 
         rows = [map( numpy.bool, [0, 1] )]
-        b = topngbytes( 'numpybool.png', rows, 2, 1,
+        topngbytes( 'numpybool.png', rows, 2, 1,
             greyscale = True, alpha = False, bitdepth = 1 )
 
 
@@ -3423,8 +3422,7 @@ def _main( argv ):
                         compression = options.compression )
         if options.alpha:
             pgmfile = open( options.alpha, 'rb' )
-            format, awidth, aheight, adepth, amaxval = \
-              read_pnm_header( pgmfile, 'P5' )
+            format, awidth, aheight, adepth, amaxval = read_pnm_header( pgmfile, 'P5' ) #@UnusedVariable
             if amaxval != '255':
                 raise NotImplementedError( 
                   'maxval %s not supported for alpha channel' % amaxval )

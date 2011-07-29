@@ -1,19 +1,19 @@
 from distutils.core import setup
-import py2exe
+import py2exe #@UnusedImport
 
 #setup(console=['wogfile.py', 'scanbinfile.py', 'scanxmlfile.py'],
 #      windows=[{"script":"wogeditor.py"}],
 #setup(console=['wogfile.py' , 'scanbinfile.py', 'scanxmlfile.py', "wogeditor.py" , 'icon_resources':[(1,'MyIcon.ico')]],
 #      options={"py2exe":{"includes":["sip"]
 #}})
-setup(
-        console=[
+setup( 
+        console = [
             {
               "script": "wogfile.py" ,
-              "icon_resources": [(1,'images/wogedit.ico')]
+              "icon_resources": [( 1, 'images/wogedit.ico' )]
             }
         ] ,
-      options={
+      options = {
             "py2exe":{"includes":["sip"]}
       }
-)
+ )
