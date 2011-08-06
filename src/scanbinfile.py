@@ -38,7 +38,7 @@ def main():
 This applications decrypt all *.bin files found in res-dir-path sub-directories,
 and output them in output-dir-path after replacing the extension with .xml.
 """ )
-    ( options, args ) = parser.parse_args()
+    ( options, args ) = parser.parse_args() #@UnusedVariable
     if len( args ) != 2:
         parser.error( 'You must specify the input and ouput path' )
 

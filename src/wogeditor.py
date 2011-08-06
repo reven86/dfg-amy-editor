@@ -793,6 +793,8 @@ class LevelWorld( ThingWorld ):
 
 
     def hasscene_issue( self ):
+        # TODO: check SceneLayer tiling applied to only pow2 textures
+
         #rules
         root = self.scene_root
         self._scene_issue_level = ISSUE_LEVEL_NONE

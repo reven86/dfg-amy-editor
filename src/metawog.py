@@ -186,8 +186,6 @@ TREE_LEVEL_SCENE.add_elements( [
             scale_attribute( 'scale', default = '1,1', min_value = 0.000001, map_to = ( 'scalex', 'scaley' ), allow_empty = True, remove_empty = True ),
             angle_degrees_attribute( 'rotation', default = '0', allow_empty = True, remove_empty = True ),
             real_attribute( 'depth', mandatory = True, init = '0' ),
-            bool_attribute( 'tilex', default = 'false', allow_empty = True, remove_empty = True ),
-            bool_attribute( 'tiley', default = 'false', allow_empty = True, remove_empty = True ),
             int_attribute ( 'tilecountx', allow_empty = True, remove_empty = True ),
             int_attribute ( 'tilecounty', allow_empty = True, remove_empty = True ),
             real_attribute( 'alpha', min_value = 0, max_value = 1, default = '1' , allow_empty = True, remove_empty = True ),
@@ -348,11 +346,11 @@ LEVEL_GAME_TEMPLATE = """\
 """
 
 LEVEL_SCENE_TEMPLATE = """\
-<scene minx="-500" miny="0" maxx="500" maxy="1000" backgroundcolor="0,0,0" >
+<scene minx="-1000" miny="0" maxx="1000" maxy="1000" backgroundcolor="0,0,0" >
 	<linearforcefield type="gravity" force="0,-10" dampeningfactor="0" antigrav="true"  />
 
-	<line id="right" tag="" anchor="500,300" normal="-1,0" />
-	<line id="left" tag="" anchor="-500,300" normal="1,0" />
+	<line id="right" tag="" anchor="1000,300" normal="-1,0" />
+	<line id="left" tag="" anchor="-1000,300" normal="1,0" />
 	<line id="ground" anchor="0,20" normal="0,1" />
 </scene>"""
 

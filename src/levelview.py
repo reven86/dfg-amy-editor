@@ -2295,7 +2295,7 @@ class LevelGraphicView( QtGui.QGraphicsView ):
         cameraitem = None
         if zoom is not None:
             if element.get( 'aspect' ) == 'widescreen':
-                sizex = 1060 / zoom
+                sizex = 1066 / zoom
                 sizey = 600 / zoom
                 pen = QtGui.QPen( QtGui.QColor( 0, 96, 48 ) )
                 scalex = 10
