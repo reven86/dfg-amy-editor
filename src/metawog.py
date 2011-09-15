@@ -21,8 +21,11 @@ WORLD_GLOBAL = describe_world( 'game',
                                child_worlds = [ WORLD_CAMPAIGN, WORLD_LEVEL ],
                                trees_meta = [] )
 
-LEVELS_ORIGINAL = set( ['level_name_1'] )
+LEVELS_ORIGINAL = set( [] )
 LEVELS_ORIGINAL_LOWER = [level_name.lower() for level_name in LEVELS_ORIGINAL]
+
+# FIXME: use tree for them
+MATERIALS_ORIGINAL = ['none', 'wall', 'water']
 
 #@DaB
 FILE_ELEMENT = describe_element( 'file', attributes = [
@@ -41,7 +44,7 @@ TREE_LEVEL_GAME.add_elements( [
             xy_attribute( 'endpos' ),
             real_attribute( 'endzoom', min_value = 0.00001 )
             ], elements = [
-            describe_element( 'poi', min_occurrence = 1, groups = 'camera', attributes = [
+            describe_element( 'poi', min_occurrence = 0, groups = 'camera', attributes = [
                 xy_attribute( 'pos', init = '0,0', mandatory = True ),
                 real_attribute( 'zoom', min_value = 0.00001, default = 1 , init = 1 , mandatory = True ),
                 real_attribute( 'pause', min_value = 0, default = 0 , init = 0 , mandatory = True, tooltip = 'Wait here for n seconds\n' ),
@@ -86,7 +89,7 @@ _describe_resource_file( TREE_LEVEL_RESOURCE, WORLD_LEVEL )
 
 
 # Values for Tag attribute (Physic items)
-_TAG_VALUES = ( 'walkable', )
+_TAG_VALUES = ( 'emitter', )
 
 ELEMENT_BUTTON = describe_element( 'button', groups = 'image', attributes = [
         string_attribute( 'id', display_id = True, mandatory = True ),
@@ -119,19 +122,9 @@ ELEMENT_RECTANGLE = describe_element( 'rectangle', groups = 'rect', attributes =
     xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ( 'x', 'y' ) , position = True ),
     size_attribute( 'size', mandatory = True, init = '100,100', map_to = ( 'width', 'height' ) ),
     angle_degrees_attribute( 'rotation', mandatory = True, init = '0' ),
-    bool_attribute( 'static', default = 'true', tooltip = "If static=true this object cannot move\nIf static=false or empty then a mass is required." ),
-    real_attribute( 'mass', tooltip = "Mass of this item.\nRequired if static=false or empty" ),
-    reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
-                          init = '' , allow_empty = True, remove_empty = True ),
-    enum_attribute( 'tag', _TAG_VALUES, is_list = True, allow_empty = True, remove_empty = True ),
-    path_attribute( 'image', strip_extension = '.png', allow_empty = True, remove_empty = True ),
-    xy_attribute( 'imagepos', allow_empty = True, remove_empty = True ),
-    angle_degrees_attribute( 'imagerot', allow_empty = True, remove_empty = True ),
-    scale_attribute( 'imagescale', allow_empty = True, remove_empty = True ),
-    real_attribute( 'rotspeed', allow_empty = True, remove_empty = True ),
-    bool_attribute( 'contacts' , allow_empty = True, remove_empty = True ),
-    bool_attribute( 'collide', allow_empty = True, remove_empty = True ),
-    bool_attribute( 'nogeomcollisions', allow_empty = True, remove_empty = True )
+    enum_attribute( 'material', values = MATERIALS_ORIGINAL, default = 'wall', allow_empty = False ),
+    enum_attribute( 'tag', _TAG_VALUES, is_list = True , allow_empty = True, remove_empty = True ),
+    string_attribute( 'script', allow_empty = True, remove_empty = True, tooltip = 'Custom scripts, separated by comma' )
     ] )
 
 ELEMENT_CHILD_RECTANGLE = describe_element( 'rectangle', groups = 'rect', attributes = [
@@ -139,7 +132,6 @@ ELEMENT_CHILD_RECTANGLE = describe_element( 'rectangle', groups = 'rect', attrib
     xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ( 'x', 'y' ), position = True ),
     size_attribute( 'size', mandatory = True, init = '100,100', map_to = ( 'width', 'height' ) ),
     angle_degrees_attribute( 'rotation', mandatory = True, init = '0' ),
-    real_attribute( 'mass', tooltip = "Mass of this child" )
 ] )
 
 
@@ -149,24 +141,15 @@ ELEMENT_CIRCLE = describe_element( 'circle', groups = 'circle', attributes = [
         reference_family = 'geometry', reference_world = WORLD_LEVEL ),
     xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ( 'x', 'y' ) , position = True ),
     radius_attribute( 'radius', mandatory = True, init = '75' ),
-    bool_attribute( 'static', default = 'true', tooltip = "If static=true this object cannot move\nIf static=false or empty then a mass is required." ),
-    real_attribute( 'mass', tooltip = "Mass of this item.\nRequired if static=false or empty" , allow_empty = True, remove_empty = True ),
-    reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
-                          init = '' , allow_empty = True, remove_empty = True ),
-    enum_attribute( 'tag', _TAG_VALUES, is_list = True, allow_empty = True, remove_empty = True ),
-    path_attribute( 'image', strip_extension = '.png', allow_empty = True, remove_empty = True ),
-    xy_attribute( 'imagepos', allow_empty = True, remove_empty = True ),
-    angle_degrees_attribute( 'imagerot', allow_empty = True, remove_empty = True ),
-    scale_attribute( 'imagescale', allow_empty = True, remove_empty = True ),
-    real_attribute( 'rotspeed', allow_empty = True, remove_empty = True ),
-    bool_attribute( 'contacts' ),
+    enum_attribute( 'material', values = MATERIALS_ORIGINAL, default = 'wall', allow_empty = False ),
+    enum_attribute( 'tag', _TAG_VALUES, is_list = True , allow_empty = True, remove_empty = True ),
+    string_attribute( 'script', allow_empty = True, remove_empty = True, tooltip = 'Custom scripts, separated by comma' )
     ] )
 
 ELEMENT_CHILD_CIRCLE = describe_element( 'circle', groups = 'circle', attributes = [
     string_attribute( 'id', display_id = True, allow_empty = True ),
     xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ( 'x', 'y' ), position = True ),
     radius_attribute( 'radius', mandatory = True, init = '75' ),
-    real_attribute( 'mass', tooltip = "Mass of this child" , allow_empty = True, remove_empty = True )
     ] )
 
 TREE_LEVEL_SCENE.add_elements( [
@@ -220,17 +203,9 @@ TREE_LEVEL_SCENE.add_elements( [
                 reference_family = 'geometry', reference_world = WORLD_LEVEL ),
             xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ( 'x', 'y' ) , position = True ),
             angle_degrees_attribute( 'rotation', mandatory = True, init = '0' ),
-            bool_attribute( 'static', default = 'true' , tooltip = "If static=true this object and its children cannot move\nIf static=false then all children require a mass." ),
-            reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
-                                 init = '' , allow_empty = True, remove_empty = True ),
-            enum_attribute( 'tag', _TAG_VALUES, is_list = True, allow_empty = True, remove_empty = True ),
-            path_attribute( 'image', strip_extension = '.png', allow_empty = True, remove_empty = True ),
-            xy_attribute( 'imagepos', allow_empty = True, remove_empty = True ),
-            angle_degrees_attribute( 'imagerot', allow_empty = True, remove_empty = True ),
-            scale_attribute( 'imagescale', allow_empty = True, remove_empty = True ),
-            real_attribute( 'rotspeed' , allow_empty = True, remove_empty = True ),
-            bool_attribute( 'contacts' ),
-            bool_attribute( 'nogeomcollisions' )
+            enum_attribute( 'material', values = MATERIALS_ORIGINAL, default = 'wall', allow_empty = False ),
+            enum_attribute( 'tag', _TAG_VALUES, is_list = True , allow_empty = True, remove_empty = True ),
+            string_attribute( 'script', allow_empty = True, remove_empty = True, tooltip = 'Custom scripts, separated by comma' )
             ],
             elements = [
                 ELEMENT_CHILD_RECTANGLE,
@@ -241,10 +216,6 @@ TREE_LEVEL_SCENE.add_elements( [
                               allow_empty = True, init = '' ),
             xy_attribute( 'anchor', mandatory = True, init = '0,0' , position = True ),
             dxdy_attribute( 'normal', mandatory = True, init = '1,0' ),
-            reference_attribute( 'material', reference_family = 'material', reference_world = WORLD_GLOBAL,
-                                 init = '', allow_empty = True, remove_empty = True ),
-           # bool_attribute( 'static', init = 'true' ),
-            enum_attribute( 'tag', _TAG_VALUES, is_list = True , allow_empty = True, remove_empty = True )
             ] ),
         describe_element( 'linearforcefield', groups = 'physic', attributes = [
             string_attribute( 'id', display_id = True, allow_empty = True ),

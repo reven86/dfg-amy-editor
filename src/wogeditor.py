@@ -818,35 +818,35 @@ class LevelWorld( ThingWorld ):
         for geomitem in root.findall( 'circle' ):
             geomitems.append( geomitem )
 
-        # mass checks on rectangle and circles
-        for geomitem in geomitems:
-            geomstatic = geomitem.get_native( 'static', False )
-            #static / masscheck!
-            if not geomstatic:
-                if geomitem.get_native( 'mass', 0 ) <= 0:
-                    self.addSceneError( 1, geomitem.get( 'id', '' ) )
-        # check on composite geoms
+#        # mass checks on rectangle and circles
+#        for geomitem in geomitems:
+#            geomstatic = geomitem.get_native( 'static', False )
+#            #static / masscheck!
+#            if not geomstatic:
+#                if geomitem.get_native( 'mass', 0 ) <= 0:
+#                    self.addSceneError( 1, geomitem.get( 'id', '' ) )
+#        # check on composite geoms
         geomchildren = set()
         for geomitem in root.findall( 'compositegeom' ):
             geomitems.append( geomitem )
-            geomstatic = geomitem.get_native( 'static', False )
-            if not geomstatic:
-                if geomitem.get_native( 'rotation', 0 ) != 0:
-                    self.addSceneError( 2, geomitem.get( 'id', '' ) )
+#            geomstatic = geomitem.get_native( 'static', False )
+#            if not geomstatic:
+#                if geomitem.get_native( 'rotation', 0 ) != 0:
+#                    self.addSceneError( 2, geomitem.get( 'id', '' ) )
             nchildren = 0
             for geomchild in geomitem.getchildren():
                 nchildren += 1
                 geomchildren.add( geomchild.get( 'id', '' ) )
-                if not geomstatic:
-                    if geomchild.get_native( 'mass', 0.0 ) <= 0:
-                        self.addSceneError( 3, ( geomitem.get( 'id', '' ), geomchild.get( 'id', '' ) ) )
-                if geomchild.get( 'image' ):
-                    self.addSceneError( 4, geomchild.get( 'id', '' ) )
-            if nchildren == 0:
-                if not geomstatic:
-                    self.addSceneError( 5, geomitem.get( 'id', '' ) )
-                else:
-                    self.addSceneError( 6, geomitem.get( 'id', '' ) )
+#                if not geomstatic:
+#                    if geomchild.get_native( 'mass', 0.0 ) <= 0:
+#                        self.addSceneError( 3, ( geomitem.get( 'id', '' ), geomchild.get( 'id', '' ) ) )
+#                if geomchild.get( 'image' ):
+#                    self.addSceneError( 4, geomchild.get( 'id', '' ) )
+#            if nchildren == 0:
+#                if not geomstatic:
+#                    self.addSceneError( 5, geomitem.get( 'id', '' ) )
+#                else:
+#                    self.addSceneError( 6, geomitem.get( 'id', '' ) )
 
         # Get any radial forcefields.. ready for next check
         rfflist = {}
@@ -855,20 +855,20 @@ class LevelWorld( ThingWorld ):
             rfflist[rffid] = rff.get_native( 'center' )
 
         # check on ALL geometry bodies
-        for geomitem in geomitems:
-            id = geomitem.get( 'id', '' )
-            if geomitem.get_native( 'rotspeed', 0 ) != 0:
-                rotspeedbodys.add( id )
-            geomstatic = geomitem.get_native( 'static', False )
-            #static vs motor check
-            if geomstatic and id in motorbodys:
-                self.addSceneError( 7, id )
-
-            if not geomstatic:
-                gx, gy = geomitem.get_native( 'center', ( 0, 0 ) )
-                for rffid, rffpos in rfflist.items():
-                    if abs( gx - rffpos[0] + gy - rffpos[1] ) < 0.001:
-                        self.addSceneError( 8, ( id, rffid ) )
+#        for geomitem in geomitems:
+#            id = geomitem.get( 'id', '' )
+#            if geomitem.get_native( 'rotspeed', 0 ) != 0:
+#                rotspeedbodys.add( id )
+#            geomstatic = geomitem.get_native( 'static', False )
+#            #static vs motor check
+#            if geomstatic and id in motorbodys:
+#                self.addSceneError( 7, id )
+#
+#            if not geomstatic:
+#                gx, gy = geomitem.get_native( 'center', ( 0, 0 ) )
+#                for rffid, rffpos in rfflist.items():
+#                    if abs( gx - rffpos[0] + gy - rffpos[1] ) < 0.001:
+#                        self.addSceneError( 8, ( id, rffid ) )
 
         # finally some checks on unfixed spinning things
         spinning = motorbodys | rotspeedbodys
@@ -2000,12 +2000,12 @@ class MainWindow( QtGui.QMainWindow ):
                     text = "&Add Composite Geometry (Parent)" ),
 
         'childrect':qthelper.action( self,
-                    handler = AddItemFactory( self, 'compositegeom', 'rectangle', {'mass':'1'} ),
+                    handler = AddItemFactory( self, 'compositegeom', 'rectangle', {} ),
                     icon = ":/images/childrect.png",
                     text = "&Add Child Rectangle" ),
 
         'childcircle':qthelper.action( self,
-                    handler = AddItemFactory( self, 'compositegeom', 'circle', {'mass':'1'} ),
+                    handler = AddItemFactory( self, 'compositegeom', 'circle', {} ),
                     icon = ":/images/childcircle.png",
                     text = "&Add Child Circle" ),
 

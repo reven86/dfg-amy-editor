@@ -252,7 +252,7 @@ class ComponentsAttributeMeta( AttributeMeta ):
             defined = False
             for name in self.map_to:
                 value = element.get( name )
-                values.append( unicode( value ) if value else '' )
+                values.append( unicode( value ) if value is not None else '' )
                 defined = defined or value is not None
             if defined:
                 attributes_by_name[self.name] = ','.join( values )
@@ -431,6 +431,10 @@ class EnumeratedAttributeMeta( ComponentsAttributeMeta ):
         self.values = values
         self.is_list = is_list
         self.allow_any = allow_any
+
+    def get_native( self, element, default = None ):
+        res = ComponentsAttributeMeta.get_native( self, element, default )
+        return res if res is None or len( res ) != 1 else res[0]
 
     def  _is_component_valid( self, index, component, world ): #IGNORE:W0613
         if self.allow_any:
