@@ -524,7 +524,7 @@ class PathAttributeMeta( AttributeMeta ):
         return filename if os.path.isfile( filename ) else ''
 
     def _clean_path( self, path ):
-        path = path.replace( '\\', '/' ).replace( '//', '/' )
+        path = path is not None and path.replace( '\\', '/' ).replace( '//', '/' ) or ''
         basename, extension = os.path.splitext( path )
         if extension.lower() in ['', self.strip_extension]:
             return basename

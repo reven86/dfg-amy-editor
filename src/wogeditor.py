@@ -1980,12 +1980,12 @@ class MainWindow( QtGui.QMainWindow ):
                     text = "&Add a Line" ),
 
         'rectangle':qthelper.action( self,
-                    handler = AddItemFactory( self, 'scene', 'rectangle', {'static':'true'} ),
+                    handler = AddItemFactory( self, 'scene', 'rectangle', {} ),
                     icon = ":/images/addrect.png",
                     text = "&Add Rectangle" ),
 
         'circle':   qthelper.action( self,
-                    handler = AddItemFactory( self, 'scene', 'circle', {'static':'true'} ),
+                    handler = AddItemFactory( self, 'scene', 'circle', {} ),
                     icon = ":/images/addcircle.png",
                     text = "&Add Circle" ),
 
