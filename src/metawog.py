@@ -25,7 +25,7 @@ LEVELS_ORIGINAL = set( [] )
 LEVELS_ORIGINAL_LOWER = [level_name.lower() for level_name in LEVELS_ORIGINAL]
 
 # FIXME: use tree for them
-MATERIALS_ORIGINAL = ['none', 'wall', 'water']
+MATERIALS_ORIGINAL = ['none', 'wall', 'water', 'sand']
 
 #@DaB
 FILE_ELEMENT = describe_element( 'file', attributes = [
