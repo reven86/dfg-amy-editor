@@ -36,6 +36,7 @@ import qthelper
 import editleveldialog
 import newleveldialog_ui
 import errors
+import struct
 from utils import * #@UnusedWildImport
 from datetime import datetime
 
@@ -202,28 +203,38 @@ class PixmapCache( object ):
     def _addToCache( self, path, image_id ):
             img = QtGui.QImage()
             image_path = image_id
-            if img.load( path ):
-                #print "plain loaded:",path
-                img = img.convertToFormat( QtGui.QImage.Format_ARGB32_Premultiplied )
-
-                self._pixmaps_by_path[image_path] = img
-                self._filedate_by_path[image_path] = os.path.getmtime( path )
-                return img
-            else:
+            if not img.load( path ):
                 data = file( path, 'rb' ).read()
-                if img.loadFromData( data ):
-                    #print "loadFromData:",path
-                    img = img.convertToFormat( QtGui.QImage.Format_ARGB32_Premultiplied )
-
-                    self._pixmaps_by_path[image_path] = img
-                    self._filedate_by_path[image_path] = os.path.getmtime( path )
-                    return img
-                else:
+                if not img.loadFromData( data ):
                     if image_path in self._pixmaps_by_path.keys():
                         del self._pixmaps_by_path[image_path]
                         del self._filedate_by_path[image_path]
                     print 'Warning: failed to load image "%(path)s"' % { 'path' : image_path }
-            return None
+                    return None
+
+            # assume source image is in premultiplied alpha format
+            # so, multiply pixels colors 'back' and convert image to ARGB32_Premultiplied
+            if img.hasAlphaChannel():
+                #img = img.convertToFormat( QtGui.QImage.Format_ARGB32 )
+                w = img.width()
+                for y in xrange( img.height() ):
+                    pixels = img.scanLine( y )
+                    pixels.setsize( 4 * w )
+                    colors = list( struct.unpack( 'I' * w, pixels ) )
+                    for x, c in enumerate( colors ):
+                        if QtGui.qAlpha( c ) > 0:
+                            colors[ x ] = QtGui.qRgba( 
+                                            min( 255, QtGui.qRed( c ) * 255 / QtGui.qAlpha( c ) ),
+                                            min( 255, QtGui.qGreen( c ) * 255 / QtGui.qAlpha( c ) ),
+                                            min( 255, QtGui.qBlue( c ) * 255 / QtGui.qAlpha( c ) ),
+                                            QtGui.qAlpha( c )
+                                            )
+                    pixels[:] = struct.pack( 'I' * w, *colors )
+            img = img.convertToFormat( QtGui.QImage.Format_ARGB32_Premultiplied )
+
+            self._pixmaps_by_path[image_path] = img
+            self._filedate_by_path[image_path] = os.path.getmtime( path )
+            return img
 
     def refresh( self ):
         # check each file in the cache...

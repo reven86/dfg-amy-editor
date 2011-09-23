@@ -2375,6 +2375,10 @@ class LevelGraphicView( QtGui.QGraphicsView ):
         image = element.get( 'image' )
         if image != '':
             img = self.getImagePixmap( image )
+        else:
+            img = None
+
+        if img is not None:
             colorize = element.get_native( 'colorize', ( 255, 255, 255 ) )
             if colorize[0] != 255 or colorize[1] != 255 or colorize[2] != 255:
                 img = img.copy()
@@ -2391,10 +2395,11 @@ class LevelGraphicView( QtGui.QGraphicsView ):
                                         QtGui.qAlpha( c )
                                         )
                     pixels[:] = struct.pack( 'I' * w, *colors )
+            pixmap = QtGui.QPixmap.fromImage( img )
         else:
-            img = None
+            pixmap = None
+
         x, y = self._elementV2Pos( element, 'center' )
-        pixmap = QtGui.QPixmap.fromImage( img )
         rotation = element.get_native( 'rotation', 0.0 )
         scalex, scaley = element.get_native( 'scale', ( 1.0, 1.0 ) )
         alpha = element.get_native( 'alpha', 1.0 )
