@@ -11,6 +11,7 @@ import louie
 import metaworld
 import metaworldui
 import qthelper
+import struct
 
 ROUND_DIGITS = 2 #Rounds Sizes, Positions, Radii and Angles to 2 Decimal Places
 Z_TOOL_ITEMS = 1000000 # makes sure always on top
@@ -491,8 +492,8 @@ class ToolDelegate( object ):
         if isinstance( self.item, QtGui.QGraphicsPixmapItem ):
             width, height = self.item.pixmap().width(), self.item.pixmap().height()
             return QtCore.QRectF( 0, 0, width, height )
-		#@DaB
-		#boundingRect includes LineWidth so center was wrong by linewidth/2
+        #@DaB
+        #boundingRect includes LineWidth so center was wrong by linewidth / 2
         elif isinstance( self.item, QtGui.QGraphicsRectItem ):
             return self.item.rect()  #Use .rect instead
         return self.item.boundingRect()
@@ -2223,9 +2224,9 @@ class LevelGraphicView( QtGui.QGraphicsView ):
         if builder:
             item = builder( scene, element )
             if item:
-               item.setData( KEY_ELEMENT, QtCore.QVariant( element ) )
-               item.setFlag( QtGui.QGraphicsItem.ItemIsSelectable, True )
-               if element.tag == 'compositegeom':
+                item.setData( KEY_ELEMENT, QtCore.QVariant( element ) )
+                item.setFlag( QtGui.QGraphicsItem.ItemIsSelectable, True )
+                if element.tag == 'compositegeom':
                     composite_item = item
                     for child in composite_item.childItems():
                         child.setData( KEY_ELEMENT, QtCore.QVariant( element ) )
@@ -2233,19 +2234,19 @@ class LevelGraphicView( QtGui.QGraphicsView ):
                         if isinstance( child, QtGui.QGraphicsItemGroup ):
                             composite_child_holder = child
                             break
-               self._items_by_element[element] = item
+                self._items_by_element[element] = item
 
         for child_element in element:
             item = self._addElements( scene, child_element, element_set, elements_to_skip )
             if composite_child_holder and item:
-               item.setParentItem( composite_child_holder )
+                item.setParentItem( composite_child_holder )
 
 
         # finish off compoitegeom.. now all the children and everything are added
         if composite_item:
-           brect = composite_item.childrenBoundingRect()
-           composite_item.setData( KEY_AREA , QtCore.QVariant( brect.width()*brect.height() ) )
-           self._items_by_element[element] = composite_item
+            brect = composite_item.childrenBoundingRect()
+            composite_item.setData( KEY_AREA , QtCore.QVariant( brect.width()*brect.height() ) )
+            self._items_by_element[element] = composite_item
 
         element_set.add( element )
         return item
@@ -2370,13 +2371,30 @@ class LevelGraphicView( QtGui.QGraphicsView ):
         return item
 
     def _sceneSceneLayerBuilder( self, scene, element ):
-        x, y = self._elementV2Pos( element, 'center' )
         depth = element.get_native( 'depth', 0.0 )
         image = element.get( 'image' )
         if image != '':
-            pixmap = self.getImagePixmap( image )
+            img = self.getImagePixmap( image )
+            colorize = element.get_native( 'colorize', ( 255, 255, 255 ) )
+            if colorize[0] != 255 or colorize[1] != 255 or colorize[2] != 255:
+                img = img.copy()
+                w = img.width()
+                for y in xrange( img.height() ):
+                    pixels = img.scanLine( y )
+                    pixels.setsize( 4 * w )
+                    colors = list( struct.unpack( 'I' * w, pixels ) )
+                    for x, c in enumerate( colors ):
+                        colors[ x ] = QtGui.qRgba( 
+                                        QtGui.qRed( c ) * colorize[0] / 255,
+                                        QtGui.qGreen( c ) * colorize[1] / 255,
+                                        QtGui.qBlue( c ) * colorize[2] / 255,
+                                        QtGui.qAlpha( c )
+                                        )
+                    pixels[:] = struct.pack( 'I' * w, *colors )
         else:
-            pixmap = None
+            img = None
+        x, y = self._elementV2Pos( element, 'center' )
+        pixmap = QtGui.QPixmap.fromImage( img )
         rotation = element.get_native( 'rotation', 0.0 )
         scalex, scaley = element.get_native( 'scale', ( 1.0, 1.0 ) )
         alpha = element.get_native( 'alpha', 1.0 )

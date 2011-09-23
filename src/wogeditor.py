@@ -200,20 +200,24 @@ class PixmapCache( object ):
         return None
 
     def _addToCache( self, path, image_id ):
-            pixmap = QtGui.QPixmap()
+            img = QtGui.QImage()
             image_path = image_id
-            if pixmap.load( path ):
+            if img.load( path ):
                 #print "plain loaded:",path
-                self._pixmaps_by_path[image_path] = pixmap
+                img = img.convertToFormat( QtGui.QImage.Format_ARGB32_Premultiplied )
+
+                self._pixmaps_by_path[image_path] = img
                 self._filedate_by_path[image_path] = os.path.getmtime( path )
-                return pixmap
+                return img
             else:
                 data = file( path, 'rb' ).read()
-                if pixmap.loadFromData( data ):
+                if img.loadFromData( data ):
                     #print "loadFromData:",path
-                    self._pixmaps_by_path[image_path] = pixmap
+                    img = img.convertToFormat( QtGui.QImage.Format_ARGB32_Premultiplied )
+
+                    self._pixmaps_by_path[image_path] = img
                     self._filedate_by_path[image_path] = os.path.getmtime( path )
-                    return pixmap
+                    return img
                 else:
                     if image_path in self._pixmaps_by_path.keys():
                         del self._pixmaps_by_path[image_path]
