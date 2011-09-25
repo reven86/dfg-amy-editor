@@ -36,7 +36,6 @@ import qthelper
 import editleveldialog
 import newleveldialog_ui
 import errors
-import struct
 from utils import * #@UnusedWildImport
 from datetime import datetime
 
@@ -213,28 +212,22 @@ class PixmapCache( object ):
                     return None
 
             # assume source image is in premultiplied alpha format
-            # so, multiply pixels colors 'back' and convert image to ARGB32_Premultiplied
+            # so, after converting image to ARGB32_Premultiplied
+            # we need to restore its pixels to the pixels of original image
+            img2 = img.convertToFormat( QtGui.QImage.Format_ARGB32_Premultiplied )
             if img.hasAlphaChannel():
                 #img = img.convertToFormat( QtGui.QImage.Format_ARGB32 )
                 w = img.width()
                 for y in xrange( img.height() ):
                     pixels = img.scanLine( y )
                     pixels.setsize( 4 * w )
-                    colors = list( struct.unpack( 'I' * w, pixels ) )
-                    for x, c in enumerate( colors ):
-                        if QtGui.qAlpha( c ) > 0:
-                            colors[ x ] = QtGui.qRgba( 
-                                            min( 255, QtGui.qRed( c ) * 255 / QtGui.qAlpha( c ) ),
-                                            min( 255, QtGui.qGreen( c ) * 255 / QtGui.qAlpha( c ) ),
-                                            min( 255, QtGui.qBlue( c ) * 255 / QtGui.qAlpha( c ) ),
-                                            QtGui.qAlpha( c )
-                                            )
-                    pixels[:] = struct.pack( 'I' * w, *colors )
-            img = img.convertToFormat( QtGui.QImage.Format_ARGB32_Premultiplied )
+                    pixels_new = img2.scanLine( y )
+                    pixels_new.setsize( 4 * w )
+                    pixels_new[:] = pixels[:]
 
-            self._pixmaps_by_path[image_path] = img
+            self._pixmaps_by_path[image_path] = img2
             self._filedate_by_path[image_path] = os.path.getmtime( path )
-            return img
+            return img2
 
     def refresh( self ):
         # check each file in the cache...
@@ -489,15 +482,25 @@ class GameModel( QtCore.QObject ):
 
     def playLevel( self, level_model ):
         """Starts Amy to test the specified level."""
-        #On Mac
+        # remove PYTHONPATH from the environment of new process
+        env = os.environ.copy()
+        if 'PYTHONPATH' in env:
+            del env['PYTHONPATH']
         if ON_PLATFORM == PLATFORM_MAC:
             #print "ON MAC - Save and Play"
             #Then run the program file itself with no command-line parameters
             #print "launch ",os.path.join(self._amy_path,u'Contents',u'MacOS',u'Amy In Da Farm')
-            subprocess.Popen( os.path.join( self._amy_path, u'Contents', u'MacOS', u'Amy In Da Farm' ), cwd = self._amy_dir ).pid
+            subprocess.Popen( 
+                os.path.join( self._amy_path, u'Contents', u'MacOS', u'Amy In Da Farm' ),
+                cwd = self._amy_dir, env = env )
         else:
             #pid = subprocess.Popen( self._amy_path, cwd = self._amy_dir ).pid
-            subprocess.Popen( [self._amy_path, level_model.name], cwd = self._amy_dir ).pid
+            try:
+                subprocess.Popen( [self._amy_path, level_model.name], cwd = self._amy_dir, env = env )
+            except:
+                # debug build have executable in different place, try to use it
+                exe_path = os.path.join( os.path.dirname( self._amy_dir ), '_Debug', 'Launcher.exe' )
+                subprocess.Popen( [exe_path, level_model.name], cwd = self._amy_dir, env = env )
             # Don't wait for process end...
             # @Todo ? Monitor process so that only one can be launched ???
 
