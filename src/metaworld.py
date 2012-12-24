@@ -615,6 +615,10 @@ class ObjectsMetaOwner:
     @property
     def world( self ):
         return self.__world
+    
+    @property
+    def children_count(self):
+        return len( self.elements_by_tag )
 
     def _set_world( self, parent_world ):
         if self.__world is not parent_world: # avoid cycle
@@ -1813,7 +1817,7 @@ class Element( _ElementBase ):
                        Example: 'game/GoingUp'
            tree_meta: name of tree meta. Example: 'level.scene'
            element_meta_path:  '/' separated list of the name of the meta element of the element
-                               Example: 'scene/SceneLayer'
+                               Example: 'scene/scenelayer'
            element_xpath: XPATH path of the element from the root of the tree.
                          Example: "/scene[0]/BallInstance[@id='BallInstance1']"
            Notes: world & tree meta attributes are only set if available.

@@ -94,6 +94,10 @@ class AddItemFactory( object ):
         self.itemtag = itemtag
         self.attrib = attrib
         self.parent = parent
+        
+    def _element_has_children(self, element):
+        meta_element = metawog.TREE_LEVEL_SCENE.find_immediate_child_by_tag( self.parent )
+        return meta_element.children_count > 0
 
     def __call__( self ):
         assert self.parent is not None
@@ -110,19 +114,20 @@ class AddItemFactory( object ):
                     root = model.scene_root
                 elif self.parent == 'resource':
                     root = model.resource_root
-                elif self.parent == 'compositegeom':
+                elif self._element_has_children( self.parent ):
                     thisworld = cview.world
                     selected_elements = thisworld.selected_elements
                     cgparent = None
                     for element in selected_elements:
-                        if element.tag == 'compositegeom':
+                        meta_element = metawog.TREE_LEVEL_SCENE.find_immediate_child_by_tag( element.tag )
+                        if meta_element.children_count > 0:
                             cgparent = element
                             break
-                        elif element.tag == 'rectangle' or element.tag == 'circle':
+                        else:
                             # check to see if they are part of a cg
                             pelement = element.parent
                             if pelement is not None:
-                                if pelement.tag == 'compositegeom':
+                                if self._element_has_children( pelement.tag ):
                                     cgparent = pelement
                                     break
                     if cgparent is None:
@@ -434,7 +439,7 @@ class GameModel( QtCore.QObject ):
 
     def getModel( self, name ):
         if name not in self.models_by_name:
-            dir = os.path.join( self._res_dir, STR_DIR_STUB, name )
+            folder = os.path.join( self._res_dir, STR_DIR_STUB, name )
 
             world = self.global_world.make_world( metawog.WORLD_LEVEL,
                                                         name,
@@ -442,11 +447,11 @@ class GameModel( QtCore.QObject ):
                                                         self )
 
             self._loadUnPackedTree( world, metawog.TREE_LEVEL_GAME,
-                            dir, name + '.level' )
+                            folder, name + '.level' )
             self._loadUnPackedTree( world, metawog.TREE_LEVEL_SCENE,
-                            dir, name + '.scene' )
+                            folder, name + '.scene' )
             self._loadUnPackedTree( world, metawog.TREE_LEVEL_RESOURCE,
-                            dir, name + '.resrc' )
+                            folder, name + '.resrc' )
 
             if world.isReadOnly:
                 world.clean_dirty_tracker()
@@ -1643,24 +1648,12 @@ class MainWindow( QtGui.QMainWindow ):
                         # find the pos attribute in the meta
                         # set it to view._last_release_at
                         pos_attribute = self._getPositionAttribute( child_element )
-                        imagepos_attribute = self._getImageposAttribute( child_element )
                         if pos_attribute is not None:
                             old_pos = pos_attribute.get_native( child_element, ( 0, 0 ) )
                             if clipboard_element.__len__() == 1:
                                 pos_attribute.set_native( child_element, [view._last_pos.x(), -view._last_pos.y()] )
                             else:
                                 pos_attribute.set_native( child_element, [old_pos[0] + paste_posx - copy_posx, old_pos[1] + paste_posy - copy_posy] )
-
-                            if imagepos_attribute is not None:
-                                old_imagepos = imagepos_attribute.get_native( child_element, None )
-                                if old_imagepos is not None:
-                                    if clipboard_element.__len__() == 1:
-                                        new_posx = old_imagepos[0] + view._last_pos.x() - old_pos[0]
-                                        new_posy = old_imagepos[1] - view._last_pos.y() - old_pos[1]
-                                    else:
-                                        new_posx = old_imagepos[0] + paste_posx - copy_posx
-                                        new_posy = old_imagepos[1] + paste_posy - copy_posy
-                                    imagepos_attribute.set_native( child_element, [new_posx, new_posy] )
 
                         element.safe_identifier_insert( len( element ), child_element )
                     break
@@ -1672,16 +1665,6 @@ class MainWindow( QtGui.QMainWindow ):
         for attribute_meta in element.meta.attributes:
             if attribute_meta.type == metaworld.XY_TYPE:
                 if attribute_meta.position:
-                    return attribute_meta
-        return None
-
-    def _getImageposAttribute( self, element ):
-        image = element.get( 'image', None )
-        if image is None:
-            return None
-        for attribute_meta in element.meta.attributes:
-            if attribute_meta.type == metaworld.XY_TYPE:
-                if attribute_meta.name == "imagepos":
                     return attribute_meta
         return None
 
@@ -1965,7 +1948,7 @@ class MainWindow( QtGui.QMainWindow ):
                     text = "Show/Hide Forcefields", icon = ":/images/show-physic.png" ),
             'geom': qthelper.action( self, handler = ShowHideFactory( self , ['rectangle', 'circle', 'compositegeom', 'levelexit', 'line', 'hinge'] ),
                     text = "Show/Hide Geometry" , icon = ":/images/show-geom.png" ),
-            'gfx': qthelper.action( self, handler = ShowHideFactory( self , ['SceneLayer', 'pixmap'] ),
+            'gfx': qthelper.action( self, handler = ShowHideFactory( self , ['scenelayer', 'pixmap'] ),
                     text = "Show/Hide Graphics" , icon = ":/images/show-gfx.png" ),
             'labels': qthelper.action( self, handler = ShowHideFactory( self , ['label'] ),
                     text = "Show/Hide Labels" , icon = ":/images/show-label.png" )
@@ -2008,7 +1991,7 @@ class MainWindow( QtGui.QMainWindow ):
                     text = "&Add Circle" ),
 
         'image':    qthelper.action( self,
-                    handler = AddItemFactory( self, 'scene', 'SceneLayer', {} ),
+                    handler = AddItemFactory( self, 'scene', 'scenelayer', {} ),
                     icon = ":/images/group-image.png",
                     text = "&Add Image (SceneLayer)" ),
 

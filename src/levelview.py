@@ -201,7 +201,7 @@ class BasicTool( object ):
 
     def _on_start_using_tool( self ):
         pass
-
+    
     def _on_stop_using_tool( self ):
         pass
 
@@ -220,14 +220,14 @@ class PanTool( BasicTool ):
     def _handle_release_event( self, event ):
         delta = event.pos() - self._downat
         if vector2d_length( delta.x(), delta.y() ) < 5:
-           factor = 0
-           if ( self._press_event.buttons() == Qt.LeftButton ):
-               # zoomin
-               factor = 1.5
-           elif ( self._press_event.buttons() == Qt.RightButton ):
-               #zoomout
-               factor = 0.6666
-           if factor != 0:
+            factor = 0
+            if ( self._press_event.buttons() == Qt.LeftButton ):
+                # zoomin
+                factor = 1.5
+            elif ( self._press_event.buttons() == Qt.RightButton ):
+                #zoomout
+                factor = 0.6666
+            if factor != 0:
                 self._view.zoomView( factor, event.pos().x(), event.pos().y() )
 
         self._view.viewport().setCursor( Qt.OpenHandCursor )
@@ -273,7 +273,7 @@ Need to get current selected item to:
             if data.isValid():
                 activated_tool = data.toPyObject()
                 return activated_tool
-		#@DaB - Allow Move only if the press was ON the item
+        #@DaB - Allow Move only if the press was ON the item
         return None
 
     def _showContextMenu( self, event ):
@@ -287,8 +287,8 @@ Need to get current selected item to:
 
         menu = QtGui.QMenu( self._view )
         if top_item:
-           menu.addAction( qthelper.action( menu, enabled = False, text = top_item ) )
-           menu.addSeparator()
+            menu.addAction( qthelper.action( menu, enabled = False, text = top_item ) )
+            menu.addSeparator()
 
         menu.addAction( self._view.common_actions['cut'] )
         menu.addAction( self._view.common_actions['copy'] )
@@ -317,7 +317,7 @@ Need to get current selected item to:
         if activated_tool is None: #@DaB - Missed all the handles
             # compare previous and newly selected element
             if self._new_select_tool( event ): #@DaB - Try a Selec
-               activated_tool = self._view.get_current_inner_tool()
+                activated_tool = self._view.get_current_inner_tool()
 
 
         if activated_tool is not None:
@@ -332,14 +332,14 @@ Need to get current selected item to:
             for index, item in enumerate( clicked_items ):
                 area = item.data( KEY_AREA ).toFloat()[0]
                 if area > 0:
-                  if selected_index == -1:
-                    minarea = item.data( KEY_AREA ).toFloat()[0]
-                    selected_index = index
-                  else:
-                    itemarea = item.data( KEY_AREA ).toFloat()[0]
-                    if itemarea < minarea:
-                        minarea = itemarea
+                    if selected_index == -1:
+                        minarea = item.data( KEY_AREA ).toFloat()[0]
                         selected_index = index
+                    else:
+                        itemarea = item.data( KEY_AREA ).toFloat()[0]
+                        if itemarea < minarea:
+                            minarea = itemarea
+                            selected_index = index
             if selected_index >= 0:
                 # something was clicked
                 oldsel = self._view.world.selected_elements
@@ -363,7 +363,7 @@ Need to get current selected item to:
 
     def _handle_release_event( self, event ):
         if event.button() == Qt.RightButton:
-            self._new_select_tool( event ) #@DaB - Try a Selec
+            self._new_select_tool( event ) #@DaB - Try a Select
             self._showContextMenu( event )
             return
 
@@ -431,10 +431,10 @@ class ToolDelegate( object ):
             self.view.viewport().setCursor( self.activated_cursor )
 
     def activated( self, scene_x, scene_y, modifiers ):
-     #   print 'Activated:', self
+        #print 'Activated:', self
         self.set_activated_mouse_cursor()
         item_pos = self.item.mapFromScene( scene_x, scene_y )
-#        print 'Activated:', self, item_pos.x(), item_pos.y()
+        #print 'Activated:', self, item_pos.x(), item_pos.y()
         self.activation_pos = item_pos
         self.last_pos = self.activation_pos
         self.activation_value = self._get_activation_value()
@@ -502,13 +502,13 @@ class ToolDelegate( object ):
         """Returns the offset of the center in the item coordinates.
            Some item such as pixmap have their position in the top-left corner.
         """
-       #@DaB
-       #position_is_center is set for Rects and PixMaps (but position is NOT center)
-       # 2 Lines - Temporarily Commented out until I can decide if I can unset the flag
-       # Without Harming Anything Else
-
-       # if self.position_is_center:
-       #     return QtCore.QPointF()
+        #@DaB
+        #position_is_center is set for Rects and PixMaps (but position is NOT center)
+        # 2 Lines - Temporarily Commented out until I can decide if I can unset the flag
+        # Without Harming Anything Else
+        
+        # if self.position_is_center:
+        #     return QtCore.QPointF()
         bounding_rect = self.get_item_bound()
         return bounding_rect.center() - bounding_rect.topLeft()
 
@@ -592,25 +592,22 @@ class MultiMoveToolDelegate( ToolDelegate ):
         self.attribute_meta = {}
         self.state_handler = {}
         for item in items:
-         if item is not None:
-          if item.data( KEY_ELEMENT ).isValid():
-            element = item.data( KEY_ELEMENT ).toPyObject()
-            attrib = []
-            for attribute_meta in element.meta.attributes:
-              if attribute_meta.type == metaworld.XY_TYPE:
-                 if attribute_meta.position:
-                   attrib.append( attribute_meta )
-                 elif attribute_meta.name == 'imagepos':
-                   attrib.append( attribute_meta )
-
-            if len( attrib ) > 0:
-                if item not in self.items:
-                    self.items.add( item )
-                    self.attribute_meta[item] = []
-                    self.attribute_meta[item].extend( attrib )
-                    self.element[item] = element
-                    self.state_handler[item] = self._get_state_manager( item )
-
+            if item is not None:
+                if item.data( KEY_ELEMENT ).isValid():
+                    element = item.data( KEY_ELEMENT ).toPyObject()
+                    attrib = []
+                    for attribute_meta in element.meta.attributes:
+                        if attribute_meta.type == metaworld.XY_TYPE:
+                            if attribute_meta.position:
+                                attrib.append( attribute_meta )
+                    if len( attrib ) > 0:
+                        if item not in self.items:
+                            self.items.add( item )
+                            self.attribute_meta[item] = []
+                            self.attribute_meta[item].extend( attrib )
+                            self.element[item] = element
+                            self.state_handler[item] = self._get_state_manager( item )
+        
         for item in list( self.items ):
             if self.element[item].parent in self.element.values():
                 # this items parent was also selected...
@@ -671,24 +668,23 @@ class MultiMoveToolDelegate( ToolDelegate ):
 
     def commit( self, scene_x, scene_y, modifiers ):
         for item in self.items:
-          attribute_value = self._on_mouse_move( item, scene_x, scene_y , modifiers )
-          if attribute_value is not None:
-
-             for attribute in self.attribute_meta[item]:
-                activation_value = attribute.get_native( self.element[item], None )
-                if activation_value:
-                    newvalue = ( round( activation_value[0] + attribute_value[0], ROUND_DIGITS ),
-                                round( activation_value[1] + attribute_value[1], ROUND_DIGITS ) )
-
-                    self.view.delayed_element_property_update( self.element[item],
-                                                        attribute,
-                                                        newvalue )
+            attribute_value = self._on_mouse_move( item, scene_x, scene_y , modifiers )
+            if attribute_value is not None:
+                for attribute in self.attribute_meta[item]:
+                    activation_value = attribute.get_native( self.element[item], None )
+                    if activation_value:
+                        newvalue = ( round( activation_value[0] + attribute_value[0], ROUND_DIGITS ),
+                                   round( activation_value[1] + attribute_value[1], ROUND_DIGITS ) )
+                
+                        self.view.delayed_element_property_update( self.element[item],
+                                                           attribute,
+                                                           newvalue )
         self._reset()
 
 
     def on_mouse_move( self, scene_x, scene_y, modifiers, is_activation = False ):
         for item in self.items:
-           result = self._on_mouse_move( item, scene_x, scene_y , modifiers )
+            result = self._on_mouse_move( item, scene_x, scene_y , modifiers )
         return
 
     def _on_mouse_move( self, item, scene_x, scene_y, modifiers ):
@@ -1359,72 +1355,35 @@ class RectangleGroupToolFactory( GroupToolsFactory ):
         for subitem in item.childItems():
             bounding_poly.append( subitem.mapToScene( subitem.boundingRect() ) )
 
-        self.move_tool = MoveToolDelegate( view, element, item.childItems()[1],
+        self.move_tool = MoveToolDelegate( view, element, item.childItems()[0],
                                             element.meta.attribute_by_name( 'center' ),
                                             RectStateManager(), False )
         self.resize_tools = []
-        newtool = ResizeToolDelegate( view, element, item.childItems()[1],
+        newtool = ResizeToolDelegate( view, element, item.childItems()[0],
                                                  element.meta.attribute_by_name( 'center' ),
                                                  RectStateManager(),
                                                  False,
                                                  element.meta.attribute_by_name( 'size' ) )
-        self.resize_tools.append( newtool )
-        pos = poly_weighted_pos( bounding_poly[1], POS_TOP_LEFT )
-        items.append( self._build_tool( view, pos, POS_TOP_LEFT, size, 'rect', newtool ) )
-
-        newtool = ResizeToolDelegate( view, element, item.childItems()[1],
-                                                 element.meta.attribute_by_name( 'center' ),
-                                                 RectStateManager(),
-                                                 False,
-                                                 element.meta.attribute_by_name( 'size' ) )
-        self.resize_tools.append( newtool )
-        pos = poly_weighted_pos( bounding_poly[1], POS_BOTTOM_RIGHT )
-        items.append( self._build_tool( view, pos, POS_BOTTOM_RIGHT, size, 'rect', newtool ) )
-
-        newtool = MoveAndScaleToolDelegate( view, element, item.childItems()[0],
-                                                 element.meta.attribute_by_name( 'imagepos' ),
-                                                 PixmapStateManager(),
-                                                 True,
-                                                 element.meta.attribute_by_name( 'imagescale' )
-                                                 , element.meta.attribute_by_name( 'center' ) )
         self.resize_tools.append( newtool )
         pos = poly_weighted_pos( bounding_poly[0], POS_TOP_LEFT )
-        items.append( self._build_tool( view, pos, POS_TOP_LEFT, size, 'rectfill', newtool ) )
+        items.append( self._build_tool( view, pos, POS_TOP_LEFT, size, 'rect', newtool ) )
 
-        newtool = MoveAndScaleToolDelegate( view, element, item.childItems()[0],
-                                                 element.meta.attribute_by_name( 'imagepos' ),
-                                                 PixmapStateManager(),
-                                                 True,
-                                                 element.meta.attribute_by_name( 'imagescale' )
-                                                 , element.meta.attribute_by_name( 'center' ) )
+        newtool = ResizeToolDelegate( view, element, item.childItems()[0],
+                                                 element.meta.attribute_by_name( 'center' ),
+                                                 RectStateManager(),
+                                                 False,
+                                                 element.meta.attribute_by_name( 'size' ) )
         self.resize_tools.append( newtool )
         pos = poly_weighted_pos( bounding_poly[0], POS_BOTTOM_RIGHT )
-        items.append( self._build_tool( view, pos, POS_BOTTOM_RIGHT, size, 'rectfill', newtool ) )
+        items.append( self._build_tool( view, pos, POS_BOTTOM_RIGHT, size, 'rect', newtool ) )
 
-        newtool = MoveToolDelegate( view, element, item.childItems()[0],
-                                                 element.meta.attribute_by_name( 'imagepos' ),
-                                                 PixmapStateManager(),
-                                                 True,
-                                                 element.meta.attribute_by_name( 'center' ) )
-        self.resize_tools.append( newtool )
-        pos = poly_weighted_pos( bounding_poly[0], POS_CENTER )
-        items.append( self._build_tool( view, pos, POS_CENTER, size, 'rectfill', newtool ) )
-
-        newtool = RotateToolDelegate( view, element, item.childItems()[1],
+        newtool = RotateToolDelegate( view, element, item.childItems()[0],
                                                  element.meta.attribute_by_name( 'rotation' ),
                                                  RectStateManager(),
                                                  True, None )
         self.resize_tools.append( newtool )
-        pos = poly_weighted_pos( bounding_poly[1], POS_CENTER_RIGHT )
+        pos = poly_weighted_pos( bounding_poly[0], POS_CENTER_RIGHT )
         items.append( self._build_tool( view, pos, POS_CENTER_RIGHT, size, 'circle', newtool ) )
-
-        newtool = RotateToolDelegate( view, element, item.childItems()[0],
-                                                 element.meta.attribute_by_name( 'imagerot' ),
-                                                 PixmapStateManager(),
-                                                 True, element.meta.attribute_by_name( 'imagescale' ) )
-        self.resize_tools.append( newtool )
-        pos = poly_weighted_pos( bounding_poly[0], POS_CENTER_LEFT )
-        items.append( self._build_tool( view, pos, POS_CENTER_LEFT, size, 'circlefill', newtool ) )
 
         return self.move_tool, items
 
@@ -1470,54 +1429,17 @@ class CircleGroupToolFactory( GroupToolsFactory ):
         for subitem in item.childItems():
             bounding_poly.append( subitem.mapToScene( subitem.boundingRect() ) )
 
-        self.move_tool = MoveToolDelegate( view, element, item.childItems()[1],
+        self.move_tool = MoveToolDelegate( view, element, item.childItems()[0],
                                             element.meta.attribute_by_name( 'center' ),
                                             EllipseStateManager(), False )
-        self.resize_tools = [RadiusToolDelegate( view, element, item.childItems()[1],
+        self.resize_tools = [RadiusToolDelegate( view, element, item.childItems()[0],
                                                  element.meta.attribute_by_name( 'radius' ),
                                                  EllipseStateManager(),
                                                  False )  for i in range( 0, 4 )]
 
         for index, position in enumerate( ( POS_TOP_CENTER, POS_CENTER_LEFT, POS_CENTER_RIGHT, POS_BOTTOM_CENTER ) ):
-          pos = poly_weighted_pos( bounding_poly[1], position )
-          items.append( self._build_tool( view, pos, position, size, 'rect', self.resize_tools[index] ) )
-
-        newtool = MoveAndScaleToolDelegate( view, element, item.childItems()[0],
-                                                 element.meta.attribute_by_name( 'imagepos' ),
-                                                 PixmapStateManager(),
-                                                 True,
-                                                 element.meta.attribute_by_name( 'imagescale' ),
-                                                 element.meta.attribute_by_name( 'center' ) )
-        self.resize_tools.append( newtool )
-        pos = poly_weighted_pos( bounding_poly[0], POS_TOP_LEFT )
-        items.append( self._build_tool( view, pos, POS_TOP_LEFT, size, 'rectfill', newtool ) )
-
-        newtool = MoveAndScaleToolDelegate( view, element, item.childItems()[0],
-                                                 element.meta.attribute_by_name( 'imagepos' ),
-                                                 PixmapStateManager(),
-                                                 True,
-                                                 element.meta.attribute_by_name( 'imagescale' ),
-                                                 element.meta.attribute_by_name( 'center' ) )
-        self.resize_tools.append( newtool )
-        pos = poly_weighted_pos( bounding_poly[0], POS_BOTTOM_RIGHT )
-        items.append( self._build_tool( view, pos, POS_BOTTOM_RIGHT, size, 'rectfill', newtool ) )
-
-        newtool = MoveToolDelegate( view, element, item.childItems()[0],
-                                                 element.meta.attribute_by_name( 'imagepos' ),
-                                                 PixmapStateManager(),
-                                                 True,
-                                                 element.meta.attribute_by_name( 'center' ) )
-        self.resize_tools.append( newtool )
-        pos = poly_weighted_pos( bounding_poly[0], POS_CENTER )
-        items.append( self._build_tool( view, pos, POS_CENTER, size, 'rectfill', newtool ) )
-
-        newtool = RotateToolDelegate( view, element, item.childItems()[0],
-                                                 element.meta.attribute_by_name( 'imagerot' ),
-                                                 PixmapStateManager(),
-                                                 True, element.meta.attribute_by_name( 'imagescale' ) )
-        self.resize_tools.append( newtool )
-        pos = poly_weighted_pos( bounding_poly[0], POS_CENTER_LEFT )
-        items.append( self._build_tool( view, pos, POS_CENTER_LEFT, size, 'circlefill', newtool ) )
+            pos = poly_weighted_pos( bounding_poly[0], position )
+            items.append( self._build_tool( view, pos, position, size, 'rect', self.resize_tools[index] ) )
 
         return self.move_tool, items
 
@@ -1589,8 +1511,8 @@ class RadialFFGroupToolFactory( GroupToolsFactory ):
                                                  False )  for i in range( 0, 4 )]
 
         for index, position in enumerate( ( POS_TOP_CENTER, POS_CENTER_LEFT, POS_CENTER_RIGHT, POS_BOTTOM_CENTER ) ):
-          pos = poly_weighted_pos( bounding_poly[0], position )
-          items.append( self._build_tool( view, pos, position, size, 'rect', self.resize_tools[index] ) )
+            pos = poly_weighted_pos( bounding_poly[0], position )
+            items.append( self._build_tool( view, pos, position, size, 'rect', self.resize_tools[index] ) )
 
         return self.move_tool, items
 
@@ -1606,15 +1528,10 @@ class CompGeomGroupToolFactory( GroupToolsFactory ):
 
         children_bounding_poly = None
         children_item = None
-        pixmap_bounding_poly = None
-        pixmap_item = None
         for subitem in item.childItems():
-             if isinstance( subitem, QtGui.QGraphicsItemGroup ):
+            if isinstance( subitem, QtGui.QGraphicsItemGroup ):
                 children_item = subitem
                 children_bounding_poly = subitem.mapToScene( subitem.childrenBoundingRect() )
-             elif isinstance( subitem, QtGui.QGraphicsPixmapItem ):
-                pixmap_item = subitem
-                pixmap_bounding_poly = subitem.mapToScene( subitem.boundingRect() )
 
         self.move_tool = MoveToolDelegate( view, element, children_item,
                                             element.meta.attribute_by_name( 'center' ),
@@ -1635,45 +1552,6 @@ class CompGeomGroupToolFactory( GroupToolsFactory ):
         self.resize_tools.append( newtool )
         pos = poly_weighted_pos( children_bounding_poly, POS_CENTER_RIGHT )
         items.append( self._build_tool( view, pos, POS_CENTER_RIGHT, QtCore.QPointF( 6 * pixel_length, 6 * pixel_length ), 'circlefill', newtool, QtGui.QColor( 0, 255, 0 ) ) )
-
-        if pixmap_item:
-            newtool = MoveAndScaleToolDelegate( view, element, pixmap_item,
-                                                 element.meta.attribute_by_name( 'imagepos' ),
-                                                 PixmapStateManager(),
-                                                 True,
-                                                 element.meta.attribute_by_name( 'imagescale' )
-                                                 , element.meta.attribute_by_name( 'center' ) )
-            self.resize_tools.append( newtool )
-            pos = poly_weighted_pos( pixmap_bounding_poly, POS_TOP_LEFT )
-            items.append( self._build_tool( view, pos, POS_TOP_LEFT, size, 'rectfill', newtool ) )
-
-            newtool = MoveAndScaleToolDelegate( view, element, pixmap_item,
-                                                     element.meta.attribute_by_name( 'imagepos' ),
-                                                     PixmapStateManager(),
-                                                     True,
-                                                     element.meta.attribute_by_name( 'imagescale' )
-                                                     , element.meta.attribute_by_name( 'center' ) )
-            self.resize_tools.append( newtool )
-            pos = poly_weighted_pos( pixmap_bounding_poly, POS_BOTTOM_RIGHT )
-            items.append( self._build_tool( view, pos, POS_BOTTOM_RIGHT, size, 'rectfill', newtool ) )
-
-            newtool = MoveToolDelegate( view, element, pixmap_item,
-                                                     element.meta.attribute_by_name( 'imagepos' ),
-                                                     PixmapStateManager(),
-                                                     True,
-                                                     element.meta.attribute_by_name( 'center' ) )
-            self.resize_tools.append( newtool )
-            pos = poly_weighted_pos( pixmap_bounding_poly, POS_CENTER )
-            items.append( self._build_tool( view, pos, POS_CENTER, size, 'rectfill', newtool ) )
-
-
-            newtool = RotateToolDelegate( view, element, pixmap_item,
-                                                     element.meta.attribute_by_name( 'imagerot' ),
-                                                     PixmapStateManager(),
-                                                     True, element.meta.attribute_by_name( 'imagescale' ) )
-            self.resize_tools.append( newtool )
-            pos = poly_weighted_pos( pixmap_bounding_poly, POS_CENTER_LEFT )
-            items.append( self._build_tool( view, pos, POS_CENTER_LEFT, size, 'circlefill', newtool ) )
 
         return self.move_tool, items
 
@@ -1828,9 +1706,9 @@ class LevelGraphicView( QtGui.QGraphicsView ):
             self.__scene.removeItem( self._band_item )
         l = vector2d_length( p1.x() - p2.x(), p1.y() - p2.y() )
         if l > 100:
-           l = ( l - 100 ) * 250 / 150
-           if l > 255:
-               l = 255
+            l = ( l - 100 ) * 250 / 150
+            if l > 255:
+                l = 255
         else:
             l = 0
         pen = QtGui.QPen( QtGui.QColor( l, 0, 0 ) )
@@ -1866,7 +1744,7 @@ class LevelGraphicView( QtGui.QGraphicsView ):
             return # No handle for select or pan tool
         element = iter( elements ).next()
         item = self._items_by_element.get( element )
-        if item is None:
+        if item is None:    
             return
         factory_type = None
         if isinstance( item, QtGui.QGraphicsEllipseItem ):
@@ -1886,9 +1764,9 @@ class LevelGraphicView( QtGui.QGraphicsView ):
             self._current_inner_tool, self._tools_handle_items = factory_type().create_tools( item, element, self )
 
         if self._tools_handle_items:
-          for tool_item in self._tools_handle_items:
-            # Prevent the item from being selected
-            tool_item.setAcceptedMouseButtons( Qt.NoButton )
+            for tool_item in self._tools_handle_items:
+                # Prevent the item from being selected
+                tool_item.setAcceptedMouseButtons( Qt.NoButton )
 
     def delayed_element_property_update( self, element, attribute_meta, new_value ):
         self._delayed_property_updates.append( ( element, attribute_meta, new_value ) )
@@ -2029,8 +1907,6 @@ class LevelGraphicView( QtGui.QGraphicsView ):
         if len( self.parent().mdiArea().subWindowList() ) == 1:
             louie.send( metaworldui.ActiveWorldChanged, None, None )
 
-
-
         QtGui.QGraphicsView.closeEvent( self, event )
         event.accept()
 
@@ -2051,7 +1927,7 @@ class LevelGraphicView( QtGui.QGraphicsView ):
                 factor = 1 + small_delta
 #@DaB
 #New function zoomView replaces scaleView
-			#self.scaleView( factor ) 
+#            self.scaleView( factor ) 
             self.zoomView( factor, event.pos().x(), event.pos().y() )
             self.emit( QtCore.SIGNAL( 'mouseMovedInScene(PyQt_PyObject,PyQt_PyObject)' ), pos.x(), pos.y() )
 
@@ -2118,22 +1994,22 @@ class LevelGraphicView( QtGui.QGraphicsView ):
         # to the item group, which caused infinite recursion (unselect child,
         # then unselect parent, selection parent...)
         for item in self.__scene.items():
-          data = item.data( KEY_ELEMENT )
-          if not data.isValid():
-             itemtype = item.data( KEY_TYPE ).toString()
-             if itemtype != 'TOOL':
-                print "Data not valid in _on_selection_change", itemtype, item
-          else:
-            element = item.data( KEY_ELEMENT ).toPyObject()
-            if element in selection:
-##                print 'Selecting', item, 'isSelected =', item.isSelected()
-##                print '    Group is', item.group()
-                if not item.isSelected() and item.group() is None:
-                    item.setSelected( True )
-            elif item.isSelected() and item.group() is None:
-##                print 'Unselecting', item, 'isSelected =', item.isSelected()
-##                print '    Group is', item.group()
-                item.setSelected( False )
+            data = item.data( KEY_ELEMENT )
+            if not data.isValid():
+                itemtype = item.data( KEY_TYPE ).toString()
+                if itemtype != 'TOOL':
+                    print "Data not valid in _on_selection_change", itemtype, item
+            else:
+                element = item.data( KEY_ELEMENT ).toPyObject()
+                if element in selection:
+#                    print 'Selecting', item, 'isSelected =', item.isSelected()
+#                    print '    Group is', item.group()
+                    if not item.isSelected() and item.group() is None:
+                        item.setSelected( True )
+                elif item.isSelected() and item.group() is None:
+#                    print 'Unselecting', item, 'isSelected =', item.isSelected()
+#                    print '    Group is', item.group()
+                    item.setSelected( False )
         self._update_tools_handle()
 
     def getModel( self ):
@@ -2155,7 +2031,6 @@ class LevelGraphicView( QtGui.QGraphicsView ):
             self.refreshFromModel()
 
     def refreshFromModel( self, elements_to_skip = None ):
-
         self._elements_to_skip = elements_to_skip or set()
         scene = self.__scene
         scene.clear()
@@ -2204,7 +2079,7 @@ class LevelGraphicView( QtGui.QGraphicsView ):
             'poi': self._levelPoiBuilder,
             # .scene.xml builders
             'scene': self._sceneBuilder,
-            'SceneLayer': self._sceneSceneLayerBuilder,
+            'scenelayer': self._sceneSceneLayerBuilder,
             'button': self._sceneButtonBuilder,
             'buttongroup': self._sceneButtonGroupBuilder,
             'circle': self._sceneCircleBuilder,
@@ -2226,7 +2101,7 @@ class LevelGraphicView( QtGui.QGraphicsView ):
             if item:
                 item.setData( KEY_ELEMENT, QtCore.QVariant( element ) )
                 item.setFlag( QtGui.QGraphicsItem.ItemIsSelectable, True )
-                if element.tag == 'compositegeom':
+                if isinstance( item, QtGui.QGraphicsItemGroup ):
                     composite_item = item
                     for child in composite_item.childItems():
                         child.setData( KEY_ELEMENT, QtCore.QVariant( element ) )
@@ -2255,19 +2130,6 @@ class LevelGraphicView( QtGui.QGraphicsView ):
     def _elementV2Pos( element, attribute, default_value = ( 0.0, 0.0 ) ): # y=0 is bottom => Negate y
         x, y = element.get_native( attribute, default_value )
         return x, -y
-
-    @staticmethod
-    def _elementImageWithPosScaleRot( element ):
-        image = element.get( 'image' )
-        if image is None:
-            return None, None, None, None
-        if element.get( 'imagepos' ) is not None:
-            imagepos = LevelGraphicView._elementV2Pos( element, 'imagepos' )
-        else:
-            imagepos = None
-        imagescale = element.get_native( 'imagescale', ( 1.0, 1.0 ) )
-        imagerot = element.get_native( 'imagerot', 0.0 )
-        return image, imagepos, imagescale, imagerot
 
     @staticmethod
     def _setLevelItemZ( item ):
@@ -2491,13 +2353,8 @@ class LevelGraphicView( QtGui.QGraphicsView ):
     def _sceneCircleBuilder( self, scene, element ):
         x, y = self._elementV2Pos( element, 'center' )
         r = element.get_native( 'radius', 1.0 )
-        image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
-        if image:
-            pen = QtGui.QPen( QtGui.QColor( 128, 64, 192 ) )
-            brush = QtGui.QBrush ( QtGui.QColor( 192, 128, 255, 64 ), Qt.SolidPattern )
-        else:
-            pen = QtGui.QPen( QtGui.QColor( 0, 64, 255 ) )
-            brush = QtGui.QBrush ( QtGui.QColor( 0, 128, 255, 64 ), Qt.SolidPattern )
+        pen = QtGui.QPen( QtGui.QColor( 0, 64, 255 ) )
+        brush = QtGui.QBrush ( QtGui.QColor( 0, 128, 255, 64 ), Qt.SolidPattern )
 
         pen.setWidth( 2 )
         item = scene.addEllipse( -r, -r, r * 2, r * 2, pen, brush )
@@ -2505,29 +2362,15 @@ class LevelGraphicView( QtGui.QGraphicsView ):
         item.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
         self._applyTransform( item, 0, 0, x, y, 0, 1.0, 1.0, Z_PHYSIC_ITEMS )
 
-        if image and self.get_element_state( 'pixmap' ) != ELEMENT_STATE_INVISIBLE:
-            pixmap = self.getImagePixmap( image )
-            if pixmap:
-                if imagepos is None:
-                    imagepos = ( x, y )
-                item.setData( KEY_ELEMENT , QtCore.QVariant( element ) )
-                imgitem = scene.addPixmap( pixmap )
-                imgitem.setData( KEY_AREA , QtCore.QVariant( 3.14 * r * r ) )
-                imgitem.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
-                imgitem.setData( KEY_ELEMENT , QtCore.QVariant( element ) )
-                imgitem.setTransformationMode( Qt.SmoothTransformation )
-                self._applyPixmapTransform( imgitem, pixmap, imagepos[0], imagepos[1], imagerot,
-                                            imagescale[0], imagescale[1], -0.002 )
-                combitem = scene.createItemGroup( [item, imgitem] )
-                combitem.setData( KEY_AREA , QtCore.QVariant( 0 ) )
-                combitem.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
-                combitem.setZValue ( Z_PHYSIC_ITEMS )
-                return combitem
-            else:
-                print 'Circle image not found:', image
-                return item
-        else: # "physic" circle
-            return item
+        sub_items = []
+        sub_items.append( item )
+        childgroup = scene.createItemGroup( [] )
+        self._applyTransform( childgroup, 0, 0, x, y, 0, 1.0, 1.0, Z_PHYSIC_ITEMS )
+        sub_items.append( childgroup )
+        item = scene.createItemGroup( sub_items )
+        item.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
+        item.setZValue( Z_PHYSIC_ITEMS )
+        return item
 
     def _sceneBuilder( self, scene, element ):
         minx, maxx = element.get_native( 'minx', 0.0 ), element.get_native( 'maxx', 0.0 )
@@ -2551,43 +2394,23 @@ class LevelGraphicView( QtGui.QGraphicsView ):
         x, y = self._elementV2Pos( element, 'center' )
         rotation = element.get_native( 'rotation', 0.0 )
         width, height = element.get_native( 'size', ( 1.0, 1.0 ) )
-        image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
-        if image:
-            pen = QtGui.QPen( QtGui.QColor( 128, 64, 192 ) )
-            brush = QtGui.QBrush ( QtGui.QColor( 192, 128, 255, 64 ), Qt.SolidPattern )
-        else:
-            pen = QtGui.QPen( QtGui.QColor( 0, 64, 255 ) )
-            brush = QtGui.QBrush ( QtGui.QColor( 0, 128, 255, 64 ), Qt.SolidPattern )
+        pen = QtGui.QPen( QtGui.QColor( 0, 64, 255 ) )
+        brush = QtGui.QBrush ( QtGui.QColor( 0, 128, 255, 64 ), Qt.SolidPattern )
         pen.setWidth( 2 )
         item = scene.addRect( 0, 0, width, height, pen, brush )
         item.setData( KEY_AREA , QtCore.QVariant( width * height ) )
         item.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
         self._applyTransform( item, width / 2.0, height / 2.0, x, y, rotation, 1.0, 1.0, Z_PHYSIC_ITEMS )
 
-        if image and self.get_element_state( 'pixmap' ) != ELEMENT_STATE_INVISIBLE:
-            pixmap = self.getImagePixmap( image )
-            if pixmap:
-                if imagepos is None:
-                    imagepos = ( x, y )
-                item.setData( KEY_ELEMENT , QtCore.QVariant( element ) )
-                imgitem = scene.addPixmap( pixmap )
-                imgitem.setData( KEY_AREA , QtCore.QVariant( width * height ) )
-                imgitem.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
-                imgitem.setData( KEY_ELEMENT , QtCore.QVariant( element ) )
-                imgitem.setTransformationMode( Qt.SmoothTransformation )
-                self._applyPixmapTransform( imgitem, pixmap, imagepos[0], imagepos[1], imagerot,
-                                            imagescale[0], imagescale[1], -Z_PHYSIC_ITEMS )
-
-                combitem = scene.createItemGroup( [item, imgitem] )
-                combitem.setData( KEY_AREA , QtCore.QVariant( 0 ) )
-                combitem.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
-                combitem.setZValue( Z_PHYSIC_ITEMS )
-                return combitem
-            else:
-                print 'Rectangle image not found:', image
-                return item
-        else: # "physic" rectangle
-            return item
+        sub_items = []
+        sub_items.append( item )
+        childgroup = scene.createItemGroup( [] )
+        self._applyTransform( childgroup, 0, 0, x, y, rotation, 1.0, 1.0, Z_PHYSIC_ITEMS )
+        sub_items.append( childgroup )
+        item = scene.createItemGroup( sub_items )
+        item.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
+        item.setZValue( Z_PHYSIC_ITEMS )
+        return item
 
     def _addSceneLine( self, scene, element ):
         """Delay line rendering after everything (line are unbounded, we limit them to the scene extend)."""
@@ -2647,17 +2470,8 @@ class LevelGraphicView( QtGui.QGraphicsView ):
         return combitem
 
     def _sceneCompositeGeometryBuilder( self, scene, element ):
-        #@daB
-        #New Structure for Composite Geom Items
-        #ItemGroup (No Transform)
-        # |- Geom Item Group (Children) Transform compgeon center and rotation
-        # |    |- Rects and circles (Own center and rot)
-        # |- Pixmap - Transform imagepos, imagerot, imagescale (no compensation for compgeom values)
-
         x, y = self._elementV2Pos( element, 'center' )
         rotation = element.get_native( 'rotation', 0.0 )
-        image, imagepos, imagescale, imagerot = self._elementImageWithPosScaleRot( element )
-        sub_items = []
         pen = QtGui.QPen( QtGui.QColor( 32, 255, 32 ) )
         pen.setWidth( 10 )
         center_item = scene.addEllipse( -6, -6, 12, 12, pen )
@@ -2665,26 +2479,12 @@ class LevelGraphicView( QtGui.QGraphicsView ):
         center_item.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
         center_item.setData( KEY_ELEMENT , QtCore.QVariant( element ) )
         self._applyTransform( center_item, 0, 0, x, y, rotation, 1.0, 1.0, Z_PHYSIC_ITEMS )
+
+        sub_items = []
         sub_items.append( center_item )
         childgroup = scene.createItemGroup( [] )
         self._applyTransform( childgroup, 0, 0, x, y, rotation, 1.0, 1.0, Z_PHYSIC_ITEMS )
         sub_items.append( childgroup )
-        imageitem = None
-        if image and self.get_element_state( 'pixmap' ) != ELEMENT_STATE_INVISIBLE:
-            pixmap = self.getImagePixmap( image )
-            if pixmap:
-                if imagepos is None:
-                    imagepos = ( x, y )
-                imageitem = scene.addPixmap( pixmap )
-
-                self._applyPixmapTransform( imageitem, pixmap, imagepos[0], imagepos[1],
-                                            imagerot, imagescale[0], imagescale[1], -0.002 )
-                imageitem.setData( KEY_AREA , QtCore.QVariant( pixmap.height()*pixmap.width()*imagescale[0] * imagescale[1] ) )
-                imageitem.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
-                imageitem.setData( KEY_ELEMENT , QtCore.QVariant( element ) )
-                imageitem.setTransformationMode( Qt.SmoothTransformation )
-                sub_items.append( imageitem )
-
         item = scene.createItemGroup( sub_items )
         item.setData( KEY_TYPE , QtCore.QVariant( element.tag ) )
         item.setZValue( Z_PHYSIC_ITEMS )

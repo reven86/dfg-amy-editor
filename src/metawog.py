@@ -91,6 +91,20 @@ _describe_resource_file( TREE_LEVEL_RESOURCE, WORLD_LEVEL )
 # Values for Tag attribute (Physic items)
 _TAG_VALUES = ( 'emitter', )
 
+ELEMENT_SCENELAYER = describe_element( 'scenelayer', groups = 'image', attributes = [
+    identifier_attribute( 'id', allow_empty = True, display_id = True, remove_empty = True,
+        reference_family = 'image', reference_world = WORLD_LEVEL ),
+    path_attribute( 'image', strip_extension = '.png', mandatory = True ),
+    xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ( 'x', 'y' ) , position = True ),
+    scale_attribute( 'scale', default = '1,1', min_value = 0.000001, map_to = ( 'scalex', 'scaley' ), allow_empty = True, remove_empty = True ),
+    angle_degrees_attribute( 'rotation', default = '0', allow_empty = True, remove_empty = True ),
+    real_attribute( 'depth', mandatory = True, init = '0' ),
+    int_attribute ( 'tilecountx', allow_empty = True, remove_empty = True ),
+    int_attribute ( 'tilecounty', allow_empty = True, remove_empty = True ),
+    real_attribute( 'alpha', min_value = 0, max_value = 1, default = '1' , allow_empty = True, remove_empty = True ),
+    rgb_attribute( 'colorize', init = '255,255,255', allow_empty = True, remove_empty = True ),
+    ] )
+
 ELEMENT_BUTTON = describe_element( 'button', groups = 'image', attributes = [
         string_attribute( 'id', display_id = True, mandatory = True ),
         xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ( 'x', 'y' ) , position = True ),
@@ -125,6 +139,9 @@ ELEMENT_RECTANGLE = describe_element( 'rectangle', groups = 'rect', attributes =
     enum_attribute( 'material', values = MATERIALS_ORIGINAL, default = 'wall', allow_empty = False ),
     enum_attribute( 'tag', _TAG_VALUES, is_list = True , allow_empty = True, remove_empty = True ),
     string_attribute( 'script', allow_empty = True, remove_empty = True, tooltip = 'Custom scripts, separated by comma' )
+    ],
+    elements = [
+        ELEMENT_SCENELAYER
     ] )
 
 ELEMENT_CHILD_RECTANGLE = describe_element( 'rectangle', groups = 'rect', attributes = [
@@ -132,7 +149,10 @@ ELEMENT_CHILD_RECTANGLE = describe_element( 'rectangle', groups = 'rect', attrib
     xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ( 'x', 'y' ), position = True ),
     size_attribute( 'size', mandatory = True, init = '100,100', map_to = ( 'width', 'height' ) ),
     angle_degrees_attribute( 'rotation', mandatory = True, init = '0' ),
-] )
+    ],
+    elements = [
+        ELEMENT_SCENELAYER
+    ] )
 
 
 
@@ -144,12 +164,18 @@ ELEMENT_CIRCLE = describe_element( 'circle', groups = 'circle', attributes = [
     enum_attribute( 'material', values = MATERIALS_ORIGINAL, default = 'wall', allow_empty = False ),
     enum_attribute( 'tag', _TAG_VALUES, is_list = True , allow_empty = True, remove_empty = True ),
     string_attribute( 'script', allow_empty = True, remove_empty = True, tooltip = 'Custom scripts, separated by comma' )
+    ],
+    elements = [
+        ELEMENT_SCENELAYER
     ] )
 
 ELEMENT_CHILD_CIRCLE = describe_element( 'circle', groups = 'circle', attributes = [
     string_attribute( 'id', display_id = True, allow_empty = True ),
     xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ( 'x', 'y' ), position = True ),
     radius_attribute( 'radius', mandatory = True, init = '75' ),
+    ],
+    elements = [
+        ELEMENT_SCENELAYER
     ] )
 
 TREE_LEVEL_SCENE.add_elements( [
@@ -161,19 +187,7 @@ TREE_LEVEL_SCENE.add_elements( [
         real_attribute( 'maxy', init = '500', tooltip = "Top edge of playing area\nCamera will not show past here." , allow_empty = True, remove_empty = True )
         ],
         elements = [
-        describe_element( 'SceneLayer', groups = 'image', attributes = [
-            identifier_attribute( 'id', allow_empty = True, display_id = True, remove_empty = True,
-                reference_family = 'image', reference_world = WORLD_LEVEL ),
-            path_attribute( 'image', strip_extension = '.png', mandatory = True ),
-            xy_attribute( 'center', mandatory = True, init = '0,0', map_to = ( 'x', 'y' ) , position = True ),
-            scale_attribute( 'scale', default = '1,1', min_value = 0.000001, map_to = ( 'scalex', 'scaley' ), allow_empty = True, remove_empty = True ),
-            angle_degrees_attribute( 'rotation', default = '0', allow_empty = True, remove_empty = True ),
-            real_attribute( 'depth', mandatory = True, init = '0' ),
-            int_attribute ( 'tilecountx', allow_empty = True, remove_empty = True ),
-            int_attribute ( 'tilecounty', allow_empty = True, remove_empty = True ),
-            real_attribute( 'alpha', min_value = 0, max_value = 1, default = '1' , allow_empty = True, remove_empty = True ),
-            rgb_attribute( 'colorize', init = '255,255,255', allow_empty = True, remove_empty = True ),
-            ] ),
+        ELEMENT_SCENELAYER,
         ELEMENT_BUTTON,
         describe_element( 'buttongroup', groups = 'image', attributes = [
             string_attribute( 'id', mandatory = True ),
@@ -209,7 +223,8 @@ TREE_LEVEL_SCENE.add_elements( [
             ],
             elements = [
                 ELEMENT_CHILD_RECTANGLE,
-                ELEMENT_CHILD_CIRCLE
+                ELEMENT_CHILD_CIRCLE,
+                ELEMENT_SCENELAYER
             ] ),
         describe_element( 'line', groups = 'line', attributes = [
             string_attribute( 'id', display_id = True, mandatory = True,
